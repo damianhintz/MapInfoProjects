@@ -1,0 +1,23 @@
+Version 450
+Charset	"WindowsLatin1"
+Delimiter	","
+'Please include coordinate system information below if coordinates are not in degrees. 
+'E.g. if the coordinates are in meters, the coordinate system is projected, and the projection algorithm is 
+'State Plane Coordinate System 1983 (102 - Alabama West)' using the datum 
+'North American 1983', then the coordinate system information should be set to 
+'CoordSys Earth Projection 8, 74, 'm', -87.5, 30.0, 0.9999333333, 600000, 0'
+Columns	2
+MOZE_ZNACZACO_ODDZIAL_NA_SROD	Logical
+KONTROLA_ID	Decimal(5,0)
+Data
+
+Pline  9
+505523.97661334585000	644660.97182904999000
+505515.09409101092000	645044.40858368180000
+503830.14462673088000	650107.14857271395000
+503831.36904552381000	651444.50832628622000
+503269.27544014429000	652730.07899663819000
+503055.99910064403000	653200.84207435197000
+502122.98042554682000	653922.00000000000000
+501094.63786104339000	654286.95669304102000
+500000.00000000000000	655095.76545163919000

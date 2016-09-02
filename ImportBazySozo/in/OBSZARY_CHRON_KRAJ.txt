@@ -1,0 +1,5 @@
+#Granice obszarów chronionego krajobrazu (powierzchniowe)
+Table OBSZARY_CHRON_KRAJ
+Style Brush MakeBrush (1, RGB (0, 129, 69), -1)
+Style Pen MakePen (1, 82, RGB (0, 129, 69))
+Apply AreaStyle

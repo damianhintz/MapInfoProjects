@@ -1,0 +1,5 @@
+#Grunty lasy pozosta³e (powierzchniowe)
+Table LASY_POZOSTALE
+Style Brush MakeBrush (2, RGB (168, 213, 143), -1)
+Style Pen MakePen (1, 1, RGB (168, 213, 143))
+Apply AreaStyle

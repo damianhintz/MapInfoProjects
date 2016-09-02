@@ -1,0 +1,12 @@
+#Zwierciad³o wód sztucznie obni¿one (powierzchniowe)
+Table ZWIERCIADLO_WOD_PODZIEM
+Where ZWIERCIADLO_ID="O"
+Style Brush MakeBrush (140, RGB (137, 55, 131), -1)
+Style Pen MakePen (1, 1, RGB (137, 55, 131))
+Apply AreaStyle
+#Zwierciad³o wód sztucznie podniesione (powierzchniowe)
+Table ZWIERCIADLO_WOD_PODZIEM
+Where ZWIERCIADLO_ID="P"
+Style Brush MakeBrush (133, RGB (137, 55, 131), -1)
+Style Pen MakePen (1, 1, RGB (137, 55, 131))
+Apply AreaStyle

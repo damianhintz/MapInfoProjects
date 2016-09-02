@@ -1,0 +1,56 @@
+#Podpiêtrzone wody powierzchniowe (powierzchniowe)
+Table ZBIORNIKI_WODNE
+Where PODPIETRZONE
+Style Brush MakeBrush (3, RGB (0, 70, 142), RGB (164, 215, 246))
+Style Pen MakePen (1, 48, RGB (0, 70, 142))
+Apply AreaStyle
+#Zbiorniki wód przemys³owych (powierzchniowe)
+Table ZBIORNIKI_WODNE
+Where FUNKCJA_ID="P"
+Style Brush MakeBrush (21, RGB (137, 55, 131), RGB (164, 215, 246))
+Style Pen MakePen (1, 102, RGB (137, 55, 131))
+Apply AreaStyle
+Table ZBIORNIKI_WODNE
+Where FUNKCJA_ID="P"
+Style Symbol MakeCustomSymbol ("ms_4002.bmp", RGB (137, 55, 131), 9, 0)
+Apply PointStyle
+#Stawy hodowlane (powierzchniowe)
+Table ZBIORNIKI_WODNE
+Where FUNKCJA_ID="H"
+Style Brush MakeBrush (2, RGB (164, 215, 246), -1)
+Style Pen MakePen (1, 48, RGB (0, 70, 142))
+Apply AreaStyle
+Table ZBIORNIKI_WODNE
+Where FUNKCJA_ID="H"
+Style Symbol MakeCustomSymbol ("m_9017.bmp", RGB (137, 55, 131), 9, 0)
+Apply PointStyle
+#Pozosta³e sztuczne zbiorniki wodne (powierzchniowe)
+Table ZBIORNIKI_WODNE
+Where FUNKCJA_ID="N" AND SZTUCZNY
+Style Brush MakeBrush (2, RGB (164, 215, 246), -1)
+Style Pen MakePen (1, 102, RGB (137, 55, 131))
+Apply AreaStyle
+Table ZBIORNIKI_WODNE
+Where FUNKCJA_ID="N" AND SZTUCZNY
+Style Symbol MakeCustomSymbol ("ms_4202.bmp", RGB (137, 55, 131), 9, 0)
+Apply PointStyle
+#Suche zbiorniki retencyjne (powierzchniowe)
+Table ZBIORNIKI_WODNE
+Where FUNKCJA_ID="S"
+Style Brush MakeBrush (138, RGB (137, 55, 131), -1)
+Style Pen MakePen (1, 103, RGB (137, 55, 131))
+Apply AreaStyle
+Table ZBIORNIKI_WODNE
+Where FUNKCJA_ID="S"
+Style Symbol MakeCustomSymbol ("ms_4212.bmp", RGB (137, 55, 131), 9, 0)
+Apply PointStyle
+#Wody pozozta³e np. jeziora (powierzchniowe)
+Table ZBIORNIKI_WODNE
+Where FUNKCJA_ID="N" AND NOT SZTUCZNY and not podpietrzone
+Style Brush MakeBrush (2, RGB (164, 215, 246), -1)
+Style Pen MakePen (1, 48, RGB (0, 70, 142))
+Apply AreaStyle
+Table ZBIORNIKI_WODNE
+Where FUNKCJA_ID="N" AND NOT SZTUCZNY and not podpietrzone
+Style Symbol MakeCustomSymbol ("m_9017.bmp", RGB (137, 55, 131), 9, 0)
+Apply PointStyle

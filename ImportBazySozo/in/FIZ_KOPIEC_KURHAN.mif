@@ -1,0 +1,26 @@
+Version 450
+Charset	"WindowsLatin1"
+Delimiter	","
+'Please include coordinate system information below if coordinates are not in degrees. 
+'E.g. if the coordinates are in meters, the coordinate system is projected, and the projection algorithm is 
+'State Plane Coordinate System 1983 (102 - Alabama West)' using the datum 
+'North American 1983', then the coordinate system information should be set to 
+'CoordSys Earth Projection 8, 74, 'm', -87.5, 30.0, 0.9999333333, 600000, 0'
+Columns	6
+ZNACZENIE_ORIENTACYJNE	Decimal(3,0)
+P_GLEBOKOSC	Decimal(3,0)
+DANE_OKRES_ZBIERANIA	Char(21)
+DANE_POCHODZENIE1_REGON	Char(14)
+DANE_POCHODZENIE1_INFO	Char(254)
+KONTROLA_ID	Decimal(5,0)
+Data
+
+Point 512854.76818431629000	649050.32922101335000
+Point 512175.62994033436000	661576.91809551115000
+Point 511919.17871354491000	661567.25296498137000
+Point 500268.84101122693000	653709.05207089288000
+Point 512120.28395715647000	661501.03632613993000
+Point 511884.67196859664000	654187.81086342176000
+Point 507421.52209517849000	646272.27885380201000
+Point 513391.80722394603000	658181.34884565242000
+Point 509564.83115240029000	654397.26533641201000

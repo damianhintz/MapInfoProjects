@@ -1,0 +1,104 @@
+#Wyrobiska czynne (powierzchniowe)
+Table FORMY_ANTROPOGENICZNE
+Where FORMA_ID="W" AND CZYNNE
+Style Brush MakeBrush (2, RGB (224, 181, 210), -1)
+Style Pen MakePen (1, 93, RGB (137, 55, 131))
+Apply AreaStyle
+#Wyrobiska nieczynne (powierzchniowe)
+Table FORMY_ANTROPOGENICZNE
+Where FORMA_ID="W" AND not CZYNNE
+Style Brush MakeBrush (1, RGB (224, 181, 210), -1)
+Style Pen MakePen (1, 93, RGB (137, 55, 131))
+Apply AreaStyle
+#Zwa這wiska czynne (powierzchniowe)
+Table FORMY_ANTROPOGENICZNE
+Where FORMA_ID="Z" AND CZYNNE
+Style Brush MakeBrush (2, RGB (224, 181, 210), -1)
+Style Pen MakePen (1, 94, RGB (137, 55, 131))
+Apply AreaStyle
+#Zwa這wiska nieczynne (powierzchniowe)
+Table FORMY_ANTROPOGENICZNE
+Where FORMA_ID="Z" AND not CZYNNE
+Style Brush MakeBrush (1, RGB (224, 181, 210), -1)
+Style Pen MakePen (1, 94, RGB (137, 55, 131))
+Apply AreaStyle
+#Wyrobiska czynne surowc闚 budowlanych (punktowe)
+Table FORMY_ANTROPOGENICZNE
+Where FORMA_ID="W" AND CZYNNE AND PO_SUROWCACH_ID="B"
+Style Symbol MakeCustomSymbol ("ms_2112B.bmp", RGB (224, 181, 210), 21, 0)
+Apply PointStyle
+#Wyrobiska czynne surowc闚 chemicznych (punktowe)
+Table FORMY_ANTROPOGENICZNE
+Where FORMA_ID="W" AND CZYNNE AND PO_SUROWCACH_ID="C"
+Style Symbol MakeCustomSymbol ("ms_2112C.bmp", RGB (224, 181, 210), 21, 0)
+Apply PointStyle
+#Wyrobiska czynne surowc闚 energetycznych (punktowe)
+Table FORMY_ANTROPOGENICZNE
+Where FORMA_ID="W" AND CZYNNE AND PO_SUROWCACH_ID="E"
+Style Symbol MakeCustomSymbol ("ms_2112E.bmp", RGB (224, 181, 210), 21, 0)
+Apply PointStyle
+#Wyrobiska czynne surowc闚 hutniczych (punktowe)
+Table FORMY_ANTROPOGENICZNE
+Where FORMA_ID="W" AND CZYNNE AND PO_SUROWCACH_ID="H"
+Style Symbol MakeCustomSymbol ("ms_2112H.bmp", RGB (224, 181, 210), 21, 0)
+Apply PointStyle
+#Wyrobiska nieczynne surowc闚 budowlanych (punktowe)
+Table FORMY_ANTROPOGENICZNE
+Where FORMA_ID="W" AND not CZYNNE AND PO_SUROWCACH_ID="B"
+Style Symbol MakeCustomSymbol ("ms_2122B.bmp", RGB (224, 181, 210), 21, 0)
+Apply PointStyle
+#Wyrobiska nieczynne surowc闚 chemicznych (punktowe)
+Table FORMY_ANTROPOGENICZNE
+Where FORMA_ID="W" AND not CZYNNE AND PO_SUROWCACH_ID="C"
+Style Symbol MakeCustomSymbol ("ms_2122C.bmp", RGB (224, 181, 210), 21, 0)
+Apply PointStyle
+#Wyrobiska nieczynne surowc闚 energetycznych (punktowe)
+Table FORMY_ANTROPOGENICZNE
+Where FORMA_ID="W" AND not CZYNNE AND PO_SUROWCACH_ID="E"
+Style Symbol MakeCustomSymbol ("ms_2122E.bmp", RGB (224, 181, 210), 21, 0)
+Apply PointStyle
+#Wyrobiska nieczynne surowc闚 hutniczych (punktowe)
+Table FORMY_ANTROPOGENICZNE
+Where FORMA_ID="W" AND not CZYNNE AND PO_SUROWCACH_ID="H"
+Style Symbol MakeCustomSymbol ("ms_2122H.bmp", RGB (224, 181, 210), 21, 0)
+Apply PointStyle
+#Zwa這wiska czynne surowc闚 budowlanych (punktowe)
+Table FORMY_ANTROPOGENICZNE
+Where FORMA_ID="Z" AND CZYNNE AND PO_SUROWCACH_ID="B"
+Style Symbol MakeCustomSymbol ("ms_2212B.bmp", RGB (224, 181, 210), 21, 0)
+Apply PointStyle
+#Zwa這wiska czynne surowc闚 chemicznych (punktowe)
+Table FORMY_ANTROPOGENICZNE
+Where FORMA_ID="Z" AND CZYNNE AND PO_SUROWCACH_ID="C"
+Style Symbol MakeCustomSymbol ("ms_2212C.bmp", RGB (224, 181, 210), 21, 0)
+Apply PointStyle
+#Zwa這wiska czynne surowc闚 energetycznych (punktowe)
+Table FORMY_ANTROPOGENICZNE
+Where FORMA_ID="Z" AND CZYNNE AND PO_SUROWCACH_ID="E"
+Style Symbol MakeCustomSymbol ("ms_2212E.bmp", RGB (224, 181, 210), 21, 0)
+Apply PointStyle
+#Zwa這wiska czynne surowc闚 hutniczych (punktowe)
+Table FORMY_ANTROPOGENICZNE
+Where FORMA_ID="Z" AND CZYNNE AND PO_SUROWCACH_ID="H"
+Style Symbol MakeCustomSymbol ("ms_2212H.bmp", RGB (224, 181, 210), 21, 0)
+Apply PointStyle
+#Zwa這wiska nieczynne surowc闚 budowlanych (punktowe)
+Table FORMY_ANTROPOGENICZNE
+Where FORMA_ID="Z" AND not CZYNNE AND PO_SUROWCACH_ID="B"
+Style Symbol MakeCustomSymbol ("ms_2222B.bmp", RGB (224, 181, 210), 21, 0)
+Apply PointStyle
+#Zwa這wiska nieczynne surowc闚 chemicznych (punktowe)
+Table FORMY_ANTROPOGENICZNE
+Where FORMA_ID="Z" AND not CZYNNE AND PO_SUROWCACH_ID="C"
+Style Symbol MakeCustomSymbol ("ms_2222C.bmp", RGB (224, 181, 210), 21, 0)
+Apply PointStyle
+#Zwa這wiska nieczynne surowc闚 energetycznych (punktowe)
+Table FORMY_ANTROPOGENICZNE
+Where FORMA_ID="Z" AND not CZYNNE AND PO_SUROWCACH_ID="E"
+Style Symbol MakeCustomSymbol ("ms_2222E.bmp", RGB (224, 181, 210), 21, 0)
+Apply PointStyle
+#Zwa這wiska nieczynne surowc闚 hutniczych (punktowe)
+Table FORMY_ANTROPOGENICZNE
+Where FORMA_ID="Z" AND not CZYNNE AND PO_SUROWCACH_ID="H"
+Style Symbol MakeCustomSymbol ("ms_2222H.bmp", RGB (224, 181, 210), 21, 0)
+Apply PointStyle

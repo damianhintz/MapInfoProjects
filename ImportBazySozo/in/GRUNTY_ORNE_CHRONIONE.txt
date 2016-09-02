@@ -1,0 +1,5 @@
+#Grunty orne chronione (powierzchniowe)
+Table GRUNTY_ORNE_CHRONIONE
+Style Brush MakeBrush (2, RGB (245, 197, 146), 0)
+Style Pen MakePen (1, 1, RGB (245, 197, 146))
+Apply AreaStyle

@@ -1,0 +1,5 @@
+#Z³o¿a surowców mineralnych (powierzchniowe)
+Table ZLOZA_SUROWCOW_MINERAL
+Style Brush MakeBrush (1, RGB (0, 0, 0), -1)
+Style Pen MakePen (1, 90, RGB (0, 0, 0))
+Apply AreaStyle

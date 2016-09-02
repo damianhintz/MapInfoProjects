@@ -1,0 +1,50 @@
+#Granice rezerwatów przyrody (powierzchniowe)
+Table REZERWATY_PRZYRODY
+Style Brush MakeBrush (1, RGB (0, 129, 69), -1)
+Style Pen MakePen (1, 84, RGB (0, 129, 69))
+Apply AreaStyle
+#Symbol rezerwat faunistyczny (punktowe)
+Table REZERWATY_PRZYRODY
+Where RODZAJ_ID="F"
+Style Symbol MakeCustomSymbol ("ms_1002f.bmp", RGB (0, 129, 69), 13, 0)
+Apply PointStyle
+#Symbol rezerwat krajobrazowy (punktowe)
+Table REZERWATY_PRZYRODY
+Where RODZAJ_ID="K"
+Style Symbol MakeCustomSymbol ("ms_1002k.bmp", RGB (0, 129, 69), 13, 0)
+Apply PointStyle
+#Symbol rezerwat leœny (punktowe)
+Table REZERWATY_PRZYRODY
+Where RODZAJ_ID="L"
+Style Symbol MakeCustomSymbol ("ms_1002l.bmp", RGB (0, 129, 69), 13, 0)
+Apply PointStyle
+#Symbol rezerwat s³onoroœlowy (punktowe)
+Table REZERWATY_PRZYRODY
+Where RODZAJ_ID="N"
+Style Symbol MakeCustomSymbol ("ms_1002n.bmp", RGB (0, 129, 69), 13, 0)
+Apply PointStyle
+#Symbol rezerwat przyrody nieozywionej (punktowe)
+Table REZERWATY_PRZYRODY
+Where RODZAJ_ID="P"
+Style Symbol MakeCustomSymbol ("ms_1002p.bmp", RGB (0, 129, 69), 13, 0)
+Apply PointStyle
+#Symbol rezerwat florystyczny (punktowe)
+Table REZERWATY_PRZYRODY
+Where RODZAJ_ID="R"
+Style Symbol MakeCustomSymbol ("ms_1002r.bmp", RGB (0, 129, 69), 13, 0)
+Apply PointStyle
+#Symbol rezerwat stepowy (punktowe)
+Table REZERWATY_PRZYRODY
+Where RODZAJ_ID="S"
+Style Symbol MakeCustomSymbol ("ms_1002s.bmp", RGB (0, 129, 69), 13, 0)
+Apply PointStyle
+#Symbol rezerwat torfowy (punktowe)
+Table REZERWATY_PRZYRODY
+Where RODZAJ_ID="T"
+Style Symbol MakeCustomSymbol ("ms_1002t.bmp", RGB (0, 129, 69), 13, 0)
+Apply PointStyle
+#Symbol rezerwat wodny (punktowe)
+Table REZERWATY_PRZYRODY
+Where RODZAJ_ID="W"
+Style Symbol MakeCustomSymbol ("ms_1002w.bmp", RGB (0, 129, 69), 13, 0)
+Apply PointStyle

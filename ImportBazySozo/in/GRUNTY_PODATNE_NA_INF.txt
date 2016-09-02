@@ -1,0 +1,5 @@
+#Grunty Podatne na infiltracje (powierzchniowe)
+Table GRUNTY_PODATNE_NA_INF
+Style Brush MakeBrush (52, RGB (137, 55, 131), -1)
+Style Pen MakePen (1, 1, RGB (137, 55, 131))
+Apply AreaStyle

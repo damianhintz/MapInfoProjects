@@ -1,0 +1,4 @@
+#Bezwzglêdna wysokoœæ zwierciad³a wody
+Table BEZWZG_WYS_ZWIERC_WODY
+Style Symbol MakeCustomSymbol ("m_9019.bmp", RGB (0, 70, 142), 7, 0)
+Apply PointStyle

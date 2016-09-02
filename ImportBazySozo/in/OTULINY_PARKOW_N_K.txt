@@ -1,0 +1,5 @@
+#Granice otulin parków narodowych i krajobrazowych (powierzchniowe)
+Table OTULINY_PARKOW_N_K
+Style Brush MakeBrush (1, RGB (0, 129, 69), -1)
+Style Pen MakePen (1, 83, RGB (0, 129, 69))
+Apply AreaStyle

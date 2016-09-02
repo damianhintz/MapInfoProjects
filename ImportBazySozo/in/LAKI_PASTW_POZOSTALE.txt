@@ -1,0 +1,5 @@
+#Grunty laki pozosta³e (powierzchniowe)
+Table LAKI_PASTW_POZOSTALE
+Style Brush MakeBrush (2, RGB (255, 251, 177), 0)
+Style Pen MakePen (1, 1, RGB (255, 251, 177))
+Apply AreaStyle

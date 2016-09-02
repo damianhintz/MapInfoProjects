@@ -1,0 +1,9 @@
+#Zespo³y przyrodniczo-krajobrazowe (punktowe)
+Table ZESPOLY_P_K
+Style Symbol MakeCustomSymbol ("ms_1402.bmp", RGB (0, 129, 69), 9, 0)
+Apply PointStyle
+#Zespo³y przyrodniczo-krajobrazowe (powierzchniowe)
+Table ZESPOLY_P_K
+Style Brush MakeBrush (30, RGB (0, 129, 69), -1)
+Style Pen MakePen (1, 86, RGB (0, 129, 69))
+Apply AreaStyle

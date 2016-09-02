@@ -1,0 +1,5 @@
+#Grunty zielen urzadzona (powierzchniowe)
+Table ZIELEN_URZADZONA
+Style Brush MakeBrush (2, RGB (96, 187, 161), 0)
+Style Pen MakePen (1, 1, RGB (96, 187, 161))
+Apply AreaStyle

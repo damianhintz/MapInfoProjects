@@ -1,0 +1,4 @@
+#Grunty osuwiskowe (punktowa)
+Table GRUNTY_OSUWISKOWE
+Style Symbol MakeCustomSymbol ("ms_1810.bmp", RGB (208, 85, 65), 14, 0)
+Apply PointStyle

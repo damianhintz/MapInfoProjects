@@ -1,0 +1,18 @@
+#Deformacje poeksploatacyjne terenu (powierzchniowe)
+Table DEFORMACJE_POEK
+Where DEFORMACJA_ID="C"
+Style Brush MakeBrush (1, RGB (224, 181, 210), -1)
+Style Pen MakePen (1, 95, RGB (137, 55, 131))
+Apply AreaStyle
+#Deformacje poeksploatacyjne terenu (powierzchniowe)
+Table DEFORMACJE_POEK
+Where DEFORMACJA_ID="N"
+Style Brush MakeBrush (1, RGB (224, 181, 210), -1)
+Style Pen MakePen (1, 96, RGB (137, 55, 131))
+Apply AreaStyle
+#Deformacje poeksploatacyjne terenu (powierzchniowe)
+Table DEFORMACJE_POEK
+Where DEFORMACJA_ID="I"
+Style Brush MakeBrush (1, RGB (224, 181, 210), -1)
+Style Pen MakePen (1, 97, RGB (137, 55, 131))
+Apply AreaStyle

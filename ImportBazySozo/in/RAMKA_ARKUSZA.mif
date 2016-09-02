@@ -1,0 +1,33 @@
+Version 450
+Charset	"WindowsLatin1"
+Delimiter	","
+'Please include coordinate system information below if coordinates are not in degrees. 
+'E.g. if the coordinates are in meters, the coordinate system is projected, and the projection algorithm is 
+'State Plane Coordinate System 1983 (102 - Alabama West)' using the datum 
+'North American 1983', then the coordinate system information should be set to 
+'CoordSys Earth Projection 8, 74, 'm', -87.5, 30.0, 0.9999333333, 600000, 0'
+Columns	13
+NAZWA	Char(50)
+NUMER	Char(30)
+WSPOLRZEDNA_NAROZNIKA_SE_X	Decimal(3,0)
+WSPOLRZEDNA_NAROZNIKA_SE_Y	Decimal(3,0)
+WSPOLRZEDNA_NAROZNIKA_NW_X	Decimal(3,0)
+WSPOLRZEDNA_NAROZNIKA_NW_Y	Decimal(3,0)
+MAPY_DOKUMENT_FIRMA_REGON	Char(14)
+MAPY_DOKUMENT_SKLAD_OSOBOWY	Char(254)
+ZDJECIE_POLOWE_FIRMA_REGON	Char(14)
+ZDJECIE_POLOWE_SKLAD_OSOBOWY	Char(254)
+KONSULTANCI_NAUKOWI	Char(254)
+GLOWNY_KONSULTANT_NAUKOWY	Char(254)
+KONTROLA_ID	Decimal(5,0)
+Data
+
+Region 1
+7
+499999.99999999953000	663188.25627374777000
+516447.82215806050000	663217.23167540831000
+516513.05194133229000	644680.28093158931000
+499999.99999999953000	644651.26555007137000
+499999.99999999953000	662462.84596910584000
+499999.99999999953000	662488.22510160576000
+499999.99999999953000	663188.25627374777000

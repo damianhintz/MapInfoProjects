@@ -1,0 +1,14 @@
+#Pomniki przyrody o¿ywionej (punktowe)
+Table POMNIKI_PRZYRODY
+Where PRZYRODY_ID="O"
+Style Symbol MakeCustomSymbol ("ms_1111.bmp", RGB (0, 129, 69), 13, 0)
+Apply PointStyle
+#Pomniki przyrody nieo¿ywionej (punktowe)
+Table POMNIKI_PRZYRODY
+Where PRZYRODY_ID="N"
+Style Symbol MakeCustomSymbol ("ms_1200.bmp", RGB (0, 129, 69), 13, 0)
+Apply PointStyle
+#Pomniki przyrody o¿ywionej (liniowe)
+Table POMNIKI_PRZYRODY
+Style Pen MakePen (1, 116, RGB (0, 129, 69))
+Apply LineStyle

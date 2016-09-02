@@ -1,0 +1,5 @@
+#Grunty lasy ochronne (powierzchniowe)
+Table LASY_OCHRONNE
+Style Brush MakeBrush (2, RGB (140, 202, 144), 0)
+Style Pen MakePen (1, 1, RGB (140, 202, 144))
+Apply AreaStyle

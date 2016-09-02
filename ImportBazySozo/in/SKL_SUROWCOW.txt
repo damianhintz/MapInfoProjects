@@ -1,0 +1,30 @@
+#Sk³adowiska surowców przemys³owych (punktowe)
+Table SKL_SUROWCOW
+Where SUROWCE_ID="P"
+Style Symbol MakeCustomSymbol ("ms_2810.bmp", RGB (224, 181, 210), 14, 0)
+Apply PointStyle
+#Sk³adowiska surowców przemys³owych - skupiska (punktowe)
+Table SKL_SUROWCOW
+Where SUROWCE_ID="PS"
+Style Symbol MakeCustomSymbol ("ms_2810s.bmp", RGB (224, 181, 210), 29, 0)
+Apply PointStyle
+#Sk³adowiska surowców rolniczych (punktowe)
+Table SKL_SUROWCOW
+Where SUROWCE_ID="R"
+Style Symbol MakeCustomSymbol ("ms_2820.bmp", RGB (224, 181, 210), 14, 0)
+Apply PointStyle
+#Sk³adowiska surowców rolniczych - skupiska (punktowe)
+Table SKL_SUROWCOW
+Where SUROWCE_ID="RS"
+Style Symbol MakeCustomSymbol ("ms_2820s.bmp", RGB (224, 181, 210), 29, 0)
+Apply PointStyl
+#Sk³adowiska surowców leœnych (punktowe)
+Table SKL_SUROWCOW
+Where SUROWCE_ID="L"
+Style Symbol MakeCustomSymbol ("ms_2830.bmp", RGB (224, 181, 210), 14, 0)
+Apply PointStyle
+#Sk³adowiska surowców leœnych - skupiska (punktowe)
+Table SKL_SUROWCOW
+Where SUROWCE_ID="LS"
+Style Symbol MakeCustomSymbol ("ms_2830s.bmp", RGB (224, 181, 210), 29, 0)
+Apply PointStyle

@@ -1,0 +1,9 @@
+#U¿ytki ekologiczne (punktowe)
+Table UZYTKI_EKOLOGICZNE
+Style Symbol MakeCustomSymbol ("ms_1302.bmp", RGB (0, 129, 69), 9, 0)
+Apply PointStyle
+#U¿ytki ekologiczne (powierzchniowe)
+Table UZYTKI_EKOLOGICZNE
+Style Brush MakeBrush (30, RGB (0, 129, 69), -1)
+Style Pen MakePen (1, 85, RGB (0, 129, 69))
+Apply AreaStyle

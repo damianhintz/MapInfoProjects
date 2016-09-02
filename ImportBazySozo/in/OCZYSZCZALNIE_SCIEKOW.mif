@@ -1,0 +1,29 @@
+Version 450
+Charset	"WindowsLatin1"
+Delimiter	","
+'Please include coordinate system information below if coordinates are not in degrees. 
+'E.g. if the coordinates are in meters, the coordinate system is projected, and the projection algorithm is 
+'State Plane Coordinate System 1983 (102 - Alabama West)' using the datum 
+'North American 1983', then the coordinate system information should be set to 
+'CoordSys Earth Projection 8, 74, 'm', -87.5, 30.0, 0.9999333333, 600000, 0'
+Columns	16
+BIOLOGICZNA	Logical
+CHEMICZNA	Logical
+MECHANICZNA	Logical
+KOMPLEKSOWA	Logical
+DUZA	Logical
+TERYT_SYM	Char(7)
+UZYTKOWNIK1_REGON	Char(14)
+UZYTKOWNIK2_REGON	Char(14)
+NIECZYNNA	Char(2)
+OBIEG_ZAMKNIETY	Logical
+W_BUDOWIE	Logical
+NR_W_KOMENTARZU	Decimal(3,0)
+DANE_OKRES_ZBIERANIA	Char(21)
+DANE_POCHODZENIE1_REGON	Char(14)
+DANE_POCHODZENIE1_INFO	Char(254)
+KONTROLA_ID	Decimal(5,0)
+Data
+
+Point 512792.42712196242000	655655.83752348146000
+Point 501213.47370485769000	650785.07672832056000

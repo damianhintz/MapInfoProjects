@@ -1,0 +1,35 @@
+#Gleby zalkalizowane (punktowe)
+Table DEGRADACJA_GLEB
+Where TYP_ID="A"
+Style Symbol MakeCustomSymbol ("ms_3210.bmp", RGB (0, 129, 69), 18, 0)
+Apply PointStyle
+#Gleby zerodowana (punktowe)
+Table DEGRADACJA_GLEB
+Where TYP_ID="E"
+Style Symbol MakeCustomSymbol ("ms_3220.bmp", RGB (0, 129, 69), 18, 0)
+Apply PointStyle
+#Gleby zakwaszone (punktowe)
+Table DEGRADACJA_GLEB
+Where TYP_ID="K"
+Style Symbol MakeCustomSymbol ("ms_3230.bmp", RGB (0, 129, 69), 18, 0)
+Apply PointStyle
+#Gleby przesuszone (punktowe)
+Table DEGRADACJA_GLEB
+Where TYP_ID="P"
+Style Symbol MakeCustomSymbol ("ms_3240.bmp", RGB (0, 129, 69), 18, 0)
+Apply PointStyle
+#Gleby zasolone (punktowe)
+Table DEGRADACJA_GLEB
+Where TYP_ID="S"
+Style Symbol MakeCustomSymbol ("ms_3250.bmp", RGB (0, 129, 69), 18, 0)
+Apply PointStyle
+#Gleby ska¿one toksycznie (punktowe)
+Table DEGRADACJA_GLEB
+Where TYP_ID="T"
+Style Symbol MakeCustomSymbol ("ms_3260.bmp", RGB (0, 129, 69), 18, 0)
+Apply PointStyle
+#Gleby zawodnione (punktowe)
+Table DEGRADACJA_GLEB
+Where TYP_ID="W"
+Style Symbol MakeCustomSymbol ("ms_3270.bmp", RGB (0, 129, 69), 18, 0)
+Apply PointStyle

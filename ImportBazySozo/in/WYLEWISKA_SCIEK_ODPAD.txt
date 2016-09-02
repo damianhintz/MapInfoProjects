@@ -1,0 +1,15 @@
+#Wylewiska œcieków przemys³owych (punktowe)
+Table WYLEWISKA_SCIEK_ODPAD
+Where RODZAJ_ID="P"
+Style Symbol MakeCustomSymbol ("ms_3010.bmp", RGB (224, 181, 210), 14, 0)
+Apply PointStyle
+#Wylewiska œcieków komunalnych (punktowe)
+Table WYLEWISKA_SCIEK_ODPAD
+Where RODZAJ_ID="K"
+Style Symbol MakeCustomSymbol ("ms_3020.bmp", RGB (224, 181, 210), 14, 0)
+Apply PointStyle
+#Wylewiska œcieków rolniczych (punktowe)
+Table WYLEWISKA_SCIEK_ODPAD
+Where RODZAJ_ID="R"
+Style Symbol MakeCustomSymbol ("ms_3030.bmp", RGB (224, 181, 210), 14, 0)
+Apply PointStyle

@@ -1,0 +1,4 @@
+#Skupiska Ÿróde³ niskiej emisji gazów i py³ów
+Table EMITORY_SKUPISKA
+Style Symbol MakeCustomSymbol ("ms_5400.bmp", RGB (137, 55, 131), 21, 0)
+Apply PointStyle

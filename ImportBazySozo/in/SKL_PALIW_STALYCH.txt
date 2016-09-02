@@ -1,0 +1,4 @@
+#Sk³adowiska paliw sta³ych (punktowe)
+Table SKL_PALIW_STALYCH
+Style Symbol MakeCustomSymbol ("ms_2910.bmp", RGB (224, 181, 210), 14, 0)
+Apply PointStyle

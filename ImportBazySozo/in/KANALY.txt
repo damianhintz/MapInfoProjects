@@ -1,0 +1,10 @@
+#Kana³y ¿eglugowe (liniowe)
+Table KANALY
+Where FUNKCJA_ID="Z"
+Style Pen MakePen (1, 98, RGB (38, 30, 115))
+Apply LineStyle
+#Kana³y pozosta³ee (liniowe)
+Table KANALY
+Where FUNKCJA_ID="P"
+Style Pen MakePen (1, 99, RGB (38, 30, 115))
+Apply LineStyle

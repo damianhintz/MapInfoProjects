@@ -1,0 +1,4 @@
+#Kierunki przenoszenia zanieczyszczeñ (liniowe)
+Table KIERUNKI_PRZEN_ZAN
+Style Pen MakePen (1, 104, RGB (137, 55, 131))
+Apply LineStyle

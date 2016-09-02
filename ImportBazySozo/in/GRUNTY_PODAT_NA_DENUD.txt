@@ -1,0 +1,5 @@
+#Grunty podatne na denudacje (powierzchniowe)
+Table GRUNTY_PODAT_NA_DENUD
+Style Brush MakeBrush (6, RGB (208, 85, 65), -1)
+Style Pen MakePen (1, 1, RGB (208, 85, 65))
+Apply AreaStyle

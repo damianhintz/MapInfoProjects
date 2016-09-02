@@ -1,0 +1,15 @@
+#Klasy uszkodzeñ lasów s³abe (punktowe)
+Table KLASY_USZKODZEN_LASOW
+Where KLASA_ID="1"
+Style Symbol MakeCustomSymbol ("ms_3310.bmp", RGB (0, 129, 69), 14, 0)
+Apply PointStyle
+#Klasy uszkodzeñ lasów œrednie (punktowe)
+Table KLASY_USZKODZEN_LASOW
+Where KLASA_ID="2"
+Style Symbol MakeCustomSymbol ("ms_3320.bmp", RGB (0, 129, 69), 14, 0)
+Apply PointStyle
+#Klasy uszkodzeñ lasów silne (punktowe)
+Table KLASY_USZKODZEN_LASOW
+Where KLASA_ID="3"
+Style Symbol MakeCustomSymbol ("ms_3330.bmp", RGB (0, 129, 69), 14, 0)
+Apply PointStyle

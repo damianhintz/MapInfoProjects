@@ -1,0 +1,5 @@
+#Strefy ochronne zrode³ i ujêæ wód powierzchniowych (powierzchniowe)
+Table OBSZARY_OCH_ZB_W_SROD
+Style Brush MakeBrush (1, RGB (0, 129, 69), -1)
+Style Pen MakePen (1, 89, RGB (0, 129, 69))
+Apply AreaStyle

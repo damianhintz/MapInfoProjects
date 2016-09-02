@@ -1,0 +1,15 @@
+#Czynniki degraduj¹ce lasów (abiotyczne)
+Table CZ_DEGRADACJI_LASOW
+Where CZYNNIK_ID="A"
+Style Symbol MakeCustomSymbol ("ms_3410.bmp", RGB (137, 55, 131), 14, 0)
+Apply PointStyle
+#Czynniki degraduj¹ce lasów (biotyczne)
+Table CZ_DEGRADACJI_LASOW
+Where CZYNNIK_ID="B"
+Style Symbol MakeCustomSymbol ("ms_3420.bmp", RGB (137, 55, 131), 14, 0)
+Apply PointStyle
+#Czynniki degraduj¹ce lasów (antropogeniczne)
+Table CZ_DEGRADACJI_LASOW
+Where CZYNNIK_ID="C"
+Style Symbol MakeCustomSymbol ("ms_3430.bmp", RGB (137, 55, 131), 14, 0)
+Apply PointStyle
