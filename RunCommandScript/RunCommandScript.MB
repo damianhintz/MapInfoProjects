@@ -1,0 +1,121 @@
+Include "MAPBASIC.DEF"
+
+Define APP_VERSION "RunCommandScript v1.0"
+Define APP_CONFIG "RunCommandScript.config"
+
+Define MAX_COMMANDS 1024
+Define TOKEN_COMMENT "#"
+
+Type ConfigFileType
+	FileName As String
+	RunCommand (MAX_COMMANDS) As String
+	RunCommandCount As Integer
+End Type
+
+Declare Sub Main
+
+Declare Sub ConfigFileInit (configFile As ConfigFileType, fileName As String)
+Declare Sub ConfigFileRedim (configFile As ConfigFileType)
+Declare Sub ConfigFileAddCommand (configFile As ConfigFileType, commandString As String)
+Declare Function ConfigFileLoad (configFile As ConfigFileType) As Logical
+Declare Sub ConfigFileProcess (configFile As ConfigFileType)
+
+Sub Main
+
+	OnError Goto HandleError
+
+	Print "Start " + APP_VERSION + " " + CurDate()
+	
+	Dim fileName As String
+	fileName = FileOpenDlg(ApplicationDirectory$(),"","MIS", "Wybierz plik")
+	
+	If Len (fileName) = 0 Then
+		Exit Sub
+	End If
+
+	Dim configFile As ConfigFileType
+	Call ConfigFileInit (configFile, fileName)
+	
+	If ConfigFileLoad (configFile) Then
+
+		Print "Trwa przetwarzanie pliku..."
+		Call ConfigFileProcess (configFile)
+
+	End If
+	
+	Exit Sub
+
+HandleError:
+	Note Error$()
+	Resume Next
+
+End Sub
+
+Sub ConfigFileInit (configFile As ConfigFileType, fileName As String)
+	'configFile.FileName = ApplicationDirectory$() + APP_CONFIG
+	configFile.FileName = fileName
+	ReDim configFile.RunCommand (MAX_COMMANDS)
+	configFile.RunCommandCount = 0
+End Sub
+
+Sub ConfigFileRedim (configFile As ConfigFileType)
+	ReDim configFile.RunCommand (configFile.RunCommandCount)
+End Sub
+
+Sub ConfigFileAddCommand (configFile As ConfigFileType, commandString As String)
+	Dim i As Integer
+	i = configFile.RunCommandCount + 1
+	configFile.RunCommand(i) = commandString
+	configFile.RunCommandCount = i
+End Sub
+
+Function ConfigFileLoad (configFile As ConfigFileType) As Logical
+
+	Dim str As String
+	
+	If Not FileExists (configFile.FileName) Then
+		Print "Brak pliku konfiguracyjnego: " + configFile.FileName
+		ConfigFileLoad = False
+		Exit Function
+	End If
+
+	Open File configFile.FileName For Input As #1 
+
+	Do While Not EOF(1)
+		Line Input #1, str
+
+		If EOF(1) Then
+			Exit Do
+		End If
+
+		Dim strType As String
+		strType = Left$(str, 1)
+
+		Do Case strType
+			Case "#"
+				'Print "Comment"
+			Case Else
+				Call ConfigFileAddCommand (configFile, str)
+				
+		End Case
+	Loop
+
+	Close File #1
+
+	Call ConfigFileRedim (configFile)
+	ConfigFileLoad = True
+
+End Function
+
+Sub ConfigFileProcess (configFile As ConfigFileType)
+
+	Dim index As Integer, commandString As String
+
+	For index = 1 To UBound (configFile.RunCommand)
+
+		commandString = configFile.RunCommand (index)
+		Print "Run Command: " + commandString
+		Run Command commandString
+	Next
+
+End Sub
