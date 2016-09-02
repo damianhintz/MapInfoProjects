@@ -1,0 +1,163 @@
+Include "MAPBASIC.DEF"
+Include "Icons.def"
+
+Declare Sub Main
+Declare Sub Reverse
+Declare Sub About
+Declare Sub GoodBye
+
+Sub Main
+
+    OnError Goto HandleError
+
+    Print "Start ReversePoints " + CurDate() + "T" + CurTime()
+
+    Create Menu "ReversePoints" As
+        "Odwróæ punkty" Calling Reverse,
+        "(-",
+        "O Programie..." Calling About,
+        "Koniec" Calling GoodBye
+
+    Alter Menu "Narzêdzia" Add
+        "(-",
+        "ReversePoints" As "ReversePoints"
+
+    Create ButtonPad "ReversePointsPad" As
+        PushButton Calling Reverse
+            Icon MI_ICON_UNDO
+            HelpMsg "Odwróæ punkty wybranego obiektu"
+        PushButton Calling About
+            Icon MI_ICON_INFO
+            HelpMsg "O Programie..."
+    Title "Rev"
+    Show
+
+    Exit Sub
+
+HandleError:
+    Note Error$()
+
+End Sub
+
+Sub About
+    Dialog
+        Title "O Programie"
+        Control StaticText
+            Title "ReversePoints v1.0 (2012-05-28)"
+            Position 5,10
+        Control StaticText
+            Title "Aplikacja do odwracania punktów linii i regionów"
+            Position 5,20
+        Control OKButton
+            Position 32,40
+
+End Sub
+
+Sub GoodBye
+    Print "End ReversePoints"
+    End Program
+    Exit Sub
+End Sub
+
+Sub Reverse
+
+    Dim updateCount As Integer, rowsCount As Integer, objType As Integer
+    Dim curobj As Object
+
+    updateCount = 0
+    rowsCount = SelectionInfo (SEL_INFO_NROWS)
+
+    if rowsCount <> 1 Then
+        Note "Wybierz tylko jeden obiekt (linia, region)"
+        Exit Sub
+    End If
+
+    Fetch First From Selection
+
+    Do While Not EOT(Selection)
+        curobj = Selection.obj
+
+        objType = ObjectInfo(curobj, OBJ_INFO_TYPE)
+
+        Do Case objType
+
+            Case OBJ_TYPE_PLINE, OBJ_TYPE_REGION
+
+                Dim totalNodes As Integer, totalPolygons As Integer, i As Integer, polygonNodes As Integer
+
+                totalNodes = ObjectInfo (curobj, OBJ_INFO_NPNTS)
+                totalPolygons = ObjectInfo (curobj, OBJ_INFO_NPOLYGONS)
+
+                Print "Reversing object points (Pline, Region)"
+                Print " Total points/nodes: " + totalNodes
+                Print " Number of polygons: " + totalPolygons
+
+                Dim hasZ As Logical, hasM As Logical
+                hasZ = ObjectInfo (curobj, OBJ_INFO_HAS_Z)
+                hasM = ObjectInfo (curobj, OBJ_INFO_HAS_M)
+    
+                If hasZ Or hasM Then
+                    Note "Brak implementacji odwracania obiektów typu Z i M"
+                    Exit Do
+                End If
+
+                For i = 1 To totalPolygons
+
+                    polygonNodes = ObjectInfo(curobj, OBJ_INFO_NPOLYGONS+i)
+
+                    Print " Polygon points/nodes: " + polygonNodes + " (polygon " + i + ")"
+                    
+                    'Reversing polygon nodes
+                    Dim iLeft As Integer, iRight As Integer
+                    Dim leftX As Float, leftY As Float, rightX As Float, rightY As Float
+
+                    iLeft = 1
+                    iRight = polygonNodes
+
+                    Do While iLeft < iRight
+                        
+                        'Remembering current node values
+                        leftX = ObjectNodeX (curobj, i, iLeft)
+                        leftY = ObjectNodeY (curobj, i, iLeft)
+                        rightX = ObjectNodeX (curobj, i, iRight)
+                        rightY = ObjectNodeY (curobj, i, iRight)
+
+                        'Swaping two opposite nodes
+                        Alter Object curobj Node Set Position i, iLeft (rightX, rightY)
+                        Alter Object curobj Node Set Position i, iRight (leftX, leftY)
+
+                        'Selecting next pair of nodes
+                        iLeft = iLeft + 1
+                        iRight = iRight - 1
+                    Loop
+                Next
+
+                Update Selection Set obj=curobj Where RowID = Selection.RowId
+                updateCount = updateCount + 1
+
+            Case OBJ_TYPE_LINE
+                Dim startX As Float, startY As Float
+                Dim endX As Float, endY As Float
+
+                startX = ObjectGeography (curobj, OBJ_GEO_LINEBEGX)
+                startY = ObjectGeography (curobj, OBJ_GEO_LINEBEGY)
+                endX = ObjectGeography (curobj, OBJ_GEO_LINEENDX)
+                endY = ObjectGeography (curobj, OBJ_GEO_LINEENDY)
+                'Print startX + ", " + startY + " " + endX + ", " + endY
+                Alter Object curobj Geography OBJ_GEO_LINEBEGX, endX
+                Alter Object curobj Geography OBJ_GEO_LINEBEGY, endY
+                Alter Object curobj Geography OBJ_GEO_LINEENDX, startX
+                Alter Object curobj Geography OBJ_GEO_LINEENDY, startY
+                Update Selection Set obj=curobj Where RowID = Selection.RowId
+
+            Case OBJ_TYPE_ROUNDRECT, OBJ_TYPE_RECT
+                Note "Brak implementacji odwracania prostok¹tów"
+            Case Else
+                Print "Nieprawid³owy typ obiektu: " + objType
+        End Case
+
+        Fetch Next From Selection
+    Loop
+    'Commit Table scriptItem.TableName
+    'Print "Updated objects: " + updateCount + "/" + rowsCount
+End Sub
