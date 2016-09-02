@@ -1,0 +1,395 @@
+Include "MAPBASIC.DEF"
+
+Define APP_VERSION "KorektaBazySozo@1.0.0"
+Define APP_CONFIG "ResymbolizacjaSozo.config"
+
+Define MAX_SCRIPTS 1024
+Define MAX_STYLES 8
+Define MAX_ITEMS 512
+
+Define TOKEN_FILE "File "
+Define TOKEN_TABLE "Table "
+Define TOKEN_FILTER "Where "
+Define TOKEN_STYLE "Style "
+Define TOKEN_UPDATE "Apply "
+Define TOKEN_COMMENT "#"
+
+Type ConfigFileType
+	FileName As String
+	ScriptFiles (MAX_SCRIPTS) As String
+	ScriptCount As Integer
+End Type
+
+Declare Sub Main
+Declare Function GetTokenValue(wiersz As String, ByVal token As String) As String
+
+Declare Sub ConfigFileInit (configFile As ConfigFileType)
+Declare Sub ConfigFileRedim (configFile As ConfigFileType)
+Declare Function ConfigFileLoad (configFile As ConfigFileType) As Logical
+Declare Sub ConfigFileProcess (configFile As ConfigFileType)
+
+Type ScriptItemType
+	TableName As String
+	FilterValue As String
+	Styles (MAX_STYLES) As String
+	StylesCount As Integer
+	UpdateType As String
+End Type
+
+Declare Sub ScriptItemInit (scriptItem As ScriptItemType, tableName As String)
+Declare Sub ScriptItemCopy (srcItem As ScriptItemType, dstItem As ScriptItemType)
+Declare Sub ScriptItemRedim (scriptItem As ScriptItemType)
+Declare Sub ScriptItemAddStyle (scriptItem As ScriptItemType, styleValue As String)
+Declare Sub ScriptItemUpdateStyles (scriptItem As ScriptItemType)
+Declare Sub ScriptItemUpdateTable (scriptItem As ScriptItemType)
+
+Type ScriptFileType
+	FileName As String
+	Items (MAX_ITEMS) As ScriptItemType
+	ItemsCount As Integer
+End Type
+
+Declare Sub ScriptFileInit (scriptFile As ScriptFileType, scriptName As String)
+Declare Sub ScriptFileAddItem (scriptFile As ScriptFileType, scriptItem As ScriptItemType)
+Declare Function ScriptFileLoad (scriptFile As ScriptFileType) As Logical
+Declare Sub ScriptFileRedim (scriptFile As ScriptFileType)
+Declare Sub ScriptFileProcess (scriptFile As ScriptFileType)
+
+Sub Main
+
+	OnError Goto HandleError
+
+	Print "Start " + APP_VERSION + " " + CurDate()
+
+	Dim configFile As ConfigFileType
+	Call ConfigFileInit (configFile)
+	
+	If ConfigFileLoad (configFile) Then
+
+		Dim symbolsLocation As String
+		symbolsLocation = LocateFile$ (LOCATE_CUSTSYMB_DIR)
+		Print symbolsLocation
+
+		Print "Trwa przetwarzanie pliku..."
+		'Call ReadFile (resymbolizacjaFile, symbolsLocation)
+		Call ConfigFileProcess (configFile)
+
+	End If
+	
+	Exit Sub
+
+HandleError:
+	Note Error$()
+	Resume Next
+
+End Sub
+
+Function GetTokenValue(wiersz As String, ByVal token As String) As String
+	GetTokenValue = Right$(wiersz, Len(wiersz) - Len(token))
+End Function
+
+Sub ConfigFileInit (configFile As ConfigFileType)
+	configFile.FileName = ApplicationDirectory$() + APP_CONFIG
+	ReDim configFile.ScriptFiles (MAX_SCRIPTS)
+	configFile.ScriptCount = 0
+End Sub
+
+Sub ConfigFileRedim (configFile As ConfigFileType)
+	ReDim configFile.ScriptFiles (configFile.ScriptCount)
+End Sub
+
+Function ConfigFileLoad (configFile As ConfigFileType) As Logical
+
+	Dim str As String, scriptFile As String, invalidFiles As Integer
+	
+	invalidFiles = 0
+
+	If Not FileExists (configFile.FileName) Then
+		Print "Brak pliku konfiguracyjnego: " + configFile.FileName
+		ConfigFileLoad = False
+		Exit Function
+	End If
+
+	Open File configFile.FileName For Input As #1 
+
+	Do While Not EOF(1)
+		Line Input #1, str
+
+		If EOF(1) Then
+			Exit Do
+		End If
+
+		Dim strType As String
+		strType = Left$(str, 1)
+
+		Do Case strType
+			Case "F"
+				scriptFile = ApplicationDirectory$() + GetTokenValue(str, TOKEN_FILE)
+				If FileExists (scriptFile) Then
+					configFile.ScriptCount = configFile.ScriptCount + 1
+					configFile.ScriptFiles (configFile.ScriptCount) = scriptFile
+				Else
+					Print "Brak skryptu resymbolizacji: " + scriptFile
+					invalidFiles = invalidFiles + 1
+				End If
+			Case "#"
+				'Print "Comment"
+			Case Else
+				Print "Invalid config token found: " + strType
+				invalidFiles = invalidFiles + 1
+		End Case
+	Loop
+
+	Close File #1
+
+	Call ConfigFileRedim (configFile)
+	ConfigFileLoad = (invalidFiles = 0)
+
+End Function
+
+Sub ConfigFileProcess (configFile As ConfigFileType)
+
+	Dim index As Integer, scriptName As String, scriptFile As ScriptFileType
+
+	For index = 1 To UBound (configFile.ScriptFiles)
+
+		scriptName = configFile.ScriptFiles (index)
+		Print "Loading script: " + scriptName
+		Call ScriptFileInit (scriptFile, scriptName)
+		If ScriptFileLoad (scriptFile) Then
+			Call ScriptFileProcess (scriptFile)
+		Else
+			Print "Warning: invalid script file"
+		End If
+
+	Next
+
+End Sub
+
+Sub ScriptItemInit (scriptItem As ScriptItemType, tableName As String)
+	scriptItem.TableName = tableName
+	scriptItem.FilterValue = ""
+	scriptItem.UpdateType = ""
+
+	ReDim scriptItem.Styles (MAX_STYLES)
+	scriptItem.StylesCount = 0	
+End Sub
+
+Sub ScriptItemCopy (srcItem As ScriptItemType, dstItem As ScriptItemType)
+	
+	Dim i As Integer, styleValue As String
+	
+	Call ScriptItemInit (dstItem, srcItem.TableName)
+	dstItem.FilterValue = srcItem.FilterValue
+	dstItem.UpdateType = srcItem.UpdateType
+
+	For i = 1 To UBound (srcItem.Styles)
+		styleValue = srcItem.Styles(i)
+		Call ScriptItemAddStyle (dstItem, styleValue)
+	Next
+
+	Call ScriptItemRedim (dstItem)
+
+End Sub
+
+Sub ScriptItemRedim (scriptItem As ScriptItemType)
+	ReDim scriptItem.Styles (scriptItem.StylesCount)
+End Sub
+
+Sub ScriptItemAddStyle (scriptItem As ScriptItemType, styleValue As String)
+	scriptItem.StylesCount = scriptItem.StylesCount + 1
+	scriptItem.Styles (scriptItem.StylesCount) = styleValue
+End Sub
+
+Sub ScriptItemUpdateStyles (scriptItem As ScriptItemType)
+	Dim i As Integer, styleValue As String
+	
+	For i = 1 To UBound (scriptItem.Styles)
+		styleValue = scriptItem.Styles(i)
+		Print "Set Style " + styleValue
+		Run Command "Set Style " + styleValue
+	Next
+
+	'Print "Update " + scriptItem.TableName + " Where " + scriptItem.FilterValue + " Type " + scriptItem.UpdateType
+	Call ScriptItemUpdateTable (scriptItem)
+
+End Sub
+
+Sub ScriptItemUpdateTable (scriptItem As ScriptItemType)
+
+	Dim updateCount As Integer, otherCount As Integer
+	updateCount = 0
+	otherCount = 0
+	Dim strCommand As String
+
+	If Len (scriptItem.FilterValue) > 0 Then
+		strCommand = "Select * From " + scriptItem.TableName + " Where " + scriptItem.FilterValue		
+		'Select * From scriptItem.TableName Where scriptItem.FilterValue
+	Else
+		strCommand = "Select * From " + scriptItem.TableName
+	End If
+
+	Print strCommand
+	Run Command strCommand
+
+	Dim curobj As Object
+	Dim objType As Integer, rowsCount As Integer
+
+	rowsCount = SelectionInfo (SEL_INFO_NROWS)
+
+	if rowsCount = 0 Then
+		Close Table Selection
+		'Commit Table scriptItem.TableName
+		Print "Updated objects: " + updateCount
+		Exit Sub
+	End If
+
+	Fetch First From Selection
+
+	Do While Not EOT(Selection)
+		curobj = Selection.obj
+
+		objType = ObjectInfo(curobj, OBJ_INFO_TYPE)
+
+		Do Case scriptItem.UpdateType
+
+			Case "PointStyle"
+				If objType = OBJ_TYPE_POINT Then
+					Alter Object curobj Info OBJ_INFO_SYMBOL, CurrentSymbol()
+					Update Selection Set obj=curobj Where RowID = Selection.RowId
+					updateCount = updateCount + 1
+				Else
+					'Print "Invalid object type: " + scriptItem.UpdateType
+					otherCount = otherCount + 1
+				End If
+
+			Case "LineStyle"
+				If objType = OBJ_TYPE_LINE Or objType = OBJ_TYPE_PLINE Then
+					Alter Object curobj Info OBJ_INFO_PEN, CurrentPen()
+					Update Selection Set obj=curobj Where RowID = Selection.RowId
+					updateCount = updateCount + 1
+				Else
+					'Print "Invalid object type: " + scriptItem.UpdateType
+					otherCount = otherCount + 1
+				End If
+
+			Case "AreaStyle"
+				If objType = OBJ_TYPE_REGION Then
+					Alter Object curobj Info OBJ_INFO_PEN, CurrentPen()
+					Alter Object curobj Info OBJ_INFO_BRUSH, CurrentBrush()
+					Update Selection Set obj=curobj Where RowID = Selection.RowId
+					updateCount = updateCount + 1
+				Else
+					'Print "Invalid object type: " + scriptItem.UpdateType
+					otherCount = otherCount + 1
+				End If
+
+			Case "Else"
+				Print "Invalid table update type: " + scriptItem.UpdateType
+		End Case
+
+		Fetch Next From Selection
+	Loop
+
+	Close Table Selection
+	Commit Table scriptItem.TableName
+
+	Print "Updated objects " + updateCount + ", other type objects " + otherCount
+End Sub
+
+Sub ScriptFileInit (scriptFile As ScriptFileType, scriptName As String)
+	scriptFile.FileName = scriptName
+	ReDim scriptFile.Items (MAX_ITEMS)
+	scriptFile.ItemsCount = 0
+End Sub
+
+Sub ScriptFileAddItem (scriptFile As ScriptFileType, scriptItem As ScriptItemType)
+	Dim itemIndex As Integer
+	itemIndex = scriptFile.ItemsCount + 1
+	scriptFile.ItemsCount = itemIndex
+	Call ScriptItemCopy (scriptItem, scriptFile.Items (itemIndex))
+End Sub
+
+Sub ScriptFileRedim (scriptFile As ScriptFileType)
+	Redim scriptFile.Items (scriptFile.ItemsCount)
+End Sub
+
+Sub ScriptFileProcess (scriptFile As ScriptFileType)
+	Dim index As Integer
+	
+	For index = 1 To scriptFile.ItemsCount
+		Call ScriptItemUpdateStyles (scriptFile.Items (index))
+	Next
+
+End Sub
+
+Function ScriptFileLoad (scriptFile As ScriptFileType) As Logical
+
+	Dim str As String, tableName As String, filterValue As String, styleValue As String, updateType As String
+	Dim invalidLines As Integer
+	Dim scriptItem As ScriptItemType
+
+	invalidLines = 0
+
+	Open File scriptFile.FileName For Input As #1
+
+	Do While Not EOF(1)
+
+		Line Input #1, str
+
+		If EOF(1) Then
+			Exit Do
+		End If
+
+		Dim strType As String
+		strType = Left$(str, 1)
+
+		Do Case strType
+			Case "T"
+				tableName = GetTokenValue (str, TOKEN_TABLE)
+				Call ScriptItemInit (scriptItem, tableName)
+
+			Case "W"
+				If Len (tableName) = 0 Then
+					invalidLines = invalidLines + 1
+				End If
+
+				filterValue = GetTokenValue (str, TOKEN_FILTER)
+				scriptItem.FilterValue = filterValue
+
+			Case "S"
+				If Len (tableName) = 0 Then
+					invalidLines = invalidLines + 1
+				End If
+
+				styleValue = GetTokenValue (str, TOKEN_STYLE)
+				Call ScriptItemAddStyle (scriptItem, styleValue)
+
+			Case "A"
+				If Len (tableName) = 0 Then
+					invalidLines = invalidLines + 1
+				End If
+
+				updateType = GetTokenValue (str, TOKEN_UPDATE)
+				scriptItem.UpdateType = updateType
+				
+				Call ScriptItemRedim (scriptItem)
+				Call ScriptFileAddItem (scriptFile, scriptItem)
+				'ScriptItemUpdateStyles (scriptItem)
+				
+			Case "#"
+				'Print "Comment"
+
+			Case Else
+				Print "Invalid script token found: " + strType
+				invalidLines = invalidLines + 1
+
+		End Case
+	Loop
+
+	Close File #1
+	
+	Call ScriptFileRedim (scriptFile)
+
+	ScriptFileLoad = (invalidLines = 0)
+End Function
