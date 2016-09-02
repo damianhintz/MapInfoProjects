@@ -1,0 +1,211 @@
+Include "MAPBASIC.DEF"
+Include "Icons.def"
+
+Declare Sub Main
+Declare Sub RotateUI
+Declare Sub RotateTables
+Declare Sub RotateTableTexts (tableName As String, angleValue As Float)
+Declare Sub RotateTableTextsAtPoint (tableName As String, angleValue As Float)
+Declare Sub RotateSelection
+Declare Sub RotateSelectionAtPoint (angleValue As Float)
+Declare Sub About
+Declare Sub GoodBye
+
+Declare Sub UpdateTableNames
+Declare Function DoesTableExist (table_name As String) As Logical
+
+Define MAIN_TITLE "Obróæ teksty"
+Define	ANGLE_ID 1
+Define TABLES_ID 2
+
+Global g_tableNames() As String
+Global g_tableName As String
+Global g_angleString As String
+Global g_anchorPoint As Object
+
+Sub Main
+
+	OnError Goto HandleError
+
+	g_angleString = "0.0"
+
+	Print "Start RotateTexts " + CurDate() + "T" + CurTime()
+
+	Create Menu "Obróæ teksty" As
+	    "Obróæ teksty..." Calling RotateUI,
+		"(-",
+		"O Programie..." Calling About,
+		"Zakoñcz" Calling GoodBye
+
+	Alter Menu "Narzêdzia" Add
+		"(-",
+		"Obróæ teksty" As "Obróæ teksty"
+
+	Exit Sub
+
+HandleError:
+	Note Error$()
+
+End Sub
+
+Sub UpdateTableNames
+
+	Dim i As Integer, tableCount As Integer, count As Integer
+	
+	count = 0
+	tableCount = NumTables()
+	Redim g_tableNames(tableCount)
+	
+	For i = 1 To tableCount
+		If Not TableInfo (i, TAB_INFO_TEMP) Then
+			count = count + 1
+			g_tableNames(count) = TableInfo (i, TAB_INFO_NAME)
+		End If
+	Next
+
+	Redim g_tableNames(count)
+
+End Sub
+
+Sub RotateUI
+
+	Call UpdateTableNames
+
+	Dialog
+		Title "Obróæ teksty"
+
+		Control StaticText
+			Title "Rotation angle: "
+			Position 5,5
+		
+		Control EditText
+			ID ANGLE_ID
+			Value g_angleString
+			Position 70,5
+			Into g_angleString
+
+		Control StaticText
+			Title "Select tables: "
+			Position 5,20
+
+		Control MultiListBox
+   			Title From Variable g_tableNames
+			ID TABLES_ID
+        	Position 5,30
+			Width 150
+			Into g_tableName
+
+		Control CancelButton
+          Title "Cancel"
+          Position 85,105
+
+		Control OKButton
+			Title "OK"
+    		Position 35,105
+    		Calling RotateTables
+
+End Sub
+
+Sub RotateTables
+
+	Dim tableIndex As Integer
+	Dim tableName As String
+
+	g_angleString = ReadControlValue (ANGLE_ID)
+
+	tableIndex = ReadControlValue (TABLES_ID)
+	
+	Dim angleValue As Float
+	angleValue = Val (g_angleString)
+	
+	Do While tableIndex > 0
+		tableName = g_tableNames(tableIndex)
+		Print "Rotate table texts by " + g_angleString + ": " + tableName
+		Call RotateTableTexts (tablename, angleValue)
+		tableIndex = ReadControlValue (TABLES_ID)
+	Loop
+
+End Sub
+
+Sub About
+	Dialog
+		Title "O Programie"
+
+		Control StaticText
+			Title "RotateTexts v1.0 (2012-05-29)"
+			Position 5,10
+
+		Control StaticText
+			Title "Aplikacja do obracania tekstów w tabelach"
+			Position 5,20
+
+		Control OKButton
+			Position 32,40
+
+End Sub
+
+Sub GoodBye
+	Print "End RotateTexts"
+	End Program
+	Exit Sub
+End Sub
+
+Sub RotateTableTexts (tableName As String, angleValue As Float)
+
+	Dim updateCount As Integer, rowsCount As Integer, objType As Integer
+	Dim curobj As Object
+
+	Select * From tableName
+
+	updateCount = 0
+	rowsCount = SelectionInfo (SEL_INFO_NROWS)
+
+	if rowsCount = 0 Then
+		Close Table Selection
+		Print "Empty table"
+		Exit Sub
+	End If
+
+	Fetch First From Selection
+
+	Do While Not EOT(Selection)
+		curobj = Selection.obj
+
+		objType = ObjectInfo(curobj, OBJ_INFO_TYPE)
+
+		Do Case objType
+
+			Case OBJ_TYPE_TEXT
+
+				Alter Object curobj Geography OBJ_GEO_TEXTANGLE, angleValue
+
+				Update Selection Set obj=curobj Where RowID = Selection.RowId
+				updateCount = updateCount + 1
+
+		End Case
+
+		Fetch Next From Selection
+	Loop
+	
+	Close Table Selection
+	Commit Table tableName
+
+	Print "Updated texts/objects: " + updateCount + "/" + rowsCount
+
+End Sub
+
+Function DoesTableExist (table_name As String) As Logical
+
+		Dim lcv,num_tables as SmallInt
+
+		num_tables = numTables()
+		DoesTableExist = 1
+
+		For lcv = 1 to num_tables
+			If table_name = tableInfo(lcv,TAB_INFO_NAME) Then
+				DoesTableExist = 0
+				Exit Sub
+			End If
+		Next
+
+End Function
