@@ -1,0 +1,104 @@
+'/*****************************************************************************
+'*       Copyright © 2011 Pitney Bowes Software Inc.
+'*       All rights reserved.
+'*****************************************************************************/
+Include "TableManager.def"
+'****************************************************************************
+' Sub procedure: ReadMetaDataFromTable
+'****************************************************************************
+Sub ReadMetadataFromTable(sTable as String)
+
+  OnError Goto HandleError
+
+  Dim iTraversal as Integer
+  Dim sKeyName, sKeyValue as String
+
+  OnError Goto NoMetaData
+
+  giMetaDataCount = 0
+  redim gaMetaData(giMetaDataCount)
+
+  If TableInfo(sTable, TAB_INFO_TYPE) <> TAB_TYPE_VIEW  And  TableInfo(sTable, TAB_INFO_TYPE) <> TAB_TYPE_RESULT Then
+
+    Metadata Table sTable
+      SetTraverse STR_BACK_SLASH Hierarchical Into ID iTraversal
+
+    Metadata Traverse iTraversal
+      Next Into Key sKeyName Into Value sKeyValue
+
+    If sKeyName <> STR_EMPTY_STR Then
+      giMetaDataCount = giMetaDataCount + 1
+      Redim gaMetaData(giMetaDataCount)
+      gaMetaData(giMetaDataCount).sKeyName = sKeyName
+      gaMetaData(giMetaDataCount).sKeyValue = sKeyValue
+
+      Do while sKeyName <> STR_EMPTY_STR
+        Metadata Traverse iTraversal
+          Next Into Key sKeyName Into Value sKeyValue
+
+        If sKeyName <> STR_EMPTY_STR Then
+          giMetaDataCount = giMetaDataCount + 1
+          Redim gaMetaData(giMetaDataCount)
+          gaMetaData(giMetaDataCount).sKeyName = sKeyName
+          gaMetaData(giMetaDataCount).sKeyValue = sKeyValue
+        End If
+      Loop
+    End If
+  End If
+
+  Exit Sub
+
+NoMetaData:
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_READ_META_DATA_FROM_TABLE + Error$()
+  Resume Next
+
+End Sub
+'****************************************************************************
+' Sub procedure: WriteMetaDataToTable
+'****************************************************************************
+Sub WriteMetaDataToTable(sTable as String)
+
+  OnError Goto HandleError
+
+  Dim i as Integer
+
+  Metadata Table sTable dropkey STR_BACK_SLASH hierarchical
+
+  For i = 1 to giMetaDataCount 
+    If (gaMetaData(i).sKeyName) <> STR_BACK_SLASH + STR_IS_READ_ONLY then
+      Metadata Table sTable setkey (gaMetaData(i).sKeyName) to 
+                                   (gaMetaData(i).sKeyValue)
+    End If
+  Next
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_WRITE_META_DATA_FROM_TABLE + Error$()
+  Resume Next
+
+End Sub
+
+'****************************************************************************
+' Sub procedure: ClearMetaDataFromTable
+'****************************************************************************
+Sub ClearMetaDataFromTable(sTable as String)
+
+  OnError Goto HandleError
+
+  If Ask(GetResString(IDS_ARE_YOU_SURE), GetResString(IDS_YES_BUTTON), GetResString(IDS_NO_BUTTON)) Then
+    Metadata Table sTable dropkey STR_BACK_SLASH hierarchical
+    giMetaDataCount = 0
+    Redim gaMetaData(giMetaDataCount)
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_CLEAR_META_DATA_FROM_TABLE + Error$()
+  Resume Next
+End Sub

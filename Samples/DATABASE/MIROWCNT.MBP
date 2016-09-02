@@ -1,0 +1,10 @@
+[Link]
+Application=MIROWCNT.MBX
+module=MIROWCNT.MBO 
+module=PICKTAB.MBO 
+module=DLSUTIL.MBO 
+module=SQLUTIL.MBO
+module=CONNECT.MBO
+module=DESCTAB.MBO
+module=..\LIB\AUTO_LIB.MBO
+

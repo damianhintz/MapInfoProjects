@@ -1,0 +1,74 @@
+
+Declare Sub Main
+Declare Sub Start
+Declare Sub ExitProgram
+Declare Sub About
+Declare Sub DialogHandler
+Declare Sub ZoomIn
+Declare Sub ZoomOut
+Declare Sub Select
+Declare Sub Pan
+Declare Sub ControlPoint
+Declare Sub ControlPoint2
+Declare Sub DocWindow1
+Declare Sub DropPoint1
+Declare Sub DropPoint2
+Declare Sub ChangeReferenceDoc
+Declare Sub ChangeControlDoc
+Declare Sub Initialize
+Declare Sub ManualControlSelect
+Declare Sub ManualReferenceSelect
+Declare Sub SelChangedHandler
+Declare Sub Snap
+Declare Sub Snap2
+Declare Sub WinChangedHandler
+Declare Sub Calc3Unknowns(a1 as float, b1 as float, a2 as float, b2 as float, a3 as float, b3 as float,
+								 t1 as float, t2 as float, t3 as float, unknown1 as float, unknown2 as float, unknown3 as float)
+Declare Sub Find_Coord(intA, intB, intC, intD, intE, intF as float)
+Declare Sub Snap_mod(intWindowID as integer)
+Declare Sub MapWindows_mod
+Declare Sub MapTables_mod
+Declare Sub Zoom_mod(l_in_or_out as logical)
+Declare Sub OpenMif(strFileLocation as string, strTableName as string)
+Declare Sub ConvertToRegion(ByVal strTableName as string)
+Declare Sub ExportToMif(strFileLocation as string, strTableName as string)
+Declare Sub ImportMif(strFileLocation as string, strTableName as string, MapId as integer)
+Declare Sub Table_Create
+Declare Sub Refresh_Labels
+Declare Sub Cleanup(strFileLocation as string, strTableName as string)
+Declare Sub Cancel
+Declare Sub Rotate_Text(f_Angle as float, strMifLine as string, L_Angle as logical)
+Declare Sub Find_Rotation(fltX as float, fltY as float, fltX2 as float, fltY2 as float, intA as float, intB as float,
+intC as float, intD as float, intE as float, intF as float, f_Angle as float,fltx3 as float,flty3 as float,fltx4 as float,flty4 as float,intCurrentObj as integer)
+
+Declare Sub DoCoordsys(g_strMapperCoord2 as string, strMifLines as string, l_NonEarth as Logical, intCurrent as Integer)
+
+Declare Function Is_Mappable(byval g_ig_TableId as integer) as Logical
+Declare Function Parse_Mif(strCurrentLine as string , intCurrentObj as integer) as integer
+Declare Function Transform_Coord(strCurrentLine as string, intCurrentObj as integer,intA as float,intB as float,intC as float,intD as float,intE as float,intF as float,f_Angle as float, L_Angle as Logical) as string
+Declare Function ConvertArc(byVal intA as float, byVal intB as float, byVal intC as float, byVal intD as float, byVal intE as float,
+						byVal intF as float, fltX as float, fltY as float, fltX2 as float, fltY2 as float, fltStartAngle as float,
+						fltEndAngle as Float, intObjType as integer) as logical
+Declare Function StringParser(strCurrentLine as string, strSec1 as string, strSec2 as string , strSec3 as string, strSec4 as string, 
+							strSec5 as string, strSec6 as string, strSec7 as string) as logical
+Declare Function GetBounds(MapId as integer) as integer
+
+
+
+Global iWin_Id1, iWin_Id2 , intMapId(), intTableID , intControlSelected , intReferenceSelected, intNumControl, intNumReference As Integer
+Global strMappables(),strTableList(), g_strMapperCoord2, g_strMapperCoord1 as string
+Global log_Active , l_handler , g_l_running, L_Dropping, g_L_Valid , l_NonEarth as logical
+Global strDoc2CoordSys as string
+
+'##################################################################################################################
+'##################################################################################################################
+
+
+Type SourcePoint
+	x as float
+	y as float
+	name as string
+	id as integer
+end type
+
+	

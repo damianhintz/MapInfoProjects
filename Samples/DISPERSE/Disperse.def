@@ -1,0 +1,56 @@
+' Resource String Ids
+Define IDS_DISPERSE               1
+Define IDS_DISPERSE_MBX           2
+Define IDS_DISP                   3
+Define IDS_DISPERSE_PTS           4
+Define IDS_ABT_DISPERSE_PTS       5
+Define IDS_EXIT_DISPERSE_PTS      6
+Define IDS_PT                     7
+Define IDS_TABLE_COPY_RECOMMEND   8
+Define IDS_CONTINUE               9
+Define IDS_STOP                  10
+Define IDS_ZOOM_LEVEL            11
+Define IDS_ENTER_ZOOM_LEVEL      12
+Define IDS_ZOOM_LVL              13
+Define IDS_OPEN_TABLE            14
+Define IDS_DISPERSE_POINTS       15
+Define IDS_CHOOSE_TABLE          16
+Define IDS_TABLE_SELECTED        17
+Define IDS_TABLE_SEL_CRITERIA_1  18
+Define IDS_TABLE_SEL_CRITERIA_2  19
+Define IDS_TABLE_SEL_CRITERIA_3  20
+Define IDS_SPECIFY_VALID_ZOOM    21
+Define IDS_DISPERSE_METHOD       22 
+Define IDS_CHOOSE_METHOD         23
+Define IDS_DISPERSE_CHOICES      24
+Define IDS_DISP_PTS_FOR_TABLE    25
+Define IDS_SELECT_TABLE          26
+Define IDS_TABLE_WITHOUT_POINT   27
+Define IDS_APPLICATION_ERROR     28
+Define IDS_HELP_AND_INSTRUCTIONS 29
+Define IDS_ABT_DISPERSE_POINTS   30
+Define IDS_APPLICATION_DISC1     31
+Define IDS_SYSTEMATIC_DISP_DISC1 32
+Define IDS_SYSTEMATIC_DISP_DISC2 33
+Define IDS_RANDOM_DISP_DISC1     34
+Define IDS_RANDOM_DISP_DISC2     35
+Define IDS_APPLICATION_DISC2     36
+Define IDS_APPLICATION_DISC3     37
+Define IDS_APPLICATION_DISC4     38
+Define IDS_APPLICATION_WARN      39
+Define IDS_DISP_PTS_FOR          40
+Define IDS_DISPERSE_NOT_ALLOWED  41
+Define IDS_TABLE_READ_ONLY       42
+Define IDS_DISPLAY_MAPPER        43
+
+'Strings not to be localised
+Define STR_SEMI_COLON            ";"
+Define STR_ZOOM_VALUE            "3400"
+Define STR_MENU_ITEM_SEPARATOR   "(-"
+Define STR_TAB                   "TAB"
+Define STR_EMPTY_STR             ""
+Define STR_TEMP_X_COORD          "Temp_XCoord"
+Define STR_TEMP_Y_COORD          "Temp_YCoord"
+Define STR_POINT                 "Point"
+Define STR_RES_STR_FILE          "Disperse.str"
+Define STR_FILE_NOT_ACCESSIBLE   "Unable to access resource string file: "

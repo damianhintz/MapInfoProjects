@@ -1,0 +1,106 @@
+'*****************************************************************************
+'       Copyright (c) 2000-2001, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile:   HTMLImageMapWrite.DEF  $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+' API for writing HTML Image Maps
+'
+'    Rev 1.7   June 28 2000
+'               - separate processing from UI to create API for MBO
+'    Rev 1.8   September 19, 2000
+'               - add option to use hot link
+'    Rev 1.9   October 4, 2000
+'               - add option to treat all record contents as links
+'    Rev 2.0   October 6, 2000
+'               - add support for point objects
+'    Rev 2.1   October 9, 2000
+'               - add support for line objects
+'    Rev 2.2   October 9, 2000
+'               - add support for multiple layers
+'    Rev 2.3   November 14, 2000
+'               - add support for "+" as delimeter in HotLink expression
+'    Rev 2.4   November 28, 2000
+'               - remove 'Autoload' button from about box.
+'               - fix bugs with multilist boxes (several controls should not be multi)
+'    Rev 2.5   January 9, 2001
+'               - fix problems with query creating HTML Image maps on query tables
+'               - make good attempt to avoid doughnut and island problem by sorting
+'                 regions by size order (won't be perfect, but works better than before.)
+'    Rev 2.6   February 1, 2001
+'               - offer option to combine all landing pages into single page
+'               - serialize write API because of parameter changes
+'               - improve formating of numbers
+'               - extract more strings for localization: "empty", and "yes"
+'    Rev 2.7   February 8, 2001
+'               - fix bugs with lines that stick out of map window
+'               - fix bugs with records that contain no objects
+'               - add support for arcs, ellipses, rectangles, and rounded rectangles
+'               - extract one last forgotten string for localization
+'               - fix linkage between raster image and image map in Netscape
+'               - fix hot keys in main dialog
+'    Rev 2.8   February 9, 2001
+'               - fix bugs with query tables that can have more than one column with the same name! #13605
+'               - trap and ignore apparently benign rc = 2 when trying to launch URL
+'    Rev 2.9   February 27, 2001
+'               - fix bugs user canceling during progress bar #16387
+'               - display better default name if no layer selected yet #16386
+'               - keep image height and width in sync
+'               - display different message if no tables open #16610
+'    Rev 3.0   April 3, 2001
+'               - fix weirdness with output file name after cancel, more carefully close work in progress #16661
+'*****************************************************************************
+Type SelectedLayer
+  sLayerName As String
+  sRealLayerName As String
+  iSelectedColumn As Integer
+  sColumnNames(0) As String
+  sColumnNamesSource(0) As String
+  sColumnNamesTarget(0) As String
+  sColumnNameAliases(0) As String
+  sTreatAsLinks(0) As String
+  sHotLinkMetaDataKeyValue As String
+End Type
+
+Declare Function HTMLImageMapWrite300(
+  sWebPageTitle As String,
+  sImageCopyright As String,
+  sHTMLFileName As String,         'full path name
+  sPaperUnits As String,           '"cm", "in", "mm", "pt", or "pica"
+  tLayerNamesTarget(0) As SelectedLayer,  'layers of polygons, lines, or points
+  iSelectedFormat As SmallInt,     'JPEG = 1, PNG = 2
+  iMapWindowID As Integer,
+  iClipResolution As Integer,
+  iDelta As Integer,
+  fImageHeight As Float,           'aspect ratio must match that of map window
+  fImageWidth As Float,
+  iSelectedLinkType As SmallInt,   'LinkTypeHotLink = 1, LinkTypeHTMLLandingPage = 2
+  lCreateLandingPages As Logical,
+  lPopulateLandingPages As Logical,
+  lIncludeHotLink As Logical,
+  lOnePage As Logical, 
+  ByVal sMsgSelectingObjects As String,
+  ByVal sMsgClippingObjects As String,
+  ByVal sMsgCreatingImageFile As String,
+  ByVal sMsgCreatingImageMap As String,
+  ByVal sMsgReturnToMap As String,
+  ByVal sMsgEmptyField As String,
+  ByVal sMsgYes As String
+) As Integer
+
+Define FormatJPEG 1
+Define FormatPNG 2
+
+Define LinkTypeHotLink 1
+Define LinkTypeHTMLLandingPage 2
+
+Define HTMLImageMapWriteOK 0
+Define HTMLImageMapWriteOperationCanceled -1
+Define HTMLImageMapWriteSelectLayerWithRegion -2
+Define HTMLImageMapWriteBadProjectionOrZoom -3
+Define HTMLImageMapWriteImageDimensionsNotFound -4

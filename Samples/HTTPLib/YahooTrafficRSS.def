@@ -1,0 +1,57 @@
+'*****************************************************************************
+'       Copyright © 2009 Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 66276 $
+'
+' Module Description:
+'
+' A MapBasic sample program to demonstate the usage of MapInfo HTTP/XML
+' library API to get traffic information from Yahoo.
+'
+'*****************************************************************************
+Type YahooTrafficFeedRec
+  Title As String
+  Link As String
+  Category As String
+  Description As String
+  Language As String
+  TTL As String
+  LastBuildDate As String
+  PubDate As String
+  Copyright As String
+End Type
+
+Type YahooTrafficItemRec
+  Title As String
+  Description As String
+  Link As String
+  PubDate As String
+  Category As String
+  Severity As String
+  EndDate As String
+  UpdatedDate As String
+  Longitude As Float
+  Latitude As Float
+End Type
+
+Declare Sub YahooTrafficRSSInit
+Declare Sub YahooTrafficRSSPreferencesDLG
+Declare Sub YahooTrafficRSSGetPreferences
+Declare Sub YahooTrafficRSSSavePreferences
+
+Declare Sub GetYahooTrafficDLG
+
+Declare Function GetYahooTrafficRSSData(ByVal URL As String, ByVal ZipCode As String, ByVal Magnification As SmallInt, ByVal Severity As SmallInt, TrafficFeed As YahooTrafficFeedRec, TrafficData() As YahooTrafficItemRec, ErrorMsg As String) As Logical
+Declare Function GetYahooTrafficRSSResponse(ByVal hResponse As CString, TrafficFeed As YahooTrafficFeedRec, TrafficData() As YahooTrafficItemRec, ErrorMsg As String) As Logical
+Declare Sub CreateTempTrafficLayer(ByVal LayerName As String, ByVal CoordSys As String)
+Declare Sub AddTrafficDataToMapLayer(ByVal LayerName As String, TrafficData() As YahooTrafficItemRec, ByVal CoordSys As String, ByVal bAppend As Logical)
+Declare Sub GetYahooLinkLocation(ByVal Link As String, Longitude As Float, Latitude As Float)
+
+Global TrafficTempLayerDir , TrafficTempLayerName As String
+Global YahooTrafficRSSURL As String
+Global YahooTrafficMagList, YahooTrafficSeverityList As String
+Global YahooTrafficZip As String
+Global iYahooTrafficMagChoice, iYahooTrafficSeverityChoice As SmallInt
+Global YahooTrafficAccidentSymbol As Symbol
+Global TrafficLabelFont As Font

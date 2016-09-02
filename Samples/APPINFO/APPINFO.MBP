@@ -1,0 +1,5 @@
+[Link] 
+Application=appinfo.mbx 
+Module=appinfo.mbo
+Module=..\Lib\auto_lib.mbo
+

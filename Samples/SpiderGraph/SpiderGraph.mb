@@ -1,0 +1,555 @@
+'*****************************************************************************
+'       Copyright © 2010, Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 68410 $
+'
+' Module Description:
+'   The Spider Graph tool draws lines between objects in a single table,
+'   or the objects from two tables based on a join. It then creates a
+'   new table of lines that connect the objects from the original
+'   table(s) based on matching column names.
+'*****************************************************************************
+
+Include "SpiderGraph.def"
+
+global gsTempTablePath as string  '** Location where temporary tables will be created
+
+Sub Main
+
+  gsTempTablePath = GetFolderPath$(FOLDER_MI_LOCAL_APPDATA)
+
+  If LoadStrings((ApplicationDirectory$() + "SpiderGraph.str")) = FALSE Then
+    Note "Unable to access resource string file: " + ApplicationDirectory$() + "SpiderGraph.str"
+    Exit Sub
+  End If
+
+  gsAppDescription = GetResString(IDS_SubTitle)    '** Globals for Auto_lib.def
+  gsAppFilename = "SpiderGraph.mbx"    '** and set_tools_menu
+
+  Create Menu GetResString(IDS_SubTitle) As
+    GetResString(IDS_SubTitle)  Calling Verify,
+    "(-",
+    GetResString(IDS_Menu_About)  Calling About,
+    GetResString(IDS_Menu_Help) Calling helptext,
+    GetResString(IDS_Menu_Exit) Calling Exit_Program
+
+  Call set_tools_menu(GetResString(IDS_SubTitle))        '** Calls sub from Auto_lib.def
+
+End Sub
+
+Sub verify
+
+  dim TableID as string               '** Stores the id of the origin table
+  dim Table2ID as integer                '** Stores the id of the destination table
+  dim file_location as string
+  dim col_ida as integer            '****Store the selected column number
+  dim col_idb as integer
+  dim clr_options , add_distance as logical
+  dim strUnitAbbr(12) as String
+  dim strUnitName(12) as String
+  dim lcv as smallint
+  dim iUnit as smallint
+  dim iDefaultUnit as smallint
+
+  Call CleanUp
+  Call MapTables_Mod
+
+  If ubound(strTableList) = 0 then
+    note GetResString(IDS_Open_Table)
+    Exit Sub
+  End If
+
+  Call ColumnList(strTableList(1), strColumnListA())
+  Call ColumnList(strTableList(1), strColumnListB())
+  Call InitialColumnPicker
+
+  strUnitAbbr(1)="mm"
+  strUnitAbbr(2)="cm"
+  strUnitAbbr(3)="m"
+  strUnitAbbr(4)="km"
+  strUnitAbbr(5)="nmi"
+  strUnitAbbr(6)="in"
+  strUnitAbbr(7)="ft"
+  strUnitAbbr(8)="yd"
+  strUnitAbbr(9)="mi"
+  strUnitAbbr(10)="li"
+  strUnitAbbr(11)="rd"
+  strUnitAbbr(12)="ch"
+
+  for lcv = 1 to ubound(strUnitAbbr)
+    strUnitName(lcv) = UnitName$(strUnitAbbr(lcv))
+    if strUnitAbbr(lcv) = GetResString(IDS_DefaultUnit) then
+      iDefaultUnit = lcv
+    end if
+  next
+
+  'Creates Pick Table Dialog
+  Dialog
+    Title GetResString(IDS_SubTitle)
+
+    Control statictext
+      Title GetResString(IDS_Choose_Origin)
+      Position 10,10
+
+    Control statictext
+      Title GetResString(IDS_Choose_Dest)
+      Position 145,10
+
+    Control PopupMenu
+      Title From Variable strTableList
+      ID 5
+      Value 1      '**Initializes at 1
+      into TableId       '**Stores selection into ID 1
+      Position 10,25
+      width 120
+      Calling OriginColumns
+
+    Control PopUpMenu
+      Title From Variable strTableList
+      ID 6
+      Value 1      '****Initial value is set to 1
+      into Table2ID      '****Stores selection into ID 2
+      Position 145,25
+      width 120
+      Calling DestinationColumns
+
+    Control statictext
+      Title GetResString(IDS_Select_OrigCol)
+      position 10,45
+
+    Control statictext
+      Title GetResString(IDS_Select_OrigCol2)
+      position 10,53
+
+    Control ListBox
+      Title From Variable strColumnListA  '**builds listbox
+      ID 11
+      Value 1
+      into col_ida
+      position 10,65
+      width 120
+      Height 90
+
+    Control statictext
+      Title GetResString(IDS_Select_DestCol)
+      position 145,45
+
+    Control statictext
+      Title GetResString(IDS_Select_DestCol2)
+      position 145,53
+
+    Control ListBox
+      Title From Variable strColumnListB  '**builds listbox
+      ID 12
+      Value 1
+      into col_idb
+      position 145,65
+      width 120
+      Height 90
+
+    Control StaticText
+      Title GetResString(IDS_Col_Pick1)
+      Position 280,10
+
+    Control StaticText
+      Title GetResString(IDS_Col_Pick2)
+      Position 280,18
+
+    Control MultiListBox
+      Title from Variable strColumnPicker
+      ID 13
+      position 280,35
+      Width 120
+      height 72
+
+    Control StaticText
+      Title GetResString(IDS_Units)
+      Position 280,118
+
+    Control PopUpMenu
+      Title From Variable strUnitName
+      ID 14
+      Value iDefaultUnit
+      into iUnit
+      Position 304,116
+      width 96
+
+    Control Checkbox
+      Title GetResString(IDS_Color_Code)
+      into clr_options
+      position 282,136
+
+    Control CheckBox
+      Title GetResString(IDS_Add_Distance)
+      into add_distance
+      position 282,146
+
+    Control Button
+      Position 180,160
+      Width 60
+      Title GetResString(IDS_Menu_Help)
+      Calling HelpText
+
+    Control OKButton
+      Position 35,160
+      width 60
+      Title GetResString(IDS_Create_Lines)      '** After OK is clicked dialog will close.
+      Calling ChosenColumns
+
+    Control CancelButton
+      position 310,160
+      width 60
+      Title GetResString(IDS_Cancel)
+
+  If CommandInfo(CMD_INFO_DLG_OK) then
+
+    g_strTable = strTableList(tableid)
+    g_strTable2 = strTableList(Table2ID)
+
+    Call Save_As(file_location)
+
+    If PathToFileName$(file_location) = "" then
+      note GetResString(IDS_No_FileName)
+      Call CleanUp
+      Exit Sub
+    End If
+
+    Call Create_Lines(col_ida , col_idb, clr_options, add_distance, file_location, strUnitAbbr(iUnit))
+
+  End If
+
+End Sub
+
+Sub Save_as(file_location as string)
+
+  file_location=FileSaveASDlg("","","tab",GetResString(IDS_Save_As))
+
+End Sub
+
+sub Create_Lines(col_ida as integer, col_idb as integer, clr_options as logical, add_distance as logical, file_location as string, unitAbbr as string)
+
+  dim col_namea as string          '****Stores all the column names in the origin table.
+  dim col_nameb as string
+  dim colaliasa as alias
+  dim colaliasb as alias
+  dim colLineLength as alias
+  Dim strJoin as string
+
+  OnError goto HandleError
+
+  col_nameA = strColumnListA(col_ida)
+  col_nameB = strColumnListB(col_idb)
+
+  select * from g_strtable2 where obj into tempSpider2 noselect
+  select * from g_strtable where obj into tempSpider noselect
+
+  commit table tempSpider as gsTempTablePath & "tempSpider.tab"
+  commit table tempSpider2 as gsTempTablePath & "tempSpider2.tab"
+
+  close table tempSpider
+  close table tempSpider2
+
+  open table gsTempTablePath & "tempSpider.tab"
+  open table gsTempTablePath & "tempSpider2.tab"
+
+  colaliasa = "tempSpider."&col_namea
+  colaliasb = "tempSpider2."&col_nameb
+
+  alter table tempSpider (add spiderx1 float, spidery1 float,Row_counter integer)
+  alter table tempSpider2 (add spiderx2 float, spidery2 float)
+
+  'If the user doesn't choose to include any columns, the column used to join is added
+  If strChosenColumns = "" then
+    strChosenColumns = "tempSpider." & col_nameA
+  end If
+
+  strChosenColumns = strChosenColumns & ",tempSpider.spiderx1,tempspider.spidery1,tempspider.Row_counter,tempspider2.spiderx2,tempspider2.spidery2"
+
+  if clr_options then
+    call ColorArray
+  end if
+
+  update tempSpider set row_counter = rowid
+  update tempSpider set spiderx1 = centroidx(obj)
+  update tempSpider set spidery1 = centroidy(obj)
+  update tempSpider2 set spiderx2 = centroidx(obj)
+  update tempSpider2 set spidery2 = centroidy(obj)
+
+  strJoin = "select " & strChosenColumns & " from tempSpider , tempSpider2 where tempSpider." & col_namea & " = tempSpider2." & col_Nameb & " into SpiderResults"
+  run command strJoin
+
+  commit table SpiderResults as gsTempTablePath & "SpiderResults.tab"
+  close table SpiderResults
+  open table gsTempTablePath & "SpiderResults.tab"
+
+  If add_distance then
+    colLineLength = GetResString(IDS_LineLength) & UnitName$(unitAbbr)
+    alter table SpiderResults (add colLineLength float)
+    update SpiderResults set colLineLength = Distance(spiderx1, spidery1, spiderx2, spidery2, unitAbbr)
+  end if
+
+  update SpiderResults set obj = createline(spiderx1, spidery1, spiderx2, spidery2)
+
+  If clr_options then
+    call change_pen
+  end if
+
+  Commit Table Spiderresults
+  Alter Table SpiderResults (Drop row_counter, spiderx1,spidery1, spiderx2, spidery2)
+
+  commit table SpiderResults as file_location
+
+  drop table SpiderResults
+  drop table tempSpider
+  drop table tempSpider2
+
+  open table file_location view automatic
+  Exit Sub
+
+CleanUp:
+  Call CleanUp
+  Exit Sub
+
+HandleError:
+  Dim ErrorString as string
+  ErrorString = Error$()
+  Note "Create_Lines: " & GetResString(IDS_Operation_Interrupted) & Chr$(13) & ErrorString
+  Resume CleanUp
+
+end sub
+
+Function Is_Mappable(ByVal g_iTableID as integer) as logical
+
+  Is_mappable = True  '** If table valid, allows program to continue otherwise will be false.
+
+  dim int_Type as SmallInt  '** Holds value to query TAB_INFO_TYPE
+
+  If Not TableInfo(g_iTableID,TAB_INFO_MAPPABLE) Then
+    '** Warns user that Table is not mappable.
+    Is_Mappable = False
+    exit Function 'Not mappable
+  End If
+
+  If TableInfo(g_iTableID,TAB_INFO_SEAMLESS) = True Then
+    Is_Mappable = False
+    exit function  '** User canceled program.
+  End If
+
+  int_Type = TableInfo(g_iTableID,TAB_INFO_TYPE)
+
+  If int_Type = TAB_TYPE_IMAGE Or int_Type = TAB_TYPE_WMS Or int_Type = TAB_TYPE_TILESERVER Then
+    Is_mappable = False
+    exit function  '** raster, WMS, tile server
+  End If
+
+End function
+
+Sub change_pen
+
+  dim color , colorNum as integer
+  dim n as integer
+  dim b_fillstyle as pen
+  dim tempobj as object
+
+  n=0
+
+  fetch first from SpiderResults
+
+  do while not eot(SpiderResults)
+    tempobj= Spiderresults.obj
+    colorNum = SpiderResults.row_Counter
+    color = intColors((colornum mod 44) +1)
+    b_fillstyle = makepen(2,2, color)
+    alter object tempobj info OBJ_INFO_PEN, b_fillstyle
+    n=n+1
+    update SpiderResults set obj = tempobj where rowid=n
+    fetch next from SpiderResults
+  loop
+
+End sub
+
+Sub ColorArray
+
+  Dim intCounter, iRed, iGreen, iBlue as integer
+
+  redim intColors(44)
+
+  for intCounter = 1 to 44
+    intColors(intCounter) = rgb(iRed,iGreen,iBlue)
+    iRed = (intCounter mod 4) * 85
+    iGreen = (((intCounter - 1) \ 4) mod 4) * 85
+    iBlue = (((intCounter - 1) \ 16) mod 4) * 85
+    intColors(intCounter) = rgb(iRed,iGreen,iBlue)
+  Next
+
+End Sub
+
+Sub CleanUp
+
+  OnError Goto HandleError
+
+  'Drop Temporary Tables
+  Drop table tempSpider
+  Drop table tempSpider2
+  Drop table SpiderResults
+
+  'Re-Initialize Globals
+  g_strTable = ""      '** Holds the origin tablename
+  g_strTable2 = ""      '** Holds the destination tablename
+  strChosenColumns = ""
+  Exit Sub
+
+HandleError:
+  Resume Next
+
+End Sub
+
+Sub About
+
+  Dialog
+    Width 150
+    Title GetResString(IDS_About_Spider)
+    Control StaticText
+      Title GetResString(IDS_Spider_Ver)
+      Position 5,5
+    Control StaticText
+      Title GetResString(IDS_Mapinfo_Corp)
+      Position 5,14
+
+End Sub
+
+Sub Exit_Program
+
+  end program
+
+end sub
+
+Sub MapTables_mod
+
+  Dim intNumTables, intTableCounter, intUsable as integer
+  Dim l_Mappable as logical
+  Dim strSelectionName , strSelection as string
+
+  intNumTables = numTables()
+  intUsable = 1
+  redim strTableList(intNumTables)
+
+  for intTableCounter = 1 to intNumTables
+    l_Mappable = Is_Mappable(intTableCounter)
+    If l_Mappable then
+      strTableList(intUsable) = TableInfo(intTableCounter, TAB_INFO_NAME)
+      intUsable = intUsable + 1
+    End If
+  Next
+
+  redim strTableList(intUsable - 1)
+
+End Sub
+
+Sub ColumnList(strTableName as string, strColumnList() as string)
+
+  OnError goto NoSelection
+
+  Dim intCounter as integer
+  redim strColumnList(numcols(strTableName))
+
+  For intCounter = 1 to numCols(strTableName)
+    strColumnList(intCounter) = ColumnInfo(strTableName,"col" & intCounter ,COL_INFO_NAME)
+  Next
+
+  Exit Sub
+
+NoSelection:
+
+End Sub
+
+Sub OriginColumns
+
+  dim strTable as string
+  strTable = strTableList(readControlValue(5))
+  Call ColumnList(strTable, strColumnListA())
+  Alter Control 11 title from variable strColumnListA
+  Alter Control 11 Value 1
+  Call ColumnPicker
+  Alter Control 13 title from variable strColumnPicker
+
+End Sub
+
+Sub DestinationColumns
+
+  Dim strTable as string
+  strTable = strTableList(readcontrolValue(6))
+  Call ColumnList(strTable, strColumnListB())
+  Alter Control 12 title from variable strColumnListB
+  Alter Control 12 value 1
+  Call ColumnPicker
+  Alter Control 13 title from variable strColumnPicker
+
+End Sub
+
+Sub ColumnPicker
+
+  Dim intCounter as integer
+  redim strColumnSQL2(ubound(strColumnListA))
+
+  If ReadControlValue(5) <> ReadControlValue(6) then
+    Redim strColumnPicker(ubound(strColumnListA) + ubound(strColumnListB))
+    Redim strColumnSQL(ubound(strColumnListA) + ubound(strColumnListB))
+  Else
+    redim strColumnPicker(ubound(strColumnListA))
+    redim strColumnSQL(ubound(strColumnListA))
+  End If
+
+  For intCounter = 1 to Ubound(strColumnPicker)
+    If intCounter <= ubound(strColumnListA) then
+      strColumnPicker(intCounter) = strTableList(readControlValue(5)) & "." & strColumnListA(intCounter)
+      strColumnSQL(intCounter) = "tempSpider." & strColumnListA(intCounter)
+      strColumnSQL2(intCounter) = "tempSpider2." & strColumnListA(intCounter)
+    Else
+      strColumnPicker(intCounter) = strTableList(ReadControlValue(6)) & "." & strColumnListB(intCounter - ubound(strColumnListA))
+      strColumnSQL(intCounter) = "tempSpider2." & strColumnListB(intCounter - ubound(strColumnListA))
+    End If
+  Next
+
+End Sub
+
+Sub InitialColumnPicker
+
+  Dim intCounter as integer
+
+  Redim strColumnPicker(ubound(strColumnListA))
+  Redim strColumnSQL(ubound(strColumnListA))
+  Redim strColumnSql2(ubound(strColumnListA))
+
+  For intCounter = 1 to ubound(strColumnPicker)
+    strColumnPicker(intCounter) = strTableList(1) & "." & strColumnListA(intCounter)
+    strColumnSQL(intCounter) = "tempSpider" & "." &  strColumnListA(intCounter)
+    strColumnSQL2(intCounter) = "tempSpider2" & "." &  strColumnListA(intCounter)
+  next
+
+End Sub
+
+Sub ChosenColumns
+
+  Dim intColumn, intCounter as integer
+
+  intCounter = 1
+  intColumn = readControlValue(13)
+
+  Do While intColumn > 0
+    If intCounter > 1 then
+      strChosenColumns = strChosenColumns & "," & strColumnSQL(intColumn)
+    Else
+      strChosenColumns = strColumnSQL(intColumn)
+    End If
+
+    If ReadControlValue(5) = ReadControlValue(6) then
+      strChosenColumns = strChosenColumns & "," & strColumnSQL2(intColumn)
+    End If
+
+    intCounter = intCounter + 1
+    intColumn = readControlValue(13)
+  Loop
+
+End Sub

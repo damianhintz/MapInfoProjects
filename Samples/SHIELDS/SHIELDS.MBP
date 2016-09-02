@@ -1,0 +1,4 @@
+[Link] 
+Application=Shields.mbx 
+Module=shields.mbo
+Module=..\Lib\auto_lib.mbo

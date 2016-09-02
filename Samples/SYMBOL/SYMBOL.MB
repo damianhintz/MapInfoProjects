@@ -1,0 +1,1585 @@
+'*****************************************************************************
+'       Copyright (c) 2007, PITNEY BOWES MAPINFO CORPORATION
+'       All rights reserved.
+'       Confidential Property of PITNEY BOWES  MAPINFO CORPORATION
+'
+' $Workfile: SYMBOL.MB $
+' $Revision: 67057 $
+' $Author: DE004SN $
+' $Date: 2009-11-04 19:32:28 -0500 (Wed, 04 Nov 2009) $
+'
+' Module Description:
+'
+' This is an application which allows you to create/edit/delete MapInfo      
+' symbols.  Various options are accessable through the Symbol menu.          
+' To create a new symbol, draw it in the mapper using MapInfo drawing tools  
+' and save it.  To delete a symbol, pick it from the Symbol Picker dialog.   
+' To edit a symbol, pick it from the Symbol Picker dialog; the selected      
+' symbol then will be constructed in the mapper; use drawing tools to edit   
+' it and then save it.                                                       
+' Symbols you create (edit) can be colored.  The "Colors..." menu item gives 
+' you an option to specify how pen and/or brush colors in the symbol will be 
+' interpreted: they can be preserved permanently as they are when you save   
+' the symbol; or, they can be overridden by whatever corresponding color     
+' settings in the system are when the symbol is being used.  Note that this  
+' option can be used only when one or more objects the symbol is comprised   
+' of are selected.  That is, color interpretation can be applied differently 
+' to different objects in the symbol.  Open the browser for the SYMBOL table 
+' to see that.                                                               
+'
+' Revision History:
+'
+'    Rev 1.0   Unknown               SMITH
+'    Rev 1.1   3 Apr 2001            DRESSEL
+'            - add versioning
+'            - add Windows 2000/MI Pro 6.5 compliancy
+'            - extract strings for localization
+'            - change name from "Symbols" and/or "Symbol" to "Symbol Maker"
+'            - move some buttons to more standard locations
+'    Rev 1.2  13 Apr 2001            DRESSEL
+'            - monitor window and table to enable save option after user makes changes #17051
+'            - format about box a little better
+'    Rev 1.3  21 Dec 2007 
+'            - Use TempFileName$ instead of HomeDirectory$ for location of temporary table, 
+'            - since some users do not have write access to HomeDirectory$. 
+'*****************************************************************************
+Include "mapbasic.def"
+Include "Symbol.def"
+' Include a file that lets us use the "auto-load" library
+Include "..\Inc\auto_lib.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Sub procedure: Main
+' Open the font file, message window, create menu, set MapBasic CoordSys.   
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub main
+
+  OnError Goto HandleError
+  
+  If LoadStrings((ApplicationDirectory$() + "symbol.str")) = FALSE Then
+    Note "Unable to access resource string file: " + ApplicationDirectory$() + "symbol.str"
+    Exit Sub
+  End If
+
+  SYS = LocateFile$(LOCATE_FNT_FILE)           'ProgramDirectory$() + "MapInfo.fnt"
+  FNT = PathToDirectory$(SYS) + "tmp1.fnt"     'ProgramDirectory$() + "tmp1.fnt"
+  TMP = PathToDirectory$(SYS) + "tmp2.fnt"     'ProgramDirectory$() + "tmp2.fnt"
+
+'* Make Copy of MAPINFOW.FNT.  If This is not possible then explain and quit.
+  If Not copy() Then
+    Note GetResString(IDS_UNABLE_TO_SETUP)
+    End Program
+  End If  
+
+  gsAppFilename = "Symbol.mbx"
+  gsAppDescription = GetResString(IDS_APP_DESCRIPTION)
+
+'* Create Symbol Menu
+
+  Create Menu GetResString(IDS_MENU_NAME) As
+    GetResString(IDS_CREATE_NEW_MENU_ITEM_NAME) Calling create_symbol,
+    GetResString(IDS_SAVE_MENU_ITEM_NAME) Calling save_symbol,
+    GetResString(IDS_EDIT_DELETE_MENU_ITEM_NAME) Calling edit_del_handler,
+    GetResString(IDS_COLORS_MENU_ITEM_NAME) Calling colors_handler,
+    "(-",
+    GetResString(IDS_CANCEL_MENU_ITEM_NAME) Calling cancel_handler,
+    "(-",
+    GetResString(IDS_ABOUT_MENU_ITEM_NAME) Calling about,
+    GetResString(IDS_EXIT_MENU_ITEM_NAME) Calling xit
+
+  Call set_tools_menu(GetResString(IDS_MENU_NAME))
+
+' Set Coordinate System for MapInfo Professional
+  Set CoordSys NonEarth Units "in" Bounds (-10000,-10000) (10000,10000)
+
+  _1 = Chr$(255)     '' this is -1 in two-complement interpretation ''
+
+  saved = TRUE
+  new_symbol = TRUE
+
+  Exit Sub
+
+HandleError:
+  Note "main: " + Error$()
+  Resume Next
+  
+End Sub
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'* Function to copy MAPINFOW.FNT (symbol file) to TMP1.FNT
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Function copy() As Logical
+  Dim  buf  As Float
+
+  OnError Goto false_exit
+  Save File SYS as FNT
+true_exit:
+  copy = TRUE
+  Exit Function
+
+false_exit:
+  copy = FALSE
+  Exit Function
+
+End Function
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Handler for the "Edit" control in the "Symbol Picker" dialog.              '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub edit_handler
+
+  OnError Goto HandleError
+  code  = StyleAttr(ReadControlValue(1), SYMBOL_CODE) - 31
+  Dialog Remove
+
+  saved = FALSE
+  new_symbol = FALSE
+
+  Alter Menu Item create_symbol    Disable
+  Alter Menu Item edit_del_handler Disable
+  Alter Menu Item cancel_handler   Enable Text GetResString(IDS_CANCEL_EDIT)
+  Alter Menu Item save_symbol      Enable
+  
+  Exit Sub
+  HandleError:
+	Note "edit_handler: " + Error$()
+	Resume Next
+	
+End Sub
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Handler for the "Delete" control in the "Symbol Picker" dialog.            '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub del_handler
+
+  OnError Goto HandleError
+  code  = StyleAttr(ReadControlValue(1), SYMBOL_CODE) - 31
+  If Ask(GetResString(IDS_DELETE_SYMBOL), GetResString(IDS_DELETE), GetResString(IDS_CANCEL)) Then
+    Dialog Remove
+  End If
+    
+  Exit Sub
+  HandleError:
+	Note "del_handler: " + Error$()
+	Resume Next
+	
+End Sub
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' This is called from edit_delete_handler.  The symbol selected for editing  '
+' is retrieved from the font file, constructed and displayed in the mapper.  '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub edit_symbol
+  Define  NPENS      10
+  Define  NBRUSHES   9
+  Define  GREY       8421504
+
+  OnError Goto HandleError
+  Dim  i, j, size, nodes,
+       maxsize, sym(), xy()  As SmallInt,
+       byte                  As String,
+       _obj                  As Object,
+       no_pen, polygon,
+       hollow_brush          As Logical,
+
+       numtabs, tmpcnt     As SmallInt
+
+
+  maxsize = MAXNODES * 4
+
+  ReDim sym(maxsize)
+  ReDim xy(maxsize)
+
+' Drop Map only if it exist
+  numtabs = NumTables()
+
+  If numtabs > 0 then
+        
+    For tmpcnt = 1 to numtabs step 1
+      If TableInfo(tmpcnt,TAB_INFO_NAME) = "SYMBOL" then
+           'In this case all objects must be deleted from the current Symbol mapper
+        Drop Map SYMBOL
+        Delete From SYMBOL
+        Create Map for Symbol CoordSys NonEarth Units "in" Bounds (-10000,-10000) (10000,10000)
+        Map From SYMBOL 
+        Set Window FrontWindow()
+          Title GetResString(IDS_SYMBOL_EDITOR)
+          Set Map Zoom 120 Units "in" Layer 1 Editable On
+        giWindowID = FrontWindow()
+        Goto startedit 
+      End If
+    Next
+    Call create_table
+  Else
+    Call create_table
+  End If
+
+startedit:
+  Open File FNT for Binary as 1 ByteOrder LOWHIGH
+' Print  "CONSTRUCTING THE SYMBOL . . ."
+  Get 1, code * 5 + 28, i
+  Get 1, code * 5 + 33, j
+  size = j - i
+
+  pen_check = FALSE
+  brush_check = FALSE
+  no_pen = TRUE
+  Set Style Brush (1, 0, 0)
+  nodes = 0
+
+  Close File 1
+  Open File FNT For Random As 1 Len = 1 ByteOrder LOWHIGH CharSet "Neutral"
+    
+  Seek 1, i + 1
+  For i = 1 To size
+    Get 1, , byte 
+    sym(i) = Asc(byte)
+    If sym(i) > 127 Then
+      sym(i) = sym(i) - 256
+    End If
+  Next
+  For i = 1 To size Step 2
+    If sym(i) = -1 Then
+      If nodes = 0 Then
+        If sym(i+1) < 1 Or sym(i+1) >= NPENS Then
+          pen_check = TRUE
+          Set Style Pen (1, 2, 0)
+        ElseIf sym(i+1) = 9 Then
+          Set Style Pen (0, 1, 0)
+        Else
+          Set Style Pen MakePen(1, 2, full_color(sym(i+1)))
+        End If
+        no_pen = FALSE
+      Else
+        polygon = (xy(1) = xy(nodes * 2 - 1) And xy(2) = xy(nodes * 2))
+        hollow_brush = (StyleAttr(CurrentBrush(), BRUSH_PATTERN) < 2)
+
+        If no_pen Then
+          If Not polygon Or hollow_brush Then
+            Set Style Pen (1, 2, GREY)
+            pen_check = TRUE
+          Else
+            Set Style Pen (0, 1, 0)
+          End If
+        End If
+
+        If polygon Then
+          Create Region Into Variable _obj 0
+          nodes = nodes - 1
+        Else
+          Create Pline Into Variable _obj 0
+        End If
+
+        For j = 1 To nodes
+          Alter Object _obj Node Add (xy(j * 2 - 1), xy(j * 2))
+        Next
+
+        Insert Into SYMBOL (line_change, fill_change, obj)
+               Values (pen_check, brush_check, _obj)
+
+        pen_check = FALSE
+
+        brush_check = FALSE
+        no_pen = TRUE
+        Set Style Brush (1, 0, 0)
+        nodes = 0
+      End If
+    ElseIf sym(i+1) = -1 Then
+      If sym(i) < 1 Or sym(i) >= NBRUSHES Then
+        brush_check = TRUE
+        Set Style Brush MakeBrush(2, GREY, 0)
+      Else
+        Set Style Brush MakeBrush(2, full_color(sym(i)), 0)
+      End If
+    Else
+      nodes = nodes + 1
+      xy(nodes * 2 - 1) = sym(i)
+      xy(nodes * 2) = sym(i + 1)
+    End If
+  Next
+
+  Close File 1
+'  Open File FNT For Binary As 1 ByteOrder LOWHIGH
+
+    
+  Exit Sub
+  HandleError:
+	Note "edit_symbol: " + Error$()
+	Resume Next
+	
+End Sub
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' This is called from edit_symbol.  Basic color is turned into corresponding '
+' full color.                                                                '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Function full_color (ByVal color As Smallint) As Integer
+  Do Case color
+    Case 1
+      full_color = BLACK
+    Case 2
+      full_color = WHITE
+    Case 3
+      full_color = RED
+    Case 4
+      full_color = GREEN
+    Case 5
+      full_color = BLUE
+    Case 6
+      full_color = YELLOW
+    Case 7
+      full_color = CYAN
+    Case 8
+      full_color = MAGENTA
+    Case Else
+      full_color = BLACK
+  End Case
+End Function
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' This is called from edit_delete_handler.  The symbol selected for deleting '
+' is actually deleted here.  The resulting file is TMP2.FNT.                 '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub del_symbol
+  
+  OnError Goto HandleError
+  Dim  i, move,
+       fptr, addr,
+       del_addr, nxt_addr   As Integer,
+       byte                 As String * 1,
+       buf                  As Float,
+       _symbol              As Symbol
+  
+  Open File FNT For Binary As 1 ByteOrder LOWHIGH
+  Open File TMP For Output As 2
+  Close File 2
+
+  Open File TMP For Binary As 2 ByteOrder LOWHIGH
+'Print "COPYING . . ."
+  Do While Seek(1) < code * 5 + 28
+    Get 1, , buf
+    Put 2, , buf
+  Loop
+  
+  Get 1, 32, byte 
+  nsyms = Asc(byte)
+
+  If nsyms < 2 Then
+    Note GetResString(IDS_CANNOT_DELETE_SYMBOL)
+    Call clean_up(FALSE)
+  End If
+
+  Get 1, code * 5 + 28, del_addr
+  Get 1, code * 5 + 33, nxt_addr
+  move = nxt_addr - del_addr
+
+  Seek 1, code * 5 + 33
+  Seek 2, Seek(1) - 5
+
+  Do While Seek(1) <= del_addr
+    If del_addr - Seek(1) + 1 < Len(buf) Then
+      Seek 1, del_addr - Len(buf) + 1
+      Seek 2, Seek(1) - 5
+    End If
+    Get #1, , buf      
+    Put #2, , buf
+  Loop
+  
+  Seek 1, nxt_addr + 1
+  Seek 2, Seek(1) - move - 5
+
+  Do While Seek(1) <= LOF(1)
+    If LOF(1) - Seek(1) + 1 < Len(buf) Then
+      Seek 1, LOF(1) - Len(buf) + 1
+      Seek 2, Seek(1) - move - 5
+    End If
+    Get #1, , buf      
+    Put #2, , buf
+  Loop
+
+  nsyms = nsyms - 1
+  byte  = Chr$(nsyms)
+  Put 2, 32, byte 
+
+  Close File 2
+  Open File TMP For Binary As 2 ByteOrder LOWHIGH
+
+'Print "MODIFYING ADDRESSES . . ."
+  For i = 1 To nsyms
+    fptr = i * 5 + 28
+    Get 2, fptr, addr
+    addr = addr - 5
+    If i >= code  Then
+      addr = addr - move
+    End If
+    Put 2, fptr, addr
+  Next
+  
+  fptr = LOF(2)
+  Put 2, nsyms * 5 + 33, fptr
+
+  Close File 2
+  Close File 1
+  new_symbol = FALSE
+  Call UpdateFntFile
+  Note GetResString(IDS_SYMBOL_DELETED)
+  
+      
+  Exit Sub
+  HandleError:
+	Note "del_symbol: " + Error$()
+	Resume Next
+	
+End Sub
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Handler for "Cancel..." menu item.                                         '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub cancel_handler
+  OnError Goto HandleError
+  If Ask(GetResString(IDS_DISCARD_CHANGES), GetResString(IDS_DISCARD), GetResString(IDS_CANCEL)) Then
+
+    ' Before attempting to close and drop table, check to see if it is open.
+    ' User may have performed a Close All. 
+    OnError Goto table_is_closed
+
+    Rollback Table SYMBOL
+    Drop Table SYMBOL
+
+  End If
+  
+  reset:
+    Call reset_app
+    Exit Sub
+  
+  table_is_closed:
+    Resume reset
+
+  HandleError:
+	Note "cancel_handler: " + Error$()
+	Resume Next
+  
+End Sub
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' This subroutine initialize the application when we hit "Cancel..." from    '
+' the menu and in some similar cases.                                        '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub reset_app
+OnError Goto HandleError
+  new_symbol  = TRUE
+  saved       = TRUE
+  changed     = new_symbol_added
+  
+  Alter Menu Item create_symbol    Enable
+  Alter Menu Item edit_del_handler Enable
+  Alter Menu Item cancel_handler   Disable Text GetResString(IDS_CANCEL)
+  Alter Menu Item save_symbol      Disable
+
+  If Not copy() Then
+    Note GetResString(IDS_UNABLE_TO_STARTUP)
+    End Program
+  End If  
+  
+  Exit Sub
+  
+  HandleError:
+	Note "reset_app: " + Error$()
+	Resume Next
+
+End Sub
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' We can't use clean_up as a handler for the "Discard" control in the dialog '
+' above (handlers don't accept parameters).  This is an intermidiate sub.    '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub discard_handler
+  Call clean_up(FALSE)
+End Sub
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' We are done!  Delete the temporary table, remove the "Symbol" menu from the'
+' menu bar, close the message window and terminate the application.          '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub clean_up (ByVal _ask As Logical)
+  OnError Goto HandleError
+  
+  Dim  i         As Smallint
+  Dim  ShutDown  As Logical
+  Dim byte as logical
+  Dim cnt as integer 
+
+  If FileExists(TMP) then
+    Kill TMP
+  End If
+
+  If FileExists(FNT) then
+    Kill FNT
+  End If
+
+  For i = 1 To numtables()
+    If TableInfo(i, TAB_INFO_NAME) = "SYMBOL" Then
+      Rollback Table SYMBOL
+      Drop Table SYMBOL
+      Exit For
+    End If
+  Next
+  End program
+
+  
+  HandleError:
+	Note "clean_up: " + Error$()
+	Resume Next
+
+End Sub
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'* Sub UpdateFntFile
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub UpdateFntFile
+  OnError Goto HandleError
+  
+  Dim  ShutDown  As Logical
+  Dim i as integer
+  Dim fontFileName as String
+
+  If new_symbol Then
+    i = 1
+  Else
+    i = 2
+  End If
+
+  fontFileName = "MapInfow.fnt"
+
+  '* Copy the symbols file to mi_fnt.old, then Kill the original symbols file
+
+  If FileExists(SYS) then
+    Save File SYS as PathToDirectory$(SYS) + "mi_fnt.old"
+    Kill SYS
+
+    '* Rename tmp1 or tmp2 to mapinfow.fnt, then reload symbols
+    Rename File PathToDirectory$(SYS) + "tmp" + str$(i) + ".fnt" As SYS
+
+    '* Reload symbols
+    Reload Symbols
+
+  Else
+    Note GetResString(IDS_UNABLE_TO_FIND_FILE) + " " + SYS + " " + GetResString(IDS_APP_DESCRIPTION) + " " + GetResString(IDS_TERMINATED)
+    End Program
+  End If
+  
+  Call reset_app
+  
+  Exit Sub
+  
+  HandleError:
+	Note "UpdateFntFile: " + Error$()
+	Resume Next
+
+End Sub
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' This function is called from save_symbol to: 1) convert ellipses to        '
+' polygons; 2) make sure the total number of nodes in the symbol does not    '
+' exceed the maximum; 3) determine actual bounds of the drawing.             '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Function limits_ok (minx As Float, miny As Float, maxx As Float, maxy As Float) As Logical
+  OnError Goto HandleError
+
+  Dim  _obj, buf         As Object,
+       nodes, npgons,
+       _type, i, j, rid  As Smallint
+
+  total_nodes = 0
+
+  Fetch First From SYMBOL
+  While Not EOT(SYMBOL)
+    _obj = SYMBOL.obj
+    _type = ObjectInfo(_obj, OBJ_INFO_TYPE)
+
+    If _type = OBJ_ELLIPSE Then
+  'Print "CONVERTING AN ELLIPSE . . ."
+      rid = SYMBOL.rowid
+      Select * From SYMBOL Where SYMBOL.rowid = rid
+      Create Object As Buffer From Selection Into Variable buf 
+             Width 0 Units "in"
+      Insert Into Symbol (line_change, fill_change, obj)
+             Values (SYMBOL.line_change, SYMBOL.fill_change, buf)
+    End If
+  'Print "CHECKING LIMITS . . ."
+    Do Case _type
+      Case OBJ_LINE
+        If too_many(2) Then
+          limits_ok = FALSE
+          Exit Function
+        End if
+        minx = minimum(minx,
+                        minimum(ObjectGeography(_obj, OBJ_GEO_LINEBEGX),
+                                ObjectGeography(_obj, OBJ_GEO_LINEENDX)))
+        maxx = maximum(maxx,
+                        maximum(ObjectGeography(_obj, OBJ_GEO_LINEBEGX),
+                                ObjectGeography(_obj, OBJ_GEO_LINEENDX)))
+        miny = minimum(miny,
+                        minimum(ObjectGeography(_obj, OBJ_GEO_LINEBEGY),
+                                ObjectGeography(_obj, OBJ_GEO_LINEENDY)))
+        maxy = maximum(maxy,
+                        maximum(ObjectGeography(_obj, OBJ_GEO_LINEBEGY),
+                                ObjectGeography(_obj, OBJ_GEO_LINEENDY)))
+      Case OBJ_PLINE
+        nodes = ObjectInfo(_obj, OBJ_INFO_NPNTS)
+        If too_many(nodes) Then
+          limits_ok = FALSE
+          Exit Function
+        End if
+        For i = 1 To nodes
+          minx = minimum(minx, ObjectNodeX(_obj, 1, i))
+          miny = minimum(miny, ObjectNodeY(_obj, 1, i))
+          maxx = maximum(maxx, ObjectNodeX(_obj, 1, i))
+          maxy = maximum(maxy, ObjectNodeY(_obj, 1, i))
+        Next
+      Case OBJ_RECT, OBJ_ROUNDRECT
+        If too_many(5) Then
+          limits_ok = FALSE
+          Exit Function
+        End if
+        minx = minimum(minx, ObjectGeography(_obj, OBJ_GEO_MINX))
+        miny = minimum(miny, ObjectGeography(_obj, OBJ_GEO_MINY))
+        maxx = maximum(maxx, ObjectGeography(_obj, OBJ_GEO_MAXX))
+        maxy = maximum(maxy, ObjectGeography(_obj, OBJ_GEO_MAXY))
+      Case OBJ_REGION
+        npgons = ObjectInfo(_obj, OBJ_INFO_NPOLYGONS)
+        For i = 1 To npgons
+          nodes = ObjectInfo(_obj, OBJ_INFO_NPOLYGONS + i)
+          If too_many(nodes) Then
+            limits_ok = FALSE
+            Exit Function
+          End if
+          For j = 1 To nodes
+            minx = minimum(minx, ObjectNodeX(_obj, i, j))
+            miny = minimum(miny, ObjectNodeY(_obj, i, j))
+            maxx = maximum(maxx, ObjectNodeX(_obj, i, j))
+            maxy = maximum(maxy, ObjectNodeY(_obj, i, j))
+          Next
+        Next
+      Case OBJ_POINT
+        Note GetResString(IDS_POINT_OBJECTS_CANNOT)
+        limits_ok = FALSE
+        Exit Function
+      Case OBJ_TEXT
+        Note GetResString(IDS_TEXT_OBJECTS_CANNOT)
+        limits_ok = FALSE
+        Exit Function
+      Case OBJ_ARC
+        Note GetResString(IDS_ARC_OBJECTS_CANNOT)
+        limits_ok = FALSE
+        Exit Function
+      Case Else
+    End Case
+    Fetch Next From SYMBOL
+  Wend
+  limits_ok = TRUE
+  
+  Exit Function
+  
+  HandleError:
+	Note "limits_ok: " + Error$()
+	Resume Next
+End Function
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' This function is called from limits_ok() to make sure the total number of  '
+' nodes in the symbol does not exceed the maximum.                           '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Function too_many (ByVal nodes As Smallint) As Logical
+  OnError Goto HandleError
+  total_nodes = total_nodes + nodes
+  too_many = total_nodes > MAXNODES
+  If total_nodes > MAXNODES Then
+    Note GetResString(IDS_CANNOT_PROCESS_MAXNODES) + " " + MAXNODES
+  End If
+  
+  Exit Function
+  
+  HandleError:
+	Note "too_many: " + Error$()
+	Resume Next
+  
+End Function
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' This is a handler for the "Colors..." menu item.  First, loop through the  '
+' selection to find out if any objects have pen and/or brush.  Then, call    '
+' a corresponding subroutine to construct a color(s) interpretaion dialog.   '
+' Update line_change and/or fill_change flag in the table records accordingly'
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub colors_handler
+  OnError Goto HandleError
+  Dim  rid, rows, _type      As Integer,
+       checked               As Logical,
+       _pen                  As Pen,
+       _brush                As Brush
+
+
+  If SelectionInfo(SEL_INFO_TABLENAME) <> "SYMBOL" Then
+    Note GetResString(IDS_NO_SELECTED_OBJECTS)
+    Exit Sub
+  End If
+  rows = SelectionInfo(SEL_INFO_NROWS)
+
+  If rows > 0 Then
+    pen_check = FALSE
+    brush_check = FALSE
+
+    Fetch First From Selection
+    For rid = 1 To rows
+      _type = ObjectInfo(Selection.obj, OBJ_INFO_TYPE)
+      If Not pen_check And _type <> OBJ_TEXT And _type <> OBJ_POINT Then
+        _pen = ObjectInfo(Selection.obj, OBJ_INFO_PEN)
+        pen_check = StyleAttr(_pen, PEN_PATTERN) > 1
+      End If
+      If Not brush_check And _type = OBJ_REGION Or _type = OBJ_RECT Or
+         _type = OBJ_ROUNDRECT Or _type = OBJ_ELLIPSE Then
+        _brush = ObjectInfo(Selection.obj, OBJ_INFO_BRUSH)
+        brush_check = StyleAttr(_brush, BRUSH_PATTERN) > 1
+      End If
+      Fetch Next From Selection
+    Next
+
+    Fetch First From Selection
+    If pen_check And brush_check Then
+      checked = pen_brush_checked()
+    ElseIf pen_check Then
+      checked = pen_checked()
+    ElseIf brush_check Then
+      checked = brush_checked()
+    Else
+      Note GetResString(IDS_NEITHER_PEN_NOR_BRUSH_FOUND)
+    End If  
+    If checked Then
+      For rid = 1 To rows
+        Update Selection Set line_change = pen_check, fill_change = brush_check
+               Where Rowid = rid
+        Fetch Next From Selection
+      Next
+    End If
+
+  Else
+    Note GetResString(IDS_NO_SELECTED_OBJECTS)
+  End If
+  
+  Exit Sub
+  
+  HandleError:
+	Note "colors_handler: " + Error$()
+	Resume Next
+  
+End Sub
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' This is called from colors_hanlder when both pen and brush have been found '
+' in the selection.                                                          '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Function pen_brush_checked () As Logical
+  OnError Goto HandleError
+
+  Dialog Title GetResString(IDS_COLOR_INTERPRETATION)
+    Control CheckBox
+      Position 10, 10
+      Title GetResString(IDS_LINE_COLOR_CHANGEABLE) 
+      Value SYMBOL.line_change
+      Into pen_check
+      ID 3
+    Control CheckBox
+      Position 10, 30
+      Title GetResString(IDS_FILL_COLOR_CHANGEABLE) 
+      Value SYMBOL.fill_change
+      Into brush_check
+      ID 4
+    Control OKButton
+      Position 50, 50
+      Width 40
+      Title GetResString(IDS_OK)
+      ID 1
+    Control CancelButton
+      Position 130, 50
+      Width 40
+      Title GetResString(IDS_CANCEL)
+      ID 2
+
+  pen_brush_checked = CommandInfo(CMD_INFO_DLG_OK) 
+ 
+   Exit Function
+  
+  HandleError:
+	Note "pen_brush_checked: " + Error$()
+	Resume Next 
+  
+End Function
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' This is called from colors_handler when only pen has been found in the     '
+' selection.                                                                 '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Function pen_checked () As Logical
+  OnError Goto HandleError
+  
+  Dialog Title GetResString(IDS_LINE_COLOR_INTERPRETATION)
+    Control CheckBox
+      Position 10, 10
+      Title GetResString(IDS_LINE_COLOR_CHANGEABLE)
+      Value SYMBOL.line_change
+      Into pen_check
+      ID 3
+    Control OKButton
+      Position 50, 30
+      Width 40
+      Title GetResString(IDS_OK)
+      ID 1
+    Control CancelButton
+      Position 130, 30
+      Width 40
+      Title GetResString(IDS_CANCEL)
+      ID 2
+
+  pen_checked = CommandInfo(CMD_INFO_DLG_OK) 
+  
+  Exit Function
+  
+  HandleError:
+	Note "pen_checked: " + Error$()
+	Resume Next 
+  
+End Function
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' This is called from colors_hanlder when only brush has been found in the   '
+' selection.                                                                 '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Function brush_checked () As Logical
+ OnError Goto HandleError
+ 
+  Dialog Title GetResString(IDS_FILL_COLOR_INTERPRETATION)
+    Control CheckBox
+      Position 10, 10
+      Title GetResString(IDS_FILL_COLOR_CHANGEABLE)
+      Value SYMBOL.fill_change
+      Into brush_check
+      ID 3
+    Control OKButton
+      Position 50, 30
+      Width 40
+      Title GetResString(IDS_OK)
+      ID 1
+    Control CancelButton
+      Position 130, 30
+      Width 40
+      Title GetResString(IDS_CANCEL)
+      ID 2
+
+  brush_checked = CommandInfo(CMD_INFO_DLG_OK) 
+  
+  Exit Function
+  
+  HandleError:
+	Note "brush_checked: " + Error$()
+	Resume Next 
+End Function
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' This is called from write_symbol to convert a full color to the closest of '
+' 8 basic colors.                                                            '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Function basic_color (ByVal color As Integer) As Smallint
+  OnError Goto HandleError
+  Dim  delta, min_delta  As Integer,
+       r, g, b           As Smallint
+
+  r = Int(color / 65536)
+  b = color mod 256
+  g = (color - b - 65536 * r) / 256
+
+  min_delta = 255 * 3
+
+  delta = r + g + b                        ' black '
+  If delta <= min_delta Then
+    basic_color = 1
+    min_delta = delta
+  End If
+
+  delta = 255 - r + 255 - g + 255 - b      ' white '
+  If delta <= min_delta Then
+    basic_color = 2
+    min_delta = delta
+  End If
+  delta = 255 - r + g + b                  ' red '
+  If delta <= min_delta Then
+    basic_color = 3
+    min_delta = delta
+  End If
+  delta = r + 255 - g + b                  ' green '
+  If delta <= min_delta Then
+    basic_color = 4
+    min_delta = delta
+  End If
+  delta = r + g + 255 - b                  ' blue '
+  If delta <= min_delta Then
+    basic_color = 5
+    min_delta = delta
+  End If
+  delta = 255 - r + 255 - g + b            ' yellow '
+  If delta <= min_delta Then
+    basic_color = 6
+    min_delta = delta
+  End If
+  delta = r + 255 - g + 255 - b            ' cyan '
+  If delta <= min_delta Then
+    basic_color = 7
+    min_delta = delta
+  End If
+  delta = 255 - r + g + 255 - b            ' magenta '
+  If delta <= min_delta Then
+    basic_color = 8
+    min_delta = delta
+  End If
+  
+  Exit Function
+  
+  HandleError:
+	Note "basic_color: " + Error$()
+	Resume Next 
+End Function
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' This is called for each node to write its coordinates to the file.         '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub put_xy (ByVal x As Float, ByVal y As Float, ByVal filenum As Smallint)
+  
+  OnError Goto HandleError
+  Dim  byte        As String,
+       buf, cntr   As Float,
+       word, i     As Smallint
+
+  buf  = x
+  cntr = cntrx
+  For i = 1 To 2
+    word = Round((buf - cntr) * conv, 1)      
+    If word = -1 Then
+      word = -2
+    End If
+    If word < 0 Then
+      byte  = Chr$(256 + word)
+    Else
+      byte  = Chr$(word)
+    End If
+
+    Put filenum, , byte 
+
+    buf  = y
+    cntr = cntry
+  Next
+  
+  Exit Sub
+  
+  HandleError:
+	Note "put_xy: " + Error$()
+	Resume Next 
+End Sub
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' This is a handler for "Edit+Delete" menu item.                             '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub edit_del_handler
+  OnError Goto HandleError
+  dim esc as logical
+
+  code = 0
+  esc = cancel()
+
+  If Not esc And code <> 0 Then
+    If Not new_symbol Then
+      Call edit_symbol
+    Else
+      Call del_symbol
+    End If
+  End If
+  
+  Exit Sub
+  
+  HandleError:
+	Note "edit_del_handler: " + Error$()
+	Resume Next
+End Sub
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' This is called from edit_del_handler.  We can select a symbol and what we  '
+' want to do with it: edit or delete.                                        '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Function cancel () As Logical
+  OnError Goto HandleError
+  Dialog Title GetResString(IDS_SYMBOL_PICKER)
+    Control SymbolPicker
+      Position 10, 10
+      ID 1
+    Control Button 
+      Position 40, 10
+      Width 40
+      Title GetResString(IDS_EDIT)
+      ID 3
+      Calling edit_handler
+    Control Button
+      Position 90, 10
+      Width 40
+      Title GetResString(IDS_DELETE)
+      Calling del_handler
+      ID 4
+    Control OKButton
+      Position 140, 10
+      Width 40
+      Title GetResString(IDS_CANCEL)
+      ID 2
+
+  cancel = CommandInfo(CMD_INFO_DLG_OK) 
+  
+  Exit Function
+  
+  HandleError:
+	Note "cancel: " + Error$()
+	Resume Next
+  
+End Function
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Get here when we are going to create a new symbol.                         '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub create_symbol
+  OnError Goto HandleError
+  saved = FALSE
+
+  pen_check = FALSE
+  brush_check = FALSE
+
+  Call create_table
+  
+  Alter Menu Item create_symbol    Disable
+  Alter Menu Item edit_del_handler Disable
+  Alter Menu Item cancel_handler   Enable Text GetResString(IDS_CANCEL_CREATE)
+  Alter Menu Item save_symbol      Enable
+  
+  Exit Sub
+  
+  HandleError:
+	Note "create_symbol: " + Error$()
+	Resume Next
+	
+End Sub
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Create a temporary table and a map to create or edit a symbol.             '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub create_table
+  OnError Goto HandleError
+  Dim tempstr as string
+  Dim numtabs as smallint
+  Dim tmpcnt as smallint
+
+' Create Table only if it does not exist
+  numtabs = NumTables()
+
+  If numtabs > 0 then
+        
+    For tmpcnt = 1 To numtabs Step 1
+      If TableInfo(tmpcnt,TAB_INFO_NAME) = "SYMBOL" Then
+        Goto alreadycreated
+      End If
+    Next
+
+    ' Get temp file name 
+    tempstr = TempFileName$("")
+
+
+    Create Table SYMBOL (line_change Logical, fill_change Logical) File tempstr
+    Create Map For SYMBOL CoordSys NonEarth Units "in" Bounds (-10000,-10000) (10000,10000)
+    Map From SYMBOL 
+    Set Window FrontWindow()
+      Title GetResString(IDS_SYMBOL_EDITOR)
+    giWindowID = FrontWindow()
+    Set Map Zoom 120 Units "in" Layer 1 Editable On
+    Alter Menu Item save_symbol Enable
+    changed = TRUE
+  Else
+    ' Get temp file name 
+    tempstr = TempFileName$("")
+
+
+    Create Table SYMBOL (line_change Logical, fill_change Logical) File tempstr
+    Create Map For SYMBOL CoordSys NonEarth Units "in" Bounds (-10000,-10000) (10000,10000)
+    Map From SYMBOL 
+    Set Window FrontWindow()
+      Title GetResString(IDS_SYMBOL_EDITOR)
+    giWindowID = FrontWindow()
+    Set Map Zoom 120 Units "in" Layer 1 Editable On
+    Alter Menu Item save_symbol Enable
+    changed = TRUE
+  End If
+alreadycreated:
+  
+  Alter Menu Item save_symbol Enable
+  changed = TRUE
+  
+  Exit Sub
+  
+  HandleError:
+	Note "create_table: " + Error$()
+	Resume Next
+	
+End Sub
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Get here when we want to save created (edited) symbol.  Call limits_ok()   '
+' to: 1) convert ellipses to polygons; 2) make sure the total number of      '
+' nodes in the symbol does not exceed the maximum (200); 3) determine actual '
+' bounds of the drawing.  Then calculate the conversion coefficient (we need '
+' to fit the symbol in the square of 60 X 60 size).  Read number of symbols  '
+' from the font file.  Call save_new (for the created symbol) or save_old    '
+' (for the edited symbol).                                                   '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub save_symbol
+  Dim  minx, maxx,
+       miny, maxy  As Float,
+       byte        As String * 1
+  
+
+  OnError GOTO SymbolTableError
+  If TableInfo("SYMBOL", TAB_INFO_NROWS) = 0 Then
+    Note GetResString(IDS_NO_OBJECTS_FOUND)
+    Goto reset
+  End If
+  
+  OnError GOTO HandleError
+  If Not limits_ok (minx, miny, maxx, maxy) Then
+    Goto reset
+
+
+  End If
+
+  If maximum (maxx - minx, maxy - miny) = 0 Then
+    Note GetResString(IDS_NO_ACCEPTABLE_OBJECTS_FOUND)
+    GoTo reset
+  End If
+
+  cntrx = (maxx + minx) / 2
+  cntry = (maxy + miny) / 2
+
+  conv = 60 / maximum (maxx - minx, maxy - miny)
+
+  Open File FNT for Binary as 1 ByteOrder LOWHIGH
+   Get 1, 32, byte 
+   nsyms = Asc(byte)
+  Close File 1
+  
+  If new_symbol Then
+    Call save_new
+    new_symbol_added = TRUE
+  Else
+    Call save_old
+  End If
+
+reset:
+'  Rollback Table SYMBOL
+'  Drop Table SYMBOL
+  Call reset_app
+  Exit Sub
+
+HandleError:
+  Note "save_symbol: " + Error$()
+  Resume Next
+
+SymbolTableError:
+  Note GetResString(IDS_NO_OBJECTS_FOUND)
+  resume reset
+ 
+End Sub
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' The organization of a font file is as follows:                             '
+'   Header        32 bytes, the last of which is the number of symbols in    '
+'                 the file.                                                  '
+'   Index         5 bytes per symbol: a 4-byte offset to the start of the    '
+'                 symbol definition, plus one byte that's ignored(?).        '
+'   Symbol defs.  The remainder of the file.                                 '
+' The entire file cannot exceed 32,767 bytes.                                '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Save the newly created symbol.  The resulting font file is TMP1.FNT        '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub save_new
+
+  OnError GOTO HandleError
+  Dim  rem, fptr, addr   As Integer,
+       byte              As String,
+       buf               As Float
+
+' Open the FNT file and move the symbol definitions to make room for another
+' entry at the end of the index.
+
+  Open File FNT for Binary as 1 ByteOrder LOWHIGH
+
+  addr = (nsyms + 1) * 5 + 33
+  rem = (LOF(1) - addr + 1) MOD Len(buf)
+'Print "MOVING . . ."
+  For fptr = LOF(1) - Len(buf) + 1 To addr + rem Step -Len(buf)
+    Get 1, fptr, buf
+    Put 1, fptr + 5, buf
+  Next
+
+  Close File 1
+
+  Open File FNT For Random As 1 Len = 1 ByteOrder LOWHIGH CharSet "Neutral"
+
+  If rem > 0 Then
+    For fptr = addr + rem - 1 To addr Step -1
+      Get 1, fptr, byte 
+      Put 1, fptr + 5, byte 
+    Next
+  End If
+
+  If nsyms = 0 Then
+    fptr = LOF(1) + 6
+  Else
+    fptr = LOF(1) + 1
+  End If
+
+  Seek 1, fptr
+
+  Call write_symbol(1)
+
+  nsyms = nsyms + 1
+  byte  = Chr$(nsyms)
+  Put 1, 32, byte 
+
+  Close File 1
+  Open File FNT For Binary As 1 ByteOrder LOWHIGH
+
+'Print "MODIFYING ADDRESSES . . ."
+  For fptr = 33 To nsyms * 5 + 28 step 5             
+    Get 1, fptr, addr
+    addr = addr + 5
+    Put 1, fptr, addr
+  Next
+
+  fptr = LOF(1)    
+  Put 1, nsyms * 5 + 33, fptr
+
+  Close File 1
+
+  '* UpdateFntFile
+  Call UpdateFntFile
+  Note GetResString(IDS_NEW_SYMBOL_ADDED)
+ 
+ Exit Sub
+
+ HandleError:
+  Note "save_new: " + Error$()
+  Resume Next 
+  
+End Sub
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Save the edited symbol.  The resulting font file is TMP2.FNT               '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub save_old
+  OnError Goto HandleError
+  Dim  buf                   As Float,
+       byte                  As String,
+       i, fptr, addr, move   As Integer
+ 
+  Open File TMP For Output As 2
+  Close File 2
+
+  Open File TMP For Binary As 2 ByteOrder LOWHIGH
+
+  Open File FNT for Binary as 1 ByteOrder LOWHIGH
+  Get 1, code * 5 + 28, addr
+
+  Seek 1, 1
+
+'Print "COPYING . . ."
+  Do While Seek(1) <= addr
+    Get 1, , buf
+    Put 2, , buf
+  Loop
+
+  Close File 2
+  Open File TMP For Random As 2 Len = 1 ByteOrder LOWHIGH CharSet "Neutral"
+
+  Seek 2, addr + 1
+
+  Call write_symbol(2)
+
+  Close File 2
+  Open File TMP For Binary As 2 ByteOrder LOWHIGH
+
+  Get 1, code * 5 + 33, fptr
+  move = LOF(2) - fptr
+
+  Seek 1, fptr + 1
+  Seek 2, Seek(1) + move
+
+'Print "COPYING . . ."
+  Do While Seek(1) <= LOF(1)
+    If LOF(1) - Seek(1) + 1 < Len(buf) Then
+      Seek 1, LOF(1) - Len(buf) + 1
+      Seek 2, Seek(1) + move
+    End If
+    Get #1, , buf      
+    Put #2, , buf
+  Loop
+
+'Print "MODIFYING ADDRESSES . . ."
+  For i = code  + 1 To nsyms
+    fptr = i * 5 + 28
+    Get 2, fptr, addr
+    addr = addr + move
+    Put 2, fptr, addr
+  Next
+
+  fptr = LOF(2)
+
+  Put 2, nsyms * 5 + 33, fptr
+  
+  Close File 2
+  Close File 1
+  Call UpdateFntFile
+  Note GetResString(IDS_SYMBOL_EDIT_COMPLETE)
+  
+  
+ Exit Sub
+
+ HandleError:
+  Note "save_old: " + Error$()
+  Resume Next 
+  
+End Sub
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Created (edited) symbol is actually written to the font file here.         '
+' Objects are fetched from the SYMBOL table in the loop.  basic_color() is   '
+' called to convert a full color to the closest of 8 basic colors.  put_xy() '
+' is called for each node to write its coordinates to the file.              '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub write_symbol (ByVal filenum As Smallint)
+  OnError Goto HandleError
+  Dim  nodes, npgons,
+       _type, color    As Smallint,
+       i, j            As Integer,
+       byte            As String,
+       _obj            As Object,
+       _pen            As Pen,
+       _brush          As Brush
+
+'Print "WRITING THE SYMBOL . . ."
+  Fetch First From SYMBOL
+  While Not EOT(SYMBOL)
+    _obj = SYMBOL.obj
+    _type = ObjectInfo(_obj, OBJ_INFO_TYPE)
+    _pen = ObjectInfo(_obj, OBJ_INFO_PEN)
+
+    If StyleAttr(_pen, PEN_PATTERN) > 1 Then
+      If SYMBOL.line_change Then
+        color = 0
+      Else
+        color = basic_color(StyleAttr(_pen, PEN_COLOR))
+      End If
+    Else
+      color = 9
+    End If
+
+    Put filenum, , _1
+    byte = Chr$(color)     
+    Put filenum, , byte
+
+    If _type = OBJ_RECT Or _type = OBJ_ROUNDRECT Or _type = OBJ_REGION Then
+      _brush = ObjectInfo(_obj, OBJ_INFO_BRUSH)
+      If StyleAttr(_brush, BRUSH_PATTERN) > 1 Then
+        If SYMBOL.fill_change Then
+          color = 0
+        Else
+          color = basic_color(StyleAttr(_brush, BRUSH_FORECOLOR))
+        End If
+        byte  = Chr$(color) 
+        Put filenum, , byte 
+        Put filenum, , _1
+      End If
+    End If
+
+    Do Case _type
+      Case OBJ_LINE
+        Call put_xy(ObjectGeography(_obj, OBJ_GEO_LINEBEGX), ObjectGeography(_obj, OBJ_GEO_LINEBEGY), filenum)
+        Call put_xy(ObjectGeography(_obj, OBJ_GEO_LINEENDX), ObjectGeography(_obj, OBJ_GEO_LINEENDY), filenum)
+      Case OBJ_PLINE
+        nodes = ObjectInfo(_obj, OBJ_INFO_NPNTS)
+        For i = 1 To nodes
+          Call put_xy(ObjectNodeX(_obj, 1, i), ObjectNodeY(_obj, 1, i), filenum)
+        Next
+      Case OBJ_RECT, OBJ_ROUNDRECT
+        Call put_xy(ObjectGeography(_obj, OBJ_GEO_MINX), ObjectGeography(_obj, OBJ_GEO_MINY), filenum)
+        Call put_xy(ObjectGeography(_obj, OBJ_GEO_MINX), ObjectGeography(_obj, OBJ_GEO_MAXY), filenum)
+        Call put_xy(ObjectGeography(_obj, OBJ_GEO_MAXX), ObjectGeography(_obj, OBJ_GEO_MAXY), filenum)
+        Call put_xy(ObjectGeography(_obj, OBJ_GEO_MAXX), ObjectGeography(_obj, OBJ_GEO_MINY), filenum)
+        Call put_xy(ObjectGeography(_obj, OBJ_GEO_MINX), ObjectGeography(_obj, OBJ_GEO_MINY), filenum)
+      Case OBJ_REGION
+        npgons = ObjectInfo(_obj, OBJ_INFO_NPOLYGONS)
+        For i = 1 To npgons
+          nodes = ObjectInfo(_obj, OBJ_INFO_NPOLYGONS + i)
+          For j = 1 To nodes
+            Call put_xy(ObjectNodeX(_obj, i, j), ObjectNodeY(_obj, i, j), filenum)
+          Next
+        Next
+      Case Else
+    End Case
+    Put filenum, , _1
+    Put filenum, , _1
+    Fetch Next From SYMBOL
+  Wend
+  
+Exit Sub
+
+HandleError:
+  Note "write_symbol: " + Error$()
+  Resume Next
+  
+End Sub
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' About Symbol Dialog
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub WinChangedHandler
+  
+  OnError GOTO HandleError
+  If CommandInfo(CMD_INFO_WIN) = giWindowID Then
+	OnError GOTO SymbolTableError
+    If TableInfo(SYMBOL, TAB_INFO_EDITED) Then
+      OnError GOTO HandleError
+      Alter Menu Item save_symbol      Enable 
+      Alter Menu Item cancel_handler   Enable Text GetResString(IDS_CANCEL)
+    End If
+  End If
+  
+  Exit Sub
+
+HandleError:
+  Note "WinChangedHandler: " + Error$()
+  Resume Next
+
+SymbolTableError:
+  resume reset
+
+reset:
+  Call reset_app
+  
+End Sub 
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' About Symbol Dialog
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub about
+  Dialog
+    Title GetResString(IDS_ABOUT) + " " + GetResString(IDS_APP_DESCRIPTION) + " (" + GetResString(IDS_VERSION)+ " " + AppVersion + ")"
+    Control StaticText
+      Title GetResString(IDS_ABOUT_1) Position 10, 10
+    Control StaticText
+      Title GetResString(IDS_ABOUT_2) Position 10, 20
+    Control StaticText
+      Title GetResString(IDS_ABOUT_3) Position 10, 30
+    Control StaticText
+      Title GetResString(IDS_ABOUT_4) Position 10, 40
+    Control StaticText
+      Title GetResString(IDS_ABOUT_5) Position 10, 50
+    Control StaticText
+      Title GetResString(IDS_ABOUT_6) Position 10, 60
+    Control StaticText
+      Title GetResString(IDS_ABOUT_7) Position 10, 70
+    Control StaticText
+      Title GetResString(IDS_ABOUT_8) Position 10, 80
+    Control StaticText
+      Title GetResString(IDS_ABOUT_9) Position 10, 90
+    Control StaticText
+      Title GetResString(IDS_ABOUT_10) Position 10, 100
+    Control StaticText
+      Title GetResString(IDS_ABOUT_11) Position 10, 110
+    Control StaticText
+      Title GetResString(IDS_ABOUT_12) Position 10, 120
+    Control StaticText
+      Title GetResString(IDS_ABOUT_13) Position 10, 130
+    Control StaticText
+      Title GetResString(IDS_ABOUT_14) Position 10, 140
+    Control StaticText
+      Title GetResString(IDS_ABOUT_15) Position 10, 150
+    Control StaticText
+      Title GetResString(IDS_ABOUT_16) Position 10, 160
+    Control StaticText
+      Title GetResString(IDS_ABOUT_17) Position 10, 170
+    Control StaticText
+      Title GetResString(IDS_ABOUT_18) Position 10, 180
+    Control StaticText
+      Title GetResString(IDS_ABOUT_19) Position 10, 190
+    Control StaticText
+      Title GetResString(IDS_ABOUT_20) Position 10, 200
+    Control StaticText
+      Title GetResString(IDS_ABOUT_21) Position 10, 210
+    Control StaticText
+      Title GetResString(IDS_ABOUT_22) Position 10, 220
+    Control StaticText
+      Title GetResString(IDS_ABOUT_23) Position 10, 230
+
+    Control OKButton
+      Title GetResString(IDS_OK)
+
+End Sub
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' Handler for the "Exit" menu item.                                          '
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub xit
+  OnError Goto HandleError
+  If Not saved Then
+    Dialog Title GetResString(IDS_EXIT)
+      Control StaticText
+        Position 5, 5
+        Title GetResString(IDS_SAVE_CHANGES)
+      Control OKButton
+        Position 120, 25
+        Width 40
+        Title GetResString(IDS_SAVE)
+        ID 1
+      Control CancelButton
+        Position 10, 25
+        Width 40
+        Title GetResString(IDS_CANCEL)
+        ID 2
+      Control Button
+        Position 65, 25
+        Width 40
+        Title GetResString(IDS_DISCARD)
+        ID 3
+        Calling discard_handler
+
+    If CommandInfo(CMD_INFO_DLG_OK) Then
+      Call save_symbol
+      Call clean_up(changed)
+    End If
+  Else
+    Call clean_up(changed)
+  End If
+  
+Exit Sub
+
+HandleError:
+  Note "xit: " + Error$()
+  Resume Next
+
+  
+End Sub

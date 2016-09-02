@@ -1,0 +1,193 @@
+'***********************************************************************************
+' Source for the str_lib library.  Users of this library should see str_lib.def 
+' for information on how to use the routines contained herein.
+' 
+' Version 1.0
+'***********************************************************************************
+
+Include "..\Inc\str_lib.def"
+
+
+'****************************************************************************************
+' Given a semi-colon delimited list, this routine returns the count of items in the list
+'****************************************************************************************
+Function count_items(ItemTitleList as String) as SmallInt
+Dim i, counter as SmallInt
+
+	For i = 1 to Len(itemTitleList)
+		If Mid$(itemTitleList, i, 1) = ";" Then
+			counter = counter + 1
+		End If
+	Next
+	count_items = counter
+
+End Function
+
+'****************************************************************************************
+' This routine takes a semi delimited list and swaps the itemIndex item with the item
+' before it in the list.
+'****************************************************************************************
+Function list_move_up(ItemTitleList As String, ByVal itemIndex as SmallInt) as SmallInt
+Dim beforeStr, afterStr as String
+Dim beforePosCounter, counter, i, nextPos as SmallInt
+Dim insertStr, afterInsertStr as String
+Dim errCode as SmallInt
+Dim errString as String
+
+	If Len(ItemTitleList) < 2 OR Len(ItemTitleList) > LISTMAX then
+		errString = "LIST_MOVE_UP: ItemList empty or exceeds maximum length"
+		Goto ERRHANDLER
+	End If
+
+	Call extract(itemIndex, itemTitleList, insertStr)
+	Call extract(itemIndex-1, itemTitleList, afterInsertStr)	
+
+	' If we are moving the item into the first position, we have to special case it
+	If itemIndex = 2 Then 
+		beforeStr = insertStr + ";" + afterInsertStr
+		beforePosCounter = 1
+	Else
+		For i = 0 to Len(itemTitleList)
+			If Mid$(itemTitleList, i, 1) = ";" Then
+				counter = counter + 1
+				If counter = itemIndex-2 Then
+					Exit For
+				End If
+			End If
+			beforePosCounter = beforePosCounter + 1
+		Next
+		beforeStr = Left$(itemTitleList, beforePosCounter-1) + ";" + insertStr + ";" + afterInsertStr
+	End If
+
+	' Now we get the afterStr portion
+	nextPos = Instr(beforeposCounter+1, itemTitleList, ";")
+	nextPos = Instr(nextPos+1, itemTitleList, ";")
+	afterStr = Mid$(itemTitleList, nextPos, Len(itemTitleList)-nextPos)
+
+	itemTitleList = beforeStr + afterStr
+	errCode = set_list_end(itemTitleList)
+
+	Exit Sub
+ERRHANDLER:
+	LIST_MOVE_UP = FAILURE
+	Note errString
+		
+End Function
+
+
+'****************************************************************************************
+' This routine takes a semi delimited list and swaps the itemIndex item with the item
+' after it in the list.
+'****************************************************************************************
+Function list_move_down(ItemTitleList As String, ByVal itemIndex as SmallInt) as SmallInt
+Dim beforeStr, afterStr as String
+Dim beforePosCounter, counter, i, nextPos as SmallInt
+Dim insertStr, afterInsertStr as String
+Dim errCode as SmallInt
+Dim errString as String
+
+	If Len(ItemTitleList) < 2 OR Len(ItemTitleList) > LISTMAX then
+		errString = "LIST_MOVE_DOWN: ItemList empty or exceeds maximum length"
+		Goto ERRHANDLER
+	End If
+
+	Call extract(itemIndex, itemTitleList, insertStr)
+	Call extract(itemIndex+1, itemTitleList, afterInsertStr)	
+
+	' Unfortunately, the alogrithm for moving items down in the list is kind-o-klunky so,
+	' we have to handle the first item differently then the rest.
+	If itemIndex = 1 Then 
+		beforeStr = afterInsertStr+ ";" + insertStr
+		beforePosCounter = 1
+	Else
+		For i = 0 to Len(itemTitleList)
+			If Mid$(itemTitleList, i, 1) = ";" Then
+				counter = counter + 1
+				If counter = itemIndex-1 Then
+					Exit For
+				End If
+			End If
+			beforePosCounter = beforePosCounter + 1
+		Next
+		beforeStr = Left$(itemTitleList, beforePosCounter-1) + ";" + afterInsertStr+ ";" + insertStr
+	End If
+
+	' Now we get the afterStr portion
+	nextPos = Instr(beforeposCounter+1, itemTitleList, ";")
+	nextPos = Instr(nextPos+1, itemTitleList, ";")
+	afterStr = Mid$(itemTitleList, nextPos, Len(itemTitleList)-nextPos)
+
+	itemTitleList = beforeStr + afterStr
+	errCode = set_list_end(itemTitleList)
+
+	Exit Sub
+ERRHANDLER:
+	list_move_down = FAILURE
+	Note errString
+		
+End Function
+
+'****************************************************************************************
+' This routine makes sure that the string passed to it ends with a semi.
+'****************************************************************************************
+Function set_list_end(ItemTitleList as String) as SmallInt
+
+	If itemTitleList = "" OR Right$(RTrim$(ItemTitleList), 1) = ";" Then
+		set_list_end = SUCCESS
+	Else
+		ItemTitleList = ItemTitleList + ";"
+		set_list_end = SUCCESS
+	End If
+
+End Function
+
+
+'------------------------------------------------------------------------------------
+' Given a semi-colon delimited string, and and a substr, this routine removes
+' the substring
+'------------------------------------------------------------------------------------
+Sub remove_list_item(itemList as String, item2Remove as String, byval removeTrailingSemis as Logical)
+Dim curPos as Integer
+Dim StartStr, endStr as String
+
+	itemList = RTrim$(itemList)
+	curPos = Instr(1, itemList, item2Remove)
+	If curPos <> 0 Then
+		StartStr = Left$(itemList, curPos-1)
+		EndStr = Mid$(itemList, (curPos+Len(item2Remove )+1), Len(itemList) - (curPos+Len(item2Remove)))		
+		itemList = StartStr + endStr
+	End If
+
+	If removeTrailingSemis Then
+		While Right$(itemList, 1) = ";"
+			itemList = Mid$(itemList, 1, Len(itemList)-1)
+		Wend
+	End If			
+End Sub
+
+'****************************************************************************
+'
+' Sub procedure: Extract()
+'
+' From a ';' delimited list, extract specified element
+' Goal is number of item to return; s is string with list of 
+' items; rval is string that will contain selected item.
+'
+'****************************************************************************
+Sub Extract( ByVal StrIndex As Integer, ByVal StrToParse As String, retStr As String )
+Dim iBeg, iEnd, r As Integer
+
+  iBeg = 1
+  iEnd = InStr( iBeg, StrToParse, ";" )
+
+  For r = 2 To StrIndex
+    iBeg = iEnd + 1
+    iEnd = InStr( iBeg, StrToParse, ";" )
+  Next
+    
+  If iEnd = 0 Then
+    iEnd = 99
+  End If
+  retStr = Mid$( StrToParse, iBeg, iEnd - iBeg )
+
+End Sub 

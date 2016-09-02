@@ -1,0 +1,1412 @@
+'*****************************************************************************
+'       Copyright (c) 2003, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: PACKAGER.MB $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+' Program to package a copy of a workspace into a single directory
+'  for easier backups, compression, transfer between computers, etc.
+'
+' Revision History:
+'
+'    Rev 1.0   12 May 2003               Greene
+'					initial version.
+'        1.1   10 Jun 2003               Greene
+'               first draft of functional GUI for Packager
+'        1.2   16 July 2003              Greene
+'              revised architecture to work around
+'               problems with intermittent copying errors (seamless tables)
+'        1.3   18 July 2003              Greene
+'					fixed bugs #27413, #27416, #27425, #27430
+'               improved copying of rasters and other table types
+'        1.4   24 July 2003              Greene
+'               fixed bugs #27407, #27414, #27643
+'               reorganized locations and names of temp saved workspaces
+'        1.5   29 July 2003              Greene
+'               fixed bugs #27660, #27661, #27718, #27720
+'        1.6   31 July 2003              Greene
+'					fixed bugs #27739, #27741
+'        1.7   2 Aug 2003                Greene
+'               fixed bugs #27828, #27834
+'        1.8   5 Aug 2003                Greene
+'                fixed bugs #27828, #27834, #27879, #27880
+'                removed bugs re-introduced in an incorrect rollback in 1.6
+'        1.8PB 6 Aug 2003                Greene
+'                private build, checked in for testing purposes
+'        1.9   11 Aug 2003               Greene
+'                fixed bugs #27879, #27950, #27955, #27963, #27972
+'        1.10  13 Aug 2003               Greene
+'                fixed bugs #27992/#28012, #28007, #28011,  #28043
+'        1.11  14 Aug 2003               Greene
+'                fixed bug #28071, included more robust support for seamless
+'        1.12  15 Aug 2003               Greene
+'                fixed bug #27992 [removed EXACT_COPY option from menus]
+'                fixed bugs #27954, #28048 
+'        1.13  15 July 2004              Johnson
+'                Fix for bug# 28262 - Special Characters like German umlauts 
+'                are not parsed correctly by the Packager, unless the Open  
+'                file statement include the systems charset.  Added charset 
+'                clause in the bParseWorkspace function.
+'*****************************************************************************
+Include "PACKAGER.DEF"
+
+'************************************************************************
+Sub Main
+  Dim bResult as Logical, i as Integer
+
+  OnError Goto HandleError
+
+  If LoadStrings(ApplicationDirectory$() + "Packager.str") = FALSE Then
+    Note "Unable to access resource string file: " + ApplicationDirectory$() + "Packager.str"
+    Exit Sub
+  End If
+
+  Create Menu GetResString(IDS_MENU_NAME) As
+    GetResString(IDS_SAVE_WKSP_MENU_ITEM_NAME)
+		HelpMsg GetResString(IDS_SAVE_WKSP_MENU_ITEM_HELP)
+		Calling PackageCurrent,
+    "(-",
+	 GetResString(IDS_CHOOSE_WKSP_MENU_ITEM_NAME) ID 1001
+		HelpMsg GetResString(IDS_CHOOSE_WKSP_MENU_ITEM_HELP)
+		Calling SelectAndPackage,
+ 	 "(-",
+    GetResString(IDS_ABOUT_MENU_ITEM_NAME) Calling About,
+    GetResString(IDS_EXIT_MENU_ITEM_NAME) Calling GoodBye
+
+  Alter Menu ID 4 Add GetResString(IDS_PACKAGER_TOOL_NAME) As GetResString(IDS_PACKAGER_TOOL_NAME)
+  
+  g_strPackagerPath=GetFolderPath$(FOLDER_APPDATA) & "\" & GetResString(IDS_WORKDIR_NAME) & "\"
+  ' This is a subfolder in the user's application data directory, used for temporary tables.
+  '  Windows guarantees this location to be writable.  Packager.MB does not store anything
+  '  permanently in this folder, but it makes sure multiple concurrent sessions won't collide.
+  bResult=bCreateDir(g_strPackagerPath)
+
+  ' set global defaults on startup [alternative would be to read these from a .PRF file]
+  g_strOutputPath = GetFolderPath$(FOLDER_MYDOCS)
+  if right$(g_strOutputPath, 1) <>"\" then
+    g_strOutputPath=g_strOutputPath & "\"
+  end if
+
+  ' this default folder should always exist, but just for the record:
+  if not FileExists(g_strOutputPath) then
+	bResult=bCreateDir(g_strOutputPath)
+  end if
+
+  Exit Sub
+
+IgnoreError:
+	Resume Next
+HandleError:
+  Note "Main: " + Error$()
+End Sub
+
+'************************************************************************
+Sub GoodBye
+  End Program
+End Sub
+
+'************************************************************************
+Sub About
+
+  OnError Goto HandleError
+
+  Dialog Title GetResString(IDS_ABOUT)
+  Height 156 Width 250
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_1) Position 10, 10
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_2) Position 10, 19
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_3) Position 10, 28
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_4) Position 10, 37
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_5) Position 10, 46
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_6) Position 10, 55
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_7) Position 10, 73
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_8) Position 10, 82
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_9) Position 10, 91
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_10) Position 10, 100
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_11) Position 10, 109
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_12) Position 10, 118
+  Control OKButton Title GetResString(IDS_OK) Position 108, 138 Width 45
+
+  Exit Sub
+
+HandleError:
+  Note "About: " + Error$()
+End Sub
+
+'*******************************************************************
+Sub PackageCurrent
+	Dim strTempWOR, strTempOutputWOR as String, i as Integer
+	Dim bResult, bErrorFlag as Logical
+	OnError Goto HandleError
+
+	if bPackagerDirWritable()=FALSE then
+		print GetResString(IDS_STARTUP_ERROR_MSG) & chr$(13) & g_strPackagerPath
+		Exit Sub
+	end if
+	g_strWorkspaceList="" 'VI28071
+	Call ClearTableList
+	strTempWOR=strCreateUniqueWorkspace()
+	' bug# 11300 causes an error, and a partially-written workspace, when programmatically
+	' saving workspaces containing query tables.  Workaround:
+	Run Command "Save Workspace As """ & strTempWOR & """"
+	' let error checking after bParseWorkspace handle existence question
+
+	' check for cases where we know ahead of time that the current workspace will have to
+	' be closed after saving a backup:  open seamless tables require this process, because
+	' they are removed from current map windows when seamless behavior is turned off.
+
+	g_bCloseEverything=FALSE
+	for i=1 to NumTables()
+		if TableInfo(i, TAB_INFO_SEAMLESS) then
+		g_bCloseEverything=TRUE
+			Exit For
+		end if
+	next
+	if g_bCloseEverything then
+		if bAskBeforeClosingEverything()=FALSE then
+			' user cancelled -- stop packaging process
+			OnError Goto IgnoreError
+			Kill strTempWor
+			Exit Sub
+			g_bCloseEverything=FALSE
+		else
+			Close All Interactive
+		end if
+	end if
+
+	Call PackageOneWorkspace(strTempWOR, TRUE)
+	Exit Sub
+IgnoreError:
+	Resume Next
+HandleError:
+   Note "PackageCurrent:  " & Error$()
+End Sub
+
+Function bPackagerDialog() as Logical
+	OnError Goto HandleError
+	Dim i as Integer, bResult, bEnableAdvanced as Logical, strExportToFolderLabel as String
+
+	if UBound(g_refs)=0 then
+		Note GetResString(IDS_NO_TABLE_REFERENCES)
+		bPackagerDialog=FALSE
+		Exit Function
+	end if
+	g_strPermissionToOverwrite=""
+	g_bLocalTables=FALSE
+	g_bUNCTables=FALSE
+	g_bRemoteTables=FALSE
+	for i=1 to UBound(g_refs)
+		if g_refs(i).strTableType="ODBC" or g_refs(i).strTableType="LINKED" then
+			g_bRemoteTables=TRUE
+		elseif Left$(LTrim$(g_refs(i).strFName), 2)="\\" then
+			g_bUNCTables=TRUE
+		else
+			g_bLocalTables=TRUE
+		end if
+		if g_bLocalTables and g_bUNCTables and g_bRemoteTables then
+			'no point in looking any further
+			exit for
+
+
+
+		end if
+	next
+	if g_bUserPicksWorkspaceName then
+		strExportToFolderLabel=GetResString(IDS_EXPORT_TO_FOLDER)
+		if g_strOutputFName="" then
+			g_strOutputPath=g_strOutputPath & GetResString(IDS_DEFAULT_WORKSPACE_NAME)
+		else
+			' hang the file name on the end for the purposes of the dialog...
+			g_strOutputPath=g_strOutputPath & g_strOutputFName
+		end if
+		if Right$(g_strOutputPath, 4)<>".WOR" then
+			g_strOutputPath=g_strOutputPath & ".WOR"
+		end if
+	else
+		strExportToFolderLabel=GetResString(IDS_EXPORT_MULTIPLE_TO_FOLDER)
+		' ignore the workspace name, since we're saving multiple workspaces
+		g_strOutputPath=Left$(g_strOutputPath, Len(g_strOutputPath)-Len(PathToFileName$(g_strOutputPath)))
+	end if
+
+	Dialog Height 150 Calling DlgSetUpHandler
+
+	  Title GetResString(IDS_PACKAGER_TOOL_NAME)
+		Control StaticText Title strExportToFolderLabel Position 10, 10
+		Control Button Position 225, 5 Width 45 Title GetResString(IDS_BROWSE) Calling ChangeExportFolder
+		Control EditText Width 260 Position 10, 20 ID 496 Value g_strOutputPath
+		Control GroupBox Height 75 Position 5, 35  
+			Title GetResString(IDS_COPY_OPTIONS)
+		Control StaticText Position 10, 45 ID 497 Title GetResString(IDS_LOCAL_TABLES) Disable
+		Control PopUpMenu Position 130, 45 ID 498 Value COPYTYPE_NATIVE Disable
+			Title GetResString(IDS_DONTCOPY_EXACT_OR_NATIVE)
+		Control StaticText Position 10, 60 ID 499 Title GetResString(IDS_UNC_PATH_TABLES) Disable
+		Control PopUpMenu Position 130, 60 ID 500 Value COPYTYPE_NATIVE Disable
+			Title GetResString(IDS_DONTCOPY_EXACT_OR_NATIVE)
+		Control StaticText Position 10, 75 ID 501 Title GetResString(IDS_REMOTE_LINKED) Disable
+		Control PopUpMenu Position 130, 75 ID 502 Value COPYTYPE_NATIVE Disable
+			Title GetResString(IDS_DONTCOPY_EXACT_OR_NATIVE)
+		Control Checkbox Position 10, 92 ID 503 Value FALSE
+			Into bEnableAdvanced Calling EnableAdvancedHandler
+			Title GetResString(IDS_ENABLE_ADVANCED)
+		Control Button Position 162, 90 ID 504 Calling AdvancedHandler Disable
+
+			Title GetResString(IDS_ADVANCED_OPTIONS)
+		Control OKButton Position 10, 127 Width 45 Calling OKButtonHandler
+			Title GetResString(IDS_OK) 
+		Control CancelButton Position 60, 127 Width 45 Title GetResString(IDS_CANCEL)
+
+		Control Button Title GetResString(IDS_HELP) Position 110, 127 Width 45 Calling DisplayHelp
+
+		if CommandInfo(CMD_INFO_DLG_OK) then
+          ' g_strOutputPath and g_strOutputFName have already been updated (in OKButtonHandler). 
+			' Now that the user can no longer change the base output folder, fix all pointers to it:
+			for i=1 to UBound(g_refs)
+				if Left$(g_refs(i).strNewPath, 2)="?\" then
+					g_refs(i).strNewPath=g_strOutputPath & Mid$(g_refs(i).strNewPath, 3, len(g_refs(i).strNewPath)-2)
+				end if
+			next
+			bPackagerDialog=TRUE
+		else
+			' return to the status quo:  no appended filename in output path
+			g_strOutputPath=PathToDirectory$(g_strOutputPath)
+			bPackagerDialog=FALSE
+		end if
+	Exit Sub
+
+HandleError:
+
+	' return to the status quo:  no appended filename in output path
+	g_strOutputPath=PathToDirectory$(g_strOutputPath)
+	Note "bPackagerDialog: " + Error$()
+End Function    
+
+'************************************************************************************
+Sub DlgSetUpHandler
+' initialize drop-down boxes if appropriate table types exist
+	if g_bLocalTables then
+		Alter Control 497 Enable
+		Alter Control 498 Enable
+	end if
+	if g_bUNCTables then
+		Alter Control 499 Enable
+		Alter Control 500 Enable
+	end if
+	if g_bRemoteTables then
+		Alter Control 501 Enable
+		Alter Control 502 Enable
+	end if
+	Call SetGlobalCopyDefaults
+End Sub
+
+'**************************************************************************************
+Sub ChangeExportFolder
+	dim strFolder, strFileName, strNewPath as string
+
+	g_strOutputPath=ReadControlValue(496)
+
+
+	strFolder=PathToDirectory$(g_strOutputPath)
+	if FileExists(strFolder)=FALSE then
+		strFolder=""
+	end if
+
+	strFileName=PathToFilename$(g_strOutputPath)
+	if strFileName="" then
+		if g_bUserPicksWorkspaceName then
+			strFileName=GetResString(IDS_DEFAULT_WORKSPACE_NAME)
+		else
+			strFileName=GetResString(IDS_MULTIPLE_WORKSPACE_NAME)
+		end if
+	end if
+	if Right$(strFileName, 4)<>".WOR" then
+		strFileName=strFileName & ".WOR"
+	end if
+	strNewPath=FileSaveAsDlg(strFolder, strFileName, "WOR", GetResString(IDS_CHOOSE_WOR_LOCATION))
+	if g_bUserPicksWorkspaceName=FALSE then
+		' ignore the workspace name, since we're saving multiple workspaces
+		strNewPath=Left$(strNewPath, Len(strNewPath)-Len(PathToFileName$(strNewPath)))
+	end if
+	if strNewPath <> "" then
+		Alter Control 496 Value strNewPath
+		g_strPermissionToOverwrite=strNewPath
+	end if
+End Sub
+
+'*****************************************************************************
+Sub EnableAdvancedHandler
+	if ReadControlValue(503)=TRUE then
+		'Advanced copy options have been chosen; disable popup menus, but first
+		' use their settings as a basis for default output filenames and paths
+		Call SetGlobalCopyDefaults
+		Alter Control 498 Disable
+		Alter Control 500 Disable
+		Alter Control 502 Disable
+
+		Alter Control 504 Enable
+	else
+		if g_bLocalTables then
+			Alter Control 498 Enable
+		end if
+		if g_bUNCTables then
+			Alter Control 500 Enable
+		end if
+		if g_bRemoteTables then
+			Alter Control 502 Enable
+		end if
+		Alter Control 504 Disable
+	end if
+End Sub
+
+Sub OKButtonHandler
+	dim i as SmallInt, s, strOutputList as String, bErrorFlag, bResult as Logical
+	OnError Goto HandleError
+
+	s=strCleanFileName(ReadControlValue(496))
+	' VI#27963
+	If PathToDirectory$(s)="" Or (Mid$(s,2,2)<>":\" And Left$(s,2)<>"\\") Then
+		Note GetResString(IDS_RELATIVE_PATHS_NOT_ALLOWED)
+		Dialog Preserve
+		Exit Sub
+	End If
+	If Instr(1, UCase$(g_strWorkspaceList), UCase$(s)) Then
+		Note GetResString(IDS_NEED_DIFFERENT_OUTPUT_DIR) ' VI#28071
+		Dialog Preserve
+		Exit Sub
+	End If
+
+	If g_bUserPicksWorkspaceName then
+		g_strOutputPath=PathToDirectory$(s)
+		g_strOutputFName=PathToFileName$(s)
+		If g_strOutputFName="" Then ' VI#27955
+			Note GetResString(IDS_NO_WOR_NAME)
+			Dialog Preserve
+			Exit Sub
+		End If
+
+		If FileExists(g_strOutputPath & g_strOutputFName) Then ' VI#27972
+			If PathToDirectory$(g_strPermissionToOverwrite)<>g_strOutputPath 
+			  Or PathToFileName$(g_strPermissionToOverwrite)<>g_strOutputFName Then
+				If Ask(GetResString(IDS_OK_TO_OVERWRITE_WOR),
+						GetResString(IDS_OK), GetResString(IDS_CANCEL))=FALSE then
+					Dialog Preserve
+					Exit Sub
+				End If
+			End If ' user has given permission to overwrite an existing workspace.
+			bErrorFlag=FALSE
+			OnError Goto ReportError
+			Kill g_strOutputPath & g_strOutputFName
+			OnError Goto HandleError
+			If bErrorFlag Then
+				Note GetResString(IDS_INVALID_OUTPUT_FILENAME)
+				Dialog Preserve
+				Exit Sub
+			End If
+		Else
+			' no existing workspace at this location; nothing to worry about.
+		End If
+	Else ' VI#27950
+		If Right$(s,4)<>".WOR" and Right$(s, 1) <> "\" Then
+			s=s & "\"
+		End If
+		g_strOutputPath=PathToDirectory$(s)
+		g_strOutputFName=""
+	End If
+
+	strOutputList=";" ' VI#27954
+	For i=1 To UBound(g_refs)
+		If g_refs(i).intCopyType<>COPYTYPE_DONT Then ' skip files that won't be copied
+			s=g_refs(i).strNewPath & g_refs(i).strNewFName
+			If Left$(s, 2)="?\" Then
+				s=g_strOutputPath & Mid$(s, 3, len(s)-2)
+			End If
+			If Instr(1, UCase$(strOutputList), ";" & UCase$(s) & ";") Then
+				Note GetResString(IDS_TABLE_OVERWRITE_ERR)
+				Dialog Preserve
+				Exit Sub
+			End If
+			' string can grow to 32767 characters, after which concatenated strings are truncated without error.
+			'  (Probably not worth the processing time to compare all array elements against each other one by one.)
+			strOutputList=strOutputList & s & ";"
+		End If
+	Next
+
+	If g_strOutputFName<>"" and Right$(g_strOutputFName, 4)<>".WOR" Then
+		g_strOutputFName=g_strOutputFName & ".WOR"
+	End If
+	bResult=bCreateDir(g_strOutputPath)
+	If bWritable(g_strOutputPath, g_strOutputFName)=FALSE Then
+		Note GetResString(IDS_INVALID_OUTPUT_FILENAME)
+		Dialog Preserve
+		Exit Sub
+	End If
+
+	If ReadControlValue(503) Then
+		' menus are currently greyed out and irrelevant
+	Else
+		Call SetGlobalCopyDefaults
+	End If
+Exit Sub
+
+ReportError:
+	bErrorFlag=TRUE
+	Resume Next
+HandleError:
+  Note "OKButtonHandler: " + Error$()
+End Sub
+
+'This function will be called by either the Advanced or OK button handlers;
+' the dialog will always be open at that time, so the current popup menu
+' settings can be read directly
+Sub SetGlobalCopyDefaults
+	OnError Goto HandleError
+	dim i as SmallInt, siLocal, siUNC, siRemote as SmallInt
+
+	siLocal=ReadControlValue(498)
+	siUNC=ReadControlValue(500)
+	siRemote=ReadControlValue(502)
+
+	for i=1 to UBound(g_refs)
+		'VI#27992
+		if Left$(LTrim$(g_refs(i).strFName), 2)="\\" then
+			g_refs(i).intCopyType=siUNC
+		elseif g_refs(i).strTableType="ODBC" or g_refs(i).strTableType="LINKED" then
+			g_refs(i).intCopyType=siRemote
+		else
+			g_refs(i).intCopyType=siLocal
+		end if
+
+		Call SetDefaultTableOutputPath(i, TRUE)
+	next
+
+Exit Sub
+HandleError:
+  Note "SetGlobalCopyDefaults: " + Error$()
+End Sub
+
+Sub DisplayHelp
+	Call About
+End Sub
+
+Sub AdvancedHandler
+	dim s as String
+	OnError Goto HandleError
+
+	s=ReadControlValue(496)
+	g_strOutputPath=PathToDirectory$(s)
+	g_strOutputFName=PathToFileName$(s)
+	if Right$(g_strOutputFName, 4)<>".WOR" then
+		g_strOutputFName=g_strOutputFName & ".WOR"
+	end if
+
+	if g_bUserPicksWorkspaceName then
+		if g_strOutputFName=".WOR" then
+			Note GetResString(IDS_INVALID_OUTPUT_FILENAME)
+			Dialog Preserve
+			Exit Sub
+		end if
+	end if
+
+	Call ShowAdvancedDialog
+	Exit Sub
+HandleError:
+	Note "AdvancedHandler:  " & Error$()
+End Sub
+
+'*******************************************************************
+' This function assumes that the reference-table array has been 
+' initialized correctly:  g_refs() should be filled out 
+'  with the appropriate information about the old and new filenames.
+'
+' Note that this subroutine _only_ creates the corrected workspaces -- it does not
+'  copy the actual tables on which the corrected workspace depends.  This is
+'  because the tables need to be copied only once, even if there are multiple
+'  workspaces being packaged -- so this copying is done in a separate step.
+'
+Function bPackageWorkspace(ByVal strWorkspacePath as String,
+								 ByVal strOutputPath as String, ByVal bTempWorkspace as Logical) as Logical
+	Dim strLine, strQuoted, strAbsolutePath, strBaseFolder, strReplace as String
+	Dim intQuote, intEndQuote, intLen as SmallInt, bResult as Logical
+	OnError Goto HandleError
+
+	' input path has already been tested to ensure existence, but check output path:
+	if FileExists(PathToDirectory$(strOutputPath))=FALSE then
+		bResult=bCreateDir(PathToDirectory$(strOutputPath))
+	end if
+	If FileExists(PathToDirectory$(strOutputPath))=FALSE Then
+		Note GetResString(IDS_COULD_NOT_WRITE_WORKSPACE)
+		bPackageWorkspace=FALSE
+		Exit Function
+	end If
+
+	Open File strWorkspacePath for Input as #1 Charset SystemInfo(SYS_INFO_CHARSET)
+	Open File strOutputPath for Output as #2 Charset SystemInfo(SYS_INFO_CHARSET)
+	Do
+		Line Input #1, strLine
+		if EOF(1) then
+			Exit Do
+		end if
+
+		intQuote=Instr(1, strLine, """")
+		if intQuote>0 then
+			if Instr(1, UCase$(strLine), "OPEN TABLE")>0 then
+				intEndQuote=Instr(intQuote+1, strLine & """","""")
+				strQuoted=Mid$(strLine, intQuote+1, intEndQuote-intQuote-1)
+
+				' All necessary replacements in a workspace are filenames.
+				'  Some paths may possibly be relative paths; convert with strGetPath():
+				strAbsolutePath=strGetPath(PathToDirectory$(strWorkspacePath), strQuoted)
+				strReplace=strFindReplacement(strAbsolutePath)
+	
+				if strReplace<>"" then
+					strBaseFolder=PathToDirectory$(strOutputPath)
+					intLen=Len(strBaseFolder)
+					if Left$(strReplace, intLen)=strBaseFolder then
+						' use relative paths wherever possible
+						strReplace=Mid$(strReplace, intLen+1, Len(strReplace)-intLen)
+					end if
+					strLine=Left$(strLine, intQuote) & strReplace 
+									& Mid$(strLine, intEndQuote, Len(strLine)-intEndQuote+1)
+				end if
+			else
+				if Left$(LTrim$(strLine), 5)="Using" then
+				' there may be a graph template file to be copied over --
+					if Instr(1, UCase$(strLine), ".3TF")
+					  or Instr(1, UCase$(strLine), ".3DA")
+					  or Instr(1, UCase$(strLine), ".3WS")
+					  or Instr(1, UCase$(strLine), ".WMF")
+					  or Instr(1, UCase$(strLine), ".BMP")	then
+						intEndQuote=Instr(intQuote+1, strLine & """","""")
+						strQuoted=Mid$(strLine, intQuote+1, intEndQuote-intQuote-1)
+						strAbsolutePath=strGetPath(PathToDirectory$(strWorkspacePath), strQuoted)
+						if FileExists(strAbsolutePath) then
+							OnError Goto IgnoreError
+							if bTempWorkspace then
+								Rename File strAbsolutePath
+								 As PathToDirectory$(strOutputPath) & PathToFileName$(strAbsolutePath)
+							else
+								Save File strAbsolutePath
+								 As PathToDirectory$(strOutputPath) & PathToFileName$(strAbsolutePath)
+							end if
+							OnError Goto HandleError
+						end if
+					end if
+				end if
+			end if
+		end if
+		' print the original or altered line to the output workspace
+		Print #2, strLine
+	Loop
+	bPackageWorkspace=TRUE
+Done:
+	OnError Goto IgnoreError
+	Close File #1
+	Close File #2
+Exit Function
+IgnoreError:
+	Resume Next
+HandleError:
+  Note "bPackageWorkspace: " + Error$()
+  bPackageWorkspace=FALSE
+  Resume Done
+End Function
+
+Sub PackageWorkspaces(strWorkspacePaths() as String)
+	OnError Goto HandleError
+
+	dim si, sj as SmallInt, strTempWOR, strFName, strFNames() as String
+	dim intCounter as Integer, bDuplicate, bResult as Logical
+
+	strTempWOR=strCreateUniqueWorkspace()
+	Run Command "Save Workspace As """ & strTempWOR & """"
+
+	Redim strFNames(UBound(strWorkspacePaths))
+	' all workspaces will be copied to the same output folder, so we need to
+	'  handle the possibility that the same workspace name is used multiple times
+	for si=1 to UBound(strWorkspacePaths)
+		intCounter=1
+		strFName=PathToFileName$(strWorkspacePaths(si))
+		' if there really are a lot of duplicate workspace names, this method
+		'  will be inefficient, but the time lag seems likely to be insignificant
+		Do 
+			bDuplicate=FALSE
+			for sj=1 to si-1
+				if	strFName=strFNames(sj) then
+					bDuplicate=TRUE
+					Exit For
+				end if
+			next
+			if bDuplicate=FALSE then
+				strFNames(si)=strFName
+				Exit Do
+			end if
+			intCounter=intCounter+1
+			strFName=PathToFilename$(strWorkspacePaths(si))
+			if Right$(strFName, 4)=".WOR" then
+				strFName=Left$(strFName, Len(strFName) - 4)
+			end if
+
+			strFName=strFName & str$(intCounter) & ".WOR"
+		Loop
+	next
+	bResult=FALSE
+	For si=1 To UBound(strWorkspacePaths)
+		If FileExists(g_strOutputPath & strFNames(si)) then
+			bResult=TRUE
+			Exit For
+		End If
+	Next
+	If bResult Then
+		If Ask(GetResString(IDS_OK_TO_OVERWRITE_WORS),
+		  GetResString(IDS_OK), GetResString(IDS_CANCEL))=FALSE then
+			' user does not want to write over an existing workspace; cancel operation
+			Goto Done
+		End If
+	End If
+	For si=1 To UBound(strWorkspacePaths)
+		bResult=bPackageWorkspace(strWorkspacePaths(si), g_strOutputPath & strFNames(si), FALSE)
+		' could check bResult and clean up after any errors in bPackageWorkspace --
+	Next
+
+	' Pointers in all workspaces have now been updated according to the array.
+	' Now we have to actually put the tables where the workspaces say they are... 	
+	if bCopyTables() then
+		Note GetResString(IDS_PACKAGED_ALL_WORKSPACES) & chr$(13) & g_strOutputPath
+	end if
+
+Done:
+	' restore the current desktop if everything had to be closed due to table copying problems
+	if g_bCloseEverything then
+		Run Application strTempWOR
+	end if
+	OnError Goto IgnoreError
+	Kill strTempWOR
+	Exit Sub
+
+IgnoreError:
+	Resume Next
+	Exit Sub
+HandleError:
+  Note "PackageWorkspaces: " + Error$()
+End Sub
+
+'*******************************************
+' This function takes a path to a workspace; it finds all the Open Table statements
+'  and other table references in the workspace and returns the paths as elements of
+'  a global array (global because it is used in dialog handler code).
+' If this function encounters seamless tables or view tables, the child tables are
+'  also added to the global array lists.  If at any point it becomes necessary to
+'  close currently open tables [because of an incompletely specified filename, which
+'  can't be reliably completed without a trial opening of the table -- in the absence
+'  of advance knowledge of Search Directory settings] the user will be warned once, and
+'  all tables will be closed.
+Function bParseWorkspace(ByVal strWorPath as String) as Logical
+	Dim s, strQuoted, strFName, strAlias as String, bResult, bTablesFlag as Logical
+	Dim i, iStart, iEnd, intPointer as SmallInt
+	OnError Goto HandleError
+
+	if FileExists(strWorPath)=FALSE then
+			bParseWorkspace=FALSE
+			Exit Function
+	end if
+	'Fix for bug# 28262 - Special Characters like German umlauts are not parsed correctly
+	'by the Packager, unless the Open file statement include the systems charset.  Added 
+	'charset clause in the bParseWorkspace function.
+	Open File strWorPath for Input as #1 charset SystemInfo(SYS_INFO_CHARSET)
+	Line Input #1, s
+	s=LTrim$(s)
+	if Left$(s,10)<>"!Workspace" then
+		bParseWorkspace=FALSE
+		OnError Goto IgnoreError
+		Close File #1
+		Exit Function
+	end if
+	'current requirement is that "Open Table" statements be in a block at beginning of workspace
+	bTablesFlag=FALSE ' FALSE=no Open Table statements yet, TRUE=in middle of them
+	Do While Not EOF(1) ' just in case the workspace contains _no_ Open Table statements!
+		Line Input #1, s
+		s=LTrim$(s)
+		if Left$(s, 10)="OPEN TABLE" then
+			bTablesFlag=TRUE
+			iStart=Instr(1, s, """")
+			iEnd=Instr(iStart+1, s, """")
+			if iStart=0 or iEnd=0 then
+					bParseWorkspace=FALSE
+					OnError Goto IgnoreError
+					Close File #1
+					Exit Function
+			end if ' no .TAB filename, or no closing quotes -- not a valid workspace	
+			strQuoted=Mid$(s, iStart+1, iEnd-iStart-1)
+			strFName=strGetPath(PathToDirectory$(strWorPath), strQuoted)
+			if Right$(strFName, 4)<>".TAB" then
+				strFName=strFName & ".TAB"
+			end if
+			if Mid$(s, iEnd+1, 4) = " AS " then ' alias clause
+				s=Mid$(s, iEnd+5, Len(s)-iEnd-4)
+				 ' remove optional Hide or Interactive keywords
+				strAlias=Left$(s, Instr(1, s & " ", " ")-1)
+			else
+				' TODO:  call function to check Tables table to see whether alias
+				'   is really going to be the same as the file name.
+				' Low priority, because "normal" workspaces always have Alias clause
+				if Instr(1, strFName, "\")=0 then
+					strAlias=strFName
+				else
+					i=RevInstr(0, strFName, "\")
+					strAlias=Mid$(strFName, i, Len(strFName)-i)
+				end if
+			end if
+
+			bResult=bAddTableToList(COPYTYPE_NATIVE,
+					strWorPath, SOURCE_WORKSPACE, strFName,
+					strAlias, strAlias & ".TAB", intPointer)
+			if bResult = FALSE then
+				Note GetResString(IDS_FAILED_PARSING_WORKSPACE)
+				Exit Function
+			end if
+
+			' table has been added to list -- or was already there -- the location is in intPointer.
+			' Now add the sub-tables needed by special table types (seamless)
+			Do Case g_refs(intPointer).strTableType
+			Case "SEAMLESS" ' "VIEW", "QUERY" would be needed here for exact-copy option
+				if bGetTableFileList(intPointer)=FALSE then
+					'Note GetResString(IDS_FAILED_EXTRACTING_TABLES)
+					bParseWorkspace=FALSE
+					OnError Goto IgnoreError
+					Close File #1
+					Exit Function
+				end if
+				' tables have now been added to global array
+				intPointer=UBound(g_refs)
+			End Case
+		else
+			if bTablesFlag then
+				 Exit Do ' no more Open Tables; get out of file-reading loop
+			end if
+		end if
+	Loop
+	Close File #1
+	bParseWorkspace=TRUE
+	Exit Function
+HandleError:
+
+	Close File #1
+	Note "bParseWorkspace: " + Error$()
+	bParseWorkspace=FALSE
+	Exit Function
+IgnoreError:
+	Resume Next
+End Function
+
+'************************************************************************
+' wrapper for bParseWorkspace when multiple workspaces have been selected
+Function bParseWorkspaces(strFNames() as String) As Logical
+	dim i as integer
+
+	for i=1 to UBound(strFNames)
+		if bParseWorkspace(strFNames(i))=FALSE then
+			bParseWorkspaces=FALSE
+			Exit Function
+		end if
+	next
+	bParseWorkspaces=TRUE
+
+End Function
+
+' at the moment this is a one-line function; might be better inlined into calling code
+Function strChooseWorkspace(ByVal strPrompt as String) as String
+	strChooseWorkspace=FileOpenDlg("","","WOR",strPrompt)
+End Function
+
+Sub SelectAndPackage
+	Dim strTempList, strFNames() as String, intPtr, intDelimiter as SmallInt
+
+	if bPackagerDirWritable()=FALSE then
+		print GetResString(IDS_STARTUP_ERROR_MSG) & chr$(13) & g_strPackagerPath
+		Exit Sub
+	end if
+
+	'fix for bugs #27718 and #27720:  clear out workspace list before calling dialog
+	g_strWorkspaceList=""
+
+	If bChooseWorkspaces()=FALSE or g_strWorkspaceList="" then
+		Exit Sub
+	End If
+
+	g_bCloseEverything=FALSE
+	Call ClearTableList
+
+	if Instr(1, g_strWorkspaceList, ";")=0 then
+		' only one workspace to package:  use existing workspace name
+		g_bUserPicksWorkspaceName=TRUE
+		g_strOutputFName=PathToFileName$(g_strWorkspaceList)
+		Call PackageOneWorkspace(g_strWorkspaceList, FALSE)
+
+	else
+		' convert global delimited string to array
+		' Note:  the maximum length of a string, 32767 characters, places some limitations on
+		'  the number of workspaces that can be simultaneously packaged.  With normal filename
+		'  lengths, the total number might be somewhere around 1000, which seems comfortably
+		'  high [considering that each workspace must be added to the list individually!]
+		' It would be simple enough to convert the original global delimited string to a 
+		'  global string array, if there is any likelihood that this limit will be reached.
+	
+		intPtr=0
+		strTempList=g_strWorkspaceList
+		Do While strTempList<>""
+			intPtr=intPtr+1
+			ReDim strFNames(intPtr)
+			intDelimiter=Instr(1, strTempList & ";", ";")
+			strFNames(intPtr)=Left$(strTempList, intDelimiter-1)
+			strTempList=Right$(strTempList, Len(strTempList)-intDelimiter)
+		Loop
+		if bParseWorkspaces(strFNames)=FALSE then
+			' error occurred while parsing one of the selected workspaces; fail out and exit
+			Note GetResString(IDS_ERROR_PARSING_WORKSPACES)
+			Exit Sub
+		end if
+		g_bUserPicksWorkspaceName=FALSE
+		if bPackagerDialog() then
+			' user clicked OK on the dialog; proceed with copying
+			' ignore filename if there is one -- using actual workspace names instead
+			if Right$(g_strOutputPath, 4)=".WOR" then
+				g_strOutputPath=PathToDirectory$(g_strOutputPath)
+			end if
+			Call PackageWorkspaces(strFNames)
+		end if
+	end if
+End Sub
+
+'*******************************************************************
+' This function updates the global variable g_strWorkspaceList
+'  with a semicolon-delimited list of workspaces chosen by the user.
+Function bChooseWorkspaces() as Logical
+	OnError Goto HandleError
+
+	Dialog Width 380 Height 200 Title GetResString(IDS_CHOOSE_WORKSPACES) 
+		Control Button Position 5, 5 Width 70 Calling AddHandler
+			Title GetResString(IDS_WOR_ADD)
+		Control Button Position 80, 5 Width 70 Calling RemoveHandler ID 8100 Disable
+			Title GetResString(IDS_WOR_REMOVE)
+		Control Button Position 155, 5 Width 70 Calling RemoveAllHandler ID 8101 Disable
+			Title GetResString(IDS_WOR_REMOVE_ALL)
+		Control Button Position 230, 5 Width 70 Calling LoadListHandler
+			Title GetResString(IDS_WOR_LOAD_LIST)
+		Control Button Position 305, 5 Width 70 Calling SaveListHandler ID 8102 Disable
+			Title GetResString(IDS_WOR_SAVE_LIST)
+		Control StaticText Position 10, 20
+			Title GetResString(IDS_WOR_LIST_TITLE)
+		Control MultiListBox Width 370 Height 140 Position 5, 30 ID 8103
+			 Calling WorListHandler Value 0 Title From Variable g_strWorkspaceList
+		Control OKButton Position 45, 180 Title GetResString(IDS_OK)
+		Control CancelButton Position 275, 180 Title GetResString(IDS_CANCEL)
+	bChooseWorkspaces=CommandInfo(CMD_INFO_DLG_OK)
+	Exit Sub
+HandleError:
+  Note "bChooseWorkspaces: " + Error$()
+End Function
+
+Sub AddHandler
+	Dim s as string
+	s=strChooseWorkspace(GetResString(IDS_WORKSPACE_TO_ADD))
+	' don't add a workspace path if it is already on the list
+	if s<>"" and Instr(1, ";" & UCase$(g_strWorkspaceList) & ";", ";" & UCase$(s) & ";")=0 then
+		if Len(g_strWorkspaceList) + Len(s) > 32766 then
+			Note GetResString(IDS_WOR_LIST_LENGTH_EXCEEDED)
+			Exit Sub
+		end if
+		g_strWorkspaceList=g_strWorkspaceList & Left$(";", Len(g_strWorkspaceList)) & s
+		Alter Control 8100 Disable ' selection will be cancelled, so disable Remove button
+		Alter Control 8101 Enable ' if something has been added, it can be removed
+		Alter Control 8102 Enable
+		Alter Control 8103 Title g_strWorkspaceList
+	end if
+End Sub
+
+Sub RemoveHandler
+	dim i, intSelection, intCount, intNextDelim, intLastDelim, intLastSelection as SmallInt
+	intNextDelim=0
+	intLastSelection=0
+	Do
+		intSelection=ReadControlValue(8103)
+		if intSelection=0 then
+			Exit Do
+		end if
+		for i=1 to intSelection-intLastSelection
+			intLastDelim=intNextDelim
+			intNextDelim=Instr(intLastDelim+1, g_strWorkspaceList & ";", ";")
+			if intNextDelim=0 then
+				'should not happen -- can't be more selected items than items in the list
+				Goto HandleError ' diagnostic purposes only
+			end if
+		next
+		' remove the appropriate entry from the list
+		g_strWorkspaceList=Left$(g_strWorkspaceList, intLastDelim) 
+				& Right$(g_strWorkspaceList, Len(g_strWorkspaceList)-intNextDelim)
+		intNextDelim=intLastDelim
+		intLastSelection=intSelection
+	Loop
+	if Right$(g_strWorkspaceList, 1)=";" then ' if the last workspace was removed
+		g_strWorkspaceList=Left$(g_strWorkspaceList, Len(g_strWorkspaceList)-1)
+	end if
+	Alter Control 8100 Disable
+	if g_strWorkspaceList="" then
+		Alter Control 8101 Disable
+		Alter Control 8102 Disable
+	else
+		Alter Control 8101 Enable
+
+		Alter Control 8102 Enable
+	end if
+	Alter Control 8103 Title g_strWorkspaceList
+	Exit Sub
+
+HandleError:
+	Note "RemoveHandler:" +Error$()
+
+End Sub
+
+Sub RemoveAllHandler
+	g_strWorkspaceList=""
+	Alter Control 8100 Disable
+	Alter Control 8101 Disable
+	Alter Control 8102 Disable
+	Alter Control 8103 Title g_strWorkspaceList
+End Sub
+
+Sub LoadListHandler
+	OnError Goto HandleError
+	Dim strFName, strLine as String, intCount as SmallInt
+
+	strFName=FileOpenDlg("", "", GetResString(IDS_WOR_LIST_TYPE),
+								GetResString(IDS_WOR_LIST_LOAD_PROMPT))
+	if strFName="" then
+		Exit Sub
+	end if
+
+	Open File strFName for Input as #1 Charset SystemInfo(SYS_INFO_CHARSET)
+	Do
+		Line Input #1, strLine
+		If EOF(1) Then
+			Exit Do
+		End If
+		If Right$(strLine, 4)<>".WOR" Then
+			strLine=strLine & ".WOR"
+		End If
+		' only add to the list if the workspace actually exists and is not on the list;
+		'  otherwise fail without error
+		If FileExists(strLine) And (Mid$(strLine,2,2)=":\" Or Left$(strLine,2)="\\") Then
+			If Instr(1, ";" & UCase$(g_strWorkspaceList) & ";", ";" & UCase$(strLine) & ";")=0 Then
+				If g_strWorkspaceList="" Then
+					g_strWorkspaceList=strLine
+				Else
+					g_strWorkspaceList=g_strWorkspaceList & ";" & strLine
+				End If
+			End If
+		End If
+	Loop
+	Alter Control 8100 Disable
+	if g_strWorkspaceList="" then
+		Alter Control 8101 Disable
+		Alter Control 8102 Disable
+	else
+		Alter Control 8101 Enable
+		Alter Control 8102 Enable
+	end if
+	Alter Control 8103 Title g_strWorkspaceList
+Done:
+	OnError Goto IgnoreError
+	Close File #1
+	Exit Sub
+IgnoreError:
+	Resume Next
+HandleError:
+	Note "LoadListHandler:" +Error$()
+	Resume Done
+End Sub
+
+Sub SaveListHandler
+	Dim intDelimiter as SmallInt, strTemp, strFName as String
+	OnError Goto HandleError
+
+	strTemp=g_strWorkspaceList
+	strFName=FileSaveAsDlg("", "", GetResString(IDS_WOR_LIST_TYPE),
+								 GetResString(IDS_WOR_LIST_SAVE_PROMPT))
+	if strFName="" then
+		Exit Sub
+	end if
+
+	Open File strFName for Output as #1
+
+	Do While strTemp<>""
+		intDelimiter=Instr(1, strTemp & ";", ";")
+		Print #1, Left$(strTemp, intDelimiter-1)
+		strTemp=Right$(strTemp, Len(strTemp)-intDelimiter)
+	Loop
+Done:
+	OnError Goto IgnoreError
+	Close File #1
+Exit Sub
+IgnoreError:
+	Resume Next
+HandleError:
+	Note "SaveListHandler:" +Error$()
+	Resume Done
+End Sub
+
+Sub WorListHandler
+	dim i, intTemp, intCount, intNext, intLast as SmallInt
+	intCount=0
+
+	intNext=0
+	Do
+		intTemp=ReadControlValue(8103)
+		if intTemp=0 then
+			Exit Do
+		end if
+		intCount = intCount + 1
+	Loop
+
+	if intCount=0 then ' make Remove button available as appropriate
+		Alter Control 8100 Disable
+	else
+		Alter Control 8100 Enable
+	end if
+End Sub
+
+
+'Pretty self-explanatory.  Used only when a situation is encountered that can't be handled safely
+'  (e.g. as regards table alias conflicts) without closing all open files.
+Function bAskBeforeClosingEverything() as Logical
+	Dim bDontShow as Logical, strFlagPath as String
+
+	strFlagPath=g_strPackagerPath & GetResString(IDS_DONT_SHOW_FLAG_FNAME)
+	If FileExists(strFlagPath) then
+		' warning message has been disabled for this user
+		bAskBeforeClosingEverything=TRUE
+		Exit Function
+	End If
+	bDontShow=FALSE
+	Dialog Width 210 Height 110 Title GetResString(IDS_ASK_WARNING_TITLE)
+		Control StaticText Position 10, 10
+			Title GetResString(IDS_ASK_BEFORE_CLOSING_1)
+		Control StaticText Position 10, 20
+			Title GetResString(IDS_ASK_BEFORE_CLOSING_2)
+		Control StaticText Position 10, 30
+			Title GetResString(IDS_ASK_BEFORE_CLOSING_3)
+		Control StaticText Position 10, 40
+			Title GetResString(IDS_ASK_BEFORE_CLOSING_4)
+		Control StaticText Position 10, 50
+			Title GetResString(IDS_ASK_BEFORE_CLOSING_5)
+		Control StaticText Position 10, 60
+			Title GetResString(IDS_ASK_BEFORE_CLOSING_6)
+		Control Checkbox Position 10, 75 Value bDontShow Into bDontShow
+			Title GetResString(IDS_DONT_SHOW_AGAIN)
+		Control OKButton Title GetResString(IDS_YES)
+		Control CancelButton Title GetResString(IDS_NO)
+	If CommandInfo(CMD_INFO_DLG_OK) Then
+		If bDontShow=TRUE Then
+			Open File strFlagPath For Output As #1
+				Print #1, ""
+			Close File #1
+		End If
+		bAskBeforeClosingEverything=TRUE
+	Else
+		bAskBeforeClosingEverything=FALSE
+	End If
+End Function
+
+'**************************************************************
+Sub ShowAdvancedDialog
+	Dim strFileNames() as String
+	Dim i, intWidth, intNumElements, intDlgWidth as SmallInt
+	
+	' Put filenames from the global reference array into a string array for use in dialog
+	intNumElements=UBound(g_refs)
+	ReDim strFileNames(intNumElements)
+	intDlgWidth=ADVANCED_DLG_MINWIDTH
+	' for speed reasons, only measure the first 100 file paths
+	for i=1 to Minimum(intNumElements, 100)
+		strFileNames(i)=g_refs(i).strFName
+		intWidth=intPixelWidth(strFileNames(i))/1.5+21 ' accounts for borders, scroll bar
+		if intWidth>intDlgWidth then
+			intDlgWidth=intWidth
+		end if
+	next
+	if intNumElements>100 then
+		for i=101 to intNumElements
+			strFileNames(i)=g_refs(i).strFName
+		next
+	end if
+	'intWidth=intPixelWidth(GetResString(IDS_SOURCE) & GetResString(IDS_SEAMLESS))
+	'intDlgWidth=intDlgWidth+intWidth/1.5 ' put "Source" info on one line if possible
+	if intDlgWidth>ADVANCED_DLG_MAXWIDTH then
+		intDlgWidth=ADVANCED_DLG_MAXWIDTH
+	end if
+	if intDlgWidth>WindowInfo(WIN_MAPINFO, WIN_INFO_WIDTH)*64-10 then
+		' don't allow dialog to be wider than the current MapInfo desktop...
+		' [prevents long filenames from exceeding screen width at low resolutions]
+		intDlgWidth=WindowInfo(WIN_MAPINFO, WIN_INFO_WIDTH)*64-10
+	end if
+
+	Dialog Width intDlgWidth Height 260 Calling AdvancedDlgSetUpHandler
+			Title GetResString(IDS_ADVANCED_OPTIONS_TITLE)
+		Control StaticText Position 5, 10
+			Title GetResString(IDS_TABLE_REFERENCES)
+		Control MultiListBox Position 5, 20 Width intDlgWidth-10 Height 100 ID 8128
+			Calling AdvancedListHandler Title From Variable strFileNames
+		Control GroupBox Position 5, 130 Width intDlgWidth-10 Height 110 ID 8136 Disable
+			Title GetResString(IDS_SELECTION_PROPERTIES)
+		Control StaticText Position 10, 140 Width intDlgWidth-20 Height 30 ID 8133 Disable
+			Title GetResString(IDS_SOURCE)
+		Control StaticText Position 10, 170 Width intDlgWidth-20 ID 8135 Disable
+			Title GetResString(IDS_TABLE_TYPE)
+		Control StaticText Position 10, 180 ID 8129
+			Title GetResString(IDS_NEW_LOCATION) Disable
+		Control EditText Position 10, 190 Width intDlgWidth-20 ID 8130 Disable
+		' moved Update button offscreen, to get 'Enter' functionality without the button.
+		Control OKButton Position intDlgWidth-60, 305 Width 40 ID 8134 Calling AdvancedNewFNameHandler
+			Title GetResString(IDS_NEW_FNAME_UPDATE) Disable
+		Control StaticText Position 10, 210 ID 8131 
+			Title GetResString(IDS_COPY_TYPE) Disable
+		Control PopupMenu Position 10, 220 Width 150 ID 8132 Calling AdvancedPopupHandler 
+			Title "" Value 1 Disable ' disabled, so choices don't matter yet
+		Control Button Position intDlgWidth/2-20, 242 Calling DismissButtonHandler
+			Title GetResString(IDS_OK)
+		'VI#28007
+End Sub
+
+Sub AdvancedDlgSetUpHandler
+	if UBound(g_refs)=0 then
+		Alter Control 8128 Title GetResString(IDS_NO_TABLE_REFERENCES) Disable
+	end if
+End Sub
+
+Sub AdvancedListHandler
+	dim intTemp, intCount, intSource, intCopyType as SmallInt
+	dim strType, strLocalType, strSource, strSourceType, strPath as String
+
+	intCount=0
+	Do ' first count the number of selected items
+		intTemp=ReadControlValue(8128)
+		if intTemp then
+			intCount = intCount + 1
+		else
+			exit do
+		end if
+	Loop
+
+	' put selected items into an array; check for commonality at the same time
+	Redim g_MultiListChoices(intCount)
+	intCount=0
+	intCopyType=0
+	intSource=0
+	strSource=""
+	strPath=""
+	strType=""
+
+	Do
+		intTemp=ReadControlValue(8128)
+		if intTemp=0 then
+			Exit Do  ' no more selected tables
+		end if
+		intCount = intCount + 1
+		g_MultiListChoices(intCount)=intTemp
+		if intCopyType=0 then
+			intCopyType=g_refs(intTemp).intCopyType
+		elseif intCopyType<>g_refs(intTemp).intCopyType then
+			intCopyType=COPYTYPE_MIXED ' types of selected items do not all match
+		end if
+		if strSource="" then
+			strSource=g_refs(intTemp).strSource
+		elseif strSource<>g_refs(intTemp).strSource then
+			strSource="" ' sources of selected items do not all match
+		end if
+		if intSource=0 then
+			intSource=g_refs(intTemp).intSourceType
+		elseif intSource<>g_refs(intTemp).intSourceType then
+			intSource=-1 ' source types of selected items do not all match
+		end if
+		if strPath="" then
+			strPath=g_refs(intTemp).strNewPath
+		elseif strPath<>g_refs(intTemp).strNewPath then
+			 ' paths of selected items do not all match, so textbox should be blank
+			strPath="*" ' can't set strPath to "" until loop is done!
+		end if
+		if strType="" then
+			strType=g_refs(intTemp).strTableType
+		elseif strType<>g_refs(intTemp).strTableType then
+			strType="{mixed}"' types of selected tables do not all match
+		end if
+	Loop
+
+	if intCount>0 then 
+		if strPath="*" then strPath="" end if
+		
+		' if the path is the default path [internally stored as "?\"] then
+		'  we need to replace it with the current default for display purposes
+		if left$(strPath, 2)="?\" then
+			strPath=PathToDirectory$(g_strOutputPath) & Mid$(strPath, 3, len(strPath)-2)
+		end if
+		
+		if intCount=1 or intCopyType<>COPYTYPE_MIXED then
+			' leave out 'mixed' option, since it is not possible with only one selection
+			Alter Control 8132 Title GetResString(IDS_DONTCOPY_EXACT_OR_NATIVE)
+		else
+			Alter Control 8132 Title GetResString(IDS_DONTCOPY_EXACT_OR_NATIVE)
+				& ";" & GetResString(IDS_MIXED)
+		end if
+		If intCount=1 then
+			' remember the current value of textbox in global (so we know when it changes)
+			g_strOldFName=strPath & g_refs(g_MultiListChoices(1)).strNewFName
+			Alter Control 8130 Value g_strOldFName
+		else
+			Alter Control 8130 Value strPath
+			g_strOldFName=strPath
+		end if
+	
+		Alter Control 8132 Value intCopyType		
+
+		Do Case intSource
+		Case SOURCE_MIXED
+			strSourceType=GetResString(IDS_MIXED)
+		Case SOURCE_SEAMLESS
+			strSourceType=GetResString(IDS_SEAMLESS)
+		Case SOURCE_QUERY
+			strSourceType=GetResString(IDS_QUERY)
+		Case SOURCE_VIEW
+			strSourceType=GetResString(IDS_VIEW)
+		Case SOURCE_WORKSPACE
+			strSourceType=GetResString(IDS_WORKSPACE)
+		Case Else
+		End Case
+		 
+		Alter Control 8133 Title GetResString(IDS_SOURCE) & strSourceType & Chr$(13) & strSource
+		strLocalType=strGetLocalType(strType)
+		Alter Control 8135 Title GetResString(IDS_TABLE_TYPE) & strLocalType
+	
+		Alter Control 8129 Enable
+		Alter Control 8130 Enable
+		Alter Control 8131 Enable
+		Alter Control 8132 Enable
+		Alter Control 8133 Enable
+		Alter Control 8134 Enable
+		Alter Control 8135 Enable
+		Alter Control 8136 Enable
+	else
+		Alter Control 8129 Disable
+		Alter Control 8130 Disable
+		Alter Control 8131 Disable
+
+		Alter Control 8132 Disable
+		Alter Control 8133 Title "" Disable
+		Alter Control 8134 Disable
+		Alter Control 8135 
+Title GetResString(IDS_TABLE_TYPE) Disable
+		Alter Control 8136 Disable
+	end if
+End Sub
+
+'*****************************************************************
+Sub AdvancedNewFNameHandler
+	dim strDefaultFolder, strNewFName as string, i, intLen as SmallInt, bErrorFlag as Logical
+	
+	strNewFName=strCleanFilename(ReadControlValue(8130))
+	if g_strOldFName=strNewFName then
+		' no change to the textbox, so nothing to do
+		Dialog Preserve
+		Exit Sub
+	end if
+
+	if UBound(g_MultiListChoices)>1 then
+		if Right$(strNewFName, 4)=".TAB" then
+			Note GetResString(IDS_CANT_SEND_MULTIPLE)
+			Call AdvancedListHandler ' reset filename to whatever it should be
+		else
+			' assume that the user typed a path, not a filename
+			if Right$(strNewFName, 1)<>"\" then
+				strNewFName=strNewFName & "\"
+			end if
+			for i=1 to UBound(g_MultiListChoices)
+				g_refs(g_MultiListChoices(i)).strNewPath
+					= strGetRelativeRef(PathToDirectory$(g_strOutputPath), strNewFName)
+			next
+		end if
+	else
+		' only one selection.  The user may intend to change either the path and
+		'  filename, or only the path.  If it's just a path, it will end in '\'
+		if Right$(strNewFName, 1)="\" then
+			' use "?\" notation if it's equivalent
+			g_refs(g_MultiListChoices(1)).strNewPath
+				= strGetRelativeRef(PathToDirectory$(g_strOutputPath), strNewFName)
+		else
+			' assume that the user entered a path and a filename
+			' [could require the .TAB ending, but we'll just add it if it's not there]
+			g_refs(g_MultiListChoices(1)).strNewPath
+				= strGetRelativeRef(PathToDirectory$(g_strOutputPath),
+										PathToDirectory$(strNewFName))
+			if Right$(strNewFName, 4)<>".TAB" then
+				strNewFName=strNewFName & ".TAB"
+			end if
+			g_refs(g_MultiListChoices(1)).strNewFName=PathToFilename$(strNewFName)
+		end if
+	end if
+
+	' put the correct summary of this change back into the textbox
+	Call AdvancedListHandler
+
+	'this is an OKButton, so that the [Enter] key does the right thing --
+	' have to avoid closing the dialog after every update, though:
+	Dialog Preserve
+End Sub
+
+Sub AdvancedPopupHandler
+	dim i, intChoice as SmallInt, bMixedTypes as Logical
+	for i=1 to UBound(g_MultiListChoices)
+		intChoice=ReadControlValue(8132)
+		g_refs(g_MultiListChoices(i)).intCopyType=intChoice
+		Call SetDefaultTableOutputPath(g_MultiListChoices(i), FALSE)
+	next
+	' update textbox with whatever the new common path is
+	Call AdvancedListHandler
+
+End Sub
+
+Sub DismissButtonHandler
+	' need to deal with possibility that Update box has changed but user didn't press Update
+	Dialog Remove
+End Sub
+
+Sub ClearTableList
+	redim g_refs(0)
+End Sub
+
+'*************************************************
+' This subroutine is called by SetGlobalCopyDefaults or AdvancedPopupHandler. 
+'    It resets a table's path to the current default setting, given the copy type.
+' The second parameter, if set to TRUE, resets the filename to the default as well.
+Sub SetDefaultTableOutputPath(ByVal intTableNum as SmallInt,
+									ByVal bFixFileNames as Logical)
+	OnError Goto HandleError
+	Do Case g_refs(intTableNum).intCopyType
+	Case COPYTYPE_DONT ' leave file where it is (e.g. files with UNC path or mapped drive)
+		g_refs(intTableNum).strNewPath=PathToDirectory$(LTrim$(g_refs(intTableNum).strFName))
+		if bFixFileNames=FALSE then
+			' don't change filename, which user may have altered -- user may change
+			'  back to a different copy type, making the new filename relevant again (?)
+		else
+			g_refs(intTableNum).strNewFName=PathToFileName$(g_refs(intTableNum).strFName)
+		end if
+		Case COPYTYPE_NATIVE ' "Save Copy As" copy, removing deleted records if any
+		g_refs(intTableNum).strNewPath="?\"
+		if bFixFileNames then
+			g_refs(intTableNum).strNewFName=PathToFilename$(g_refs(intTableNum).strFName)
+		end if
+	End Case
+	Exit Sub
+HandleError:
+	Note "SetDefaultTableOutputPath: " + Error$()
+End Sub

@@ -1,0 +1,134 @@
+'****************************************************************************
+'* SQL DataLink Sample Apps - Server table column picker dialog
+'****************************************************************************
+INCLUDE "MAPBASIC.DEF"
+INCLUDE "..\INC\DLSAMP.DEF"
+
+' Main external function declare in DLSAMP.DEF
+
+'* Internal utility functions
+DECLARE SUB GetColumnNames(BYVAL TableOwner AS STRING, BYVAL TableName AS STRING)
+
+' Internal Dialog control handlers
+DECLARE SUB SelectColumnName()
+
+' Internal variables
+DIM hdbc, hstmnt AS INTEGER
+
+'* Internal Defines
+Define ColumnNameSelect_ID   1 
+
+DIM TableName, TableOwner, ColumnName AS STRING
+DIM ColumnNameSel as Integer
+
+GLOBAL LastTableName, LastTableOwner, ColumnNames() AS STRING
+
+'****************************************************************************
+'* Main external function (Modeled after FileOpenDialog)
+'****************************************************************************
+SUB ColumnPickerDialog (BYVAL inhdbc AS INTEGER, BYVAL tabowner, BYVAL tabname AS STRING, colname AS STRING, BYVAL prompt AS STRING)
+
+  '* Set connection
+  hdbc = inhdbc
+  TableOwner = tabowner
+  TableName = tabname
+
+  '* prime the selection fields
+  IF prompt="" THEN
+    prompt="Pick Columns of table " + Tablename
+  END IF
+
+  '* The remainer will be set by dialog actions
+  '* Only get column names if the table name changed! (performance)
+  IF TableOwner <> LastTableOwner OR TableName <> LastTableName THEN
+    Call GetColumnNames(TableOwner, TableName)
+    LastTableName=TableName
+    LastTableOwner=TableOwner
+  END IF  
+
+  '* Set output fields
+  ColumnName = ""  
+     
+  ONERROR GOTO DLGERR
+  DIALOG
+    TITLE prompt
+    CONTROL LISTBOX
+      Width 80
+      Height 80
+      Position 0,0
+      TITLE FROM VARIABLE ColumnNames
+      ID ColumnNameSelect_ID   
+      CALLING SelectColumnName
+
+  colname = ColumnName  
+
+  EXIT SUB
+
+  DLGERR:
+    NOTE(ERROR$())
+    RESUME ALLDONE
+
+  ALLDONE:
+END SUB
+
+
+'****************************************************************************
+SUB SelectColumnName
+  ColumnNameSel=ReadControlValue(ColumnNameSelect_ID)
+  ColumnName = ColumnNames(ColumnNameSel)
+  DIALOG REMOVE
+END SUB
+
+
+'****************************************************************************
+SUB GetColumnNames(BYVAL TableOwner AS STRING, BYVAL TableName AS STRING)
+  DIM sqlstring AS STRING
+  DIM NumColumnNames AS INTEGER
+  DEFINE SizeColumnNamesIncrement 20
+
+' Output = GLOBAL ColumnNames AS STRING
+  IF dbg THEN
+    PRINT "IN GetColumnNames"
+  END IF
+
+  ' Build Select * from Table query (Se we can get col names frm Server_GetInfo)
+  IF TableOwner <> " " THEN
+    sqlstring = "Select * from " + demoquotechar +  TableOwner + + demoquotechar +
+      "." + demoquotechar + TableName + demoquotechar
+  ELSE
+    sqlstring = "Select * from " + demoquotechar + TableName + demoquotechar
+  END IF
+  IF dbg THEN
+    PRINT "sqlstring = " + sqlstring
+  END IF
+
+  ONERROR GOTO EXEERR
+  hstmnt = SERVER_EXECUTE(hdbc,sqlstring)
+
+  REDIM ColumnNames(1)   ' clear out
+  NumColumnNames=1
+  ColumnNames(NumColumnNames)="*"
+
+  DIM i AS INTEGER
+  FOR i = 1 TO Server_NumCols(hstmnt)  
+    NumColumnNames=NumColumnNames+1
+    IF NumColumnNames > UBOUND(ColumnNames) THEN
+      REDIM ColumnNames(UBOUND(ColumnNames) + SizeColumnNamesIncrement)
+    END IF
+    ColumnNames(NumColumnNames) =  RTRIM$(SERVER_COLUMNINFO(hstmnt, i, SRV_COL_INFO_NAME))
+     IF dbg THEN
+      PRINT "Next Column Name = " + ColumnNames(NumColumnNames)
+    END IF   
+  NEXT
+  REDIM ColumnNames(NumColumnNames)
+  Server hstmnt CLOSE
+  GOTO ALLDONE 
+
+  EXEERR:
+    NOTE Error$()
+    RESUME ALLDONE
+
+  ALLDONE:
+
+END SUB
+        

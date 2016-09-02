@@ -1,0 +1,68 @@
+Include "Send2MXM.def"
+Include "..\Inc\ResStrng.def"
+
+Declare Function bRenameTable(ByVal strInputFileName as String,
+					ByVal strOutputFileName as String,
+					ByVal bOverwriteFlag as Logical) as Logical
+
+' this function is designed to be used only on native .TAB files
+Function bRenameTable(ByVal strInputFileName as String,
+  ByVal strOutputFileName as String,
+  ByVal bOverwriteFlag as Logical) as Logical
+
+	Dim strInputPrefix as String
+	Dim strOutputPrefix as String
+
+	OnError Goto ErrorTrap
+
+	strInputPrefix=left$(strInputFileName, len(strInputFileName)-3)
+	strOutputPrefix=left$(strOutputFileName, len(strOutputFileName)-3)
+	if not FileExists(strInputFileName)
+	  or not FileExists(strInputPrefix & "MAP") 
+	  or not FileExists(strInputPrefix & "DAT") ' change this to use on non-native tables
+	  or not FileExists(strInputPrefix & "ID") then
+		bRenameTable=0
+		Exit Function
+	end if
+	if bOverwriteFlag then
+		OnError Goto IgnoreErrors
+		if FileExists(strOutputFileName) then Kill strOutputFileName end if
+	  	if FileExists(strOutputPrefix & "MAP") then Kill strOutputPrefix & "MAP" end if
+		 ' this next line must be modified to use on non-native tables
+	  	if FileExists(strOutputPrefix & "DAT") then Kill strOutputPrefix & "DAT" end if
+	  	if FileExists(strOutputPrefix & "ID") then Kill strOutputPrefix & "ID" end if
+	  	if FileExists(strOutputPrefix & "IND") then Kill strOutputPrefix & "IND" end if
+		OnError Goto ErrorTrap
+	end if
+	if FileExists(strOutputFileName) or FileExists(strOutputPrefix & "MAP") 
+	 or FileExists(strOutputPrefix & "DAT") or FileExists(strOutputPrefix & "ID") 
+	 or (FileExists(strInputPrefix & "IND") and FileExists(strOutputPrefix & "IND")) then
+		if bOverwriteFlag then
+			' tried to overwrite files but failed -- will use an alternate name
+			print GetResString(IDS_CANT_OVERWRITE_PART_1)
+				& left$(strOutputPrefix, len(strOutputPrefix)-1) ' leave out period
+			print GetResString(IDS_CANT_OVERWRITE_PART_2)
+			print GetResString(IDS_CANT_OVERWRITE_PART_3)
+		end if
+
+		bRenameTable=0
+		Exit Function
+	end if
+			
+	Rename File strInputFileName As strOutputFileName
+	Rename File strInputPrefix & "MAP" As strOutputPrefix & "MAP"
+	Rename File strInputPrefix & "DAT" As strOutputPrefix & "DAT"
+	Rename File strInputPrefix & "ID" As strOutputPrefix & "ID"
+	if FileExists(strInputPrefix & "IND") then
+		Rename File strInputPrefix & "IND" As strOutputPrefix & "IND"
+	end if
+	bRenameTable=1
+	Exit Function
+
+IgnoreErrors:
+	' if a "Kill" statement fails, keep going -- will double-check file existence later
+	Resume Next
+ErrorTrap:
+	print "RenameFile: " & Error$()
+	bRenameTable=0
+End Function

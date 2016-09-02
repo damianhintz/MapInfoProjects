@@ -1,0 +1,90 @@
+'
+'       Copyright (c) 2007, Pitney Bowes MapInfo Corporation
+'       All rights reserved.
+'       Confidential Property of Pitney Bowes MapInfo Corporation
+'
+'####################################################################################
+'####################   MAP WINDOW FUNCTIONS  #######################################
+
+
+Include "Mapbasic.def"
+Include "menu.def"
+Include "Register.def" '#####your programs def file
+
+'###################################################################################
+'#####
+
+Sub Refresh_Labels
+
+OnError goto whats_wrong
+
+	Set map layer 1 label auto on offset 8
+Exit Sub
+
+whats_wrong:
+	'note "Error: MapFunctions/Refresh_Labels"
+
+End Sub
+
+'####################################################################################
+'#### This Function will turn snap mode on or off for the Map window Id passed to it. 
+
+Sub Snap_Mod(intWindowID as integer)
+
+OnError goto whats_wrong
+
+	If WindowInfo(intWindowID,WIN_INFO_SNAPMODE) then
+		Set Window intWindowId snap mode Off
+	Else
+		Set Window intWindowID Snap Mode On
+	End If
+
+Exit Sub
+
+whats_wrong:
+	'note "Error: MapFunctions/Snap_Mod"
+
+end sub
+
+'######################################################################################
+'##### This Function Zooms in or out on the specified map window. Pass it a logical where
+'##### true = zoom in; also pass it a float for the zoom multiplier.
+
+Sub Zoom_mod(l_in_or_out as logical)
+
+OnError goto whats_wrong
+
+	
+	If l_in_or_out then
+		Run menu command 1705
+		
+	else
+		run menu command 1706
+		
+	End If
+
+		
+Exit Sub
+
+whats_wrong:
+	'note "Error: MapFunctions/Zoom_Mod"
+
+End Sub
+
+'#########################################################################################
+'################   SELECT TOOL
+
+Sub Select
+
+	Run Menu Command 1701
+
+End Sub
+
+'#########################################################################################
+'################  Pan Tool
+
+Sub Pan
+
+	Run Menu Command 1702
+
+End Sub

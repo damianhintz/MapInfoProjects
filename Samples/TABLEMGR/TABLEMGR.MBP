@@ -1,0 +1,15 @@
+[Link] 
+Application=tablemgr.mbx 
+Module=TableManager.mbo
+Module=ExportFGDCMetaData.mbo 
+Module=MetaDataTableUtilities.mbo
+Module=MetaDataTemplateUtilities.mbo
+Module=FunctionsUtilities.mbo
+Module=TableUtilities.mbo
+Module=MetaDataManager.mbo
+Module=TableManagerHelp.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\Lib\MiStdLib.Mbo
+Module=..\Lib\Str_lib.Mbo
+Module=..\Lib\resstrng.mbo
+

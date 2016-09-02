@@ -1,0 +1,1864 @@
+'*****************************************************************************
+'       Copyright (c) 2000-2001, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: RingBuffer.MB $
+' $Revision: 68828 $
+' $Author: NO003FA $
+' $Date: 2010-08-16 11:46:56 -0400 (Mon, 16 Aug 2010) $
+'
+' Module Description:
+'
+' Multiple Ring Buffer Program
+' This program allows the user to create multiple "donut" ring buffers.
+' It also will calculate sums and averages of underlying data within each ring.
+' If desired, these results can be graphed.
+'
+' Revision History:
+'
+'    Rev 1.0   Unknown               Probert
+'    Rev 1.1   1998                  DRESSEL
+'            - CHANGES TO THE VERSION 5.0 UTILITY' CHANGES TO THE VERSION 5.0 UTILITY
+'              1) The dialog where you enter the rings has some improvements to make 
+'                 editing ring values more intuitive.
+'              2) The tool tip for the buffer layer includes the ring number and radius.
+'    Rev 1.2   19 Apr 2000           DRESSEL
+'            - add versioning
+'    Rev 1.3   26 Apr 2000           DRESSEL
+'            - Remove Auto Load button
+'            - #5102 allow users to control what pattern buffers have
+'            - make more room for path in dialog
+'            - remove initional 'Directory:' because 'Directory...' button looses it.
+'            - don't require radii to be entered in order, keep them in order instead.
+'            - apply one unit to all radii
+'            - add hot keys and '...' to buttons that should have them
+'            - #13200 adjust new column names to avoid collision with existing columns
+'    Rev 1.4   12 Apr 2001           DRESSEL
+'            - #17013 correctly use table name user enters
+'            - make Windows 2000 compliant. Replace ProgramDirectory$() with GetFolderPath$(FOLDER_MYDOCS)
+'            - read and write preferences
+'            - extract strings for localization
+'    Rev 1.6   11 Mar 2008            Rajan Batra
+'            - Internationalization of Tool
+'    Rev 1.8   13 Aug 2010            Bhavdeep Sharma
+'            - Fixed the bug IN15545 - Concentric Ring Buffer >> Calculate Ring Statistics >> Tools crashing on selecting calculate Ring Statistics on Non Vector Maps(s).
+'*****************************************************************************
+Include "RingBuffer.def"
+Include "..\Inc\mapbasic.def"
+Include "..\Inc\menu.def"
+Include "..\Inc\icons.def"
+Include "..\Inc\auto_lib.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+Define AppVersion 1.8
+
+Declare Sub Main
+Declare Sub Start
+Declare Sub CheckForSelection
+Declare Sub InputDialog
+Declare Sub ChangeDirectory
+Declare Sub ChangeRing
+Declare Sub OrderRings
+Declare Sub DeleteRing
+Declare Sub EnableChangeRing
+Declare Sub AddRing
+Declare Sub ClearAllRings
+Declare Sub ValidateRadius(everythings_OK As Logical, ByVal radius_str As String)
+Declare Sub VerifyInput
+Declare Sub CreateBuffers
+Declare Sub CreateBufferLayer
+Declare Sub SelectRingTable
+Declare Sub SetUpRingStatistics
+Declare Sub RingStatisticsHandler
+Declare Sub RingStatisticsDialogHandler
+Declare Sub VerifyStatisticsTable
+Declare Sub CalculateRingStatistics
+Declare Function UniqueColumnName(ByVal TableName$ As String, ByVal ColumnName$ As String) As String
+Declare Function ColumnAlreadyExists(ByVal TableName$ As String, ByVal ColumnName$ As String) As Logical
+Declare Sub CleanUp
+Declare Sub ReadPreferences
+Declare Sub WritePreferences
+Declare Sub AboutRingBuffer
+Declare Sub AboutRingBufferStatistics
+Declare Sub HandleError
+Declare Sub EndProgram
+
+Global distance_units_list$,      '*** "Inches;Feet;Meters; etc.
+       aRings(),           '*** Array of radii values
+       current_path$,
+       unitsAbbr(13),
+       buffer_radius_units,
+       areaunitsabbr(13),
+       smoothness$,
+       problem_message,
+       radius_str,
+       buff_table_name$,
+       table_name_array(),
+       column_name_array$(),
+       chosen_data_table$   As String
+              
+Global chosen_data_tabnum,'*** User selects table to aggregate data from.      
+   new_buff_units,
+       smoothness,
+   chosen_row,
+       sum_method,        '*** Method by which sums will be aggregated within rings.
+       avg_method,        '*** Method by which averages will be aggregated within rings.
+       join_method        '*** Method by which data table will be joined with ring table.
+                  As Smallint
+Global input_dlg_OK,
+       everythings_OK,
+       continue_on,
+       do_statistics,
+       calc_sums,         '*** Option to calculate sums within rings.
+       graph_sums,        '*** Option to create graph of sums.
+       calc_avgs,         '*** Option to calculate avgs within rings.
+       graph_avgs,        '*** Option to create graph of averages.
+       calc_counts,
+       graph_counts
+                          As Logical
+Global radius_val         As Float
+Global pen_style          As Pen
+Global region_style       As Brush
+Global iStyleToUse        As SmallInt
+
+Define USE_SPECIFIED_STYLE 1
+Define USE_EXISTING_STYLE 2
+
+Define ID_RING_LIST_BOX 10
+Define ID_RING_EDIT_TEXT 11
+Define ID_UNITS_POP_UP_MENU 12
+Define ID_SMOOTHNESS_EDIT_TEXT 13
+Define ID_MODIFY_RING_BUTTON 14
+Define ID_DELETE_RING_BUTTON 15
+Define ID_TABLE_NAME_EDIT_TEXT 21
+Define ID_PATH_STATIC_TEXT 23
+
+Define ID_TABLE_POPUP_MENU 10
+
+Define ID_CALC_SUMS_CHECK_BOX 21
+Define ID_GRAPH_SUMS_CHECK_BOX 22
+Define ID_CALC_AVG_CHECK_BOX 23
+Define ID_GRAPH_AVG_CHECK_BOX 24
+Define ID_CALC_COUNTS_CHECK_BOX 25
+Define ID_GRAPH_COUNTS_CHECK_BOX 26
+
+Define RingBufferPreferenceFile "RingBuffer.PRF"
+'***********************************************************************************************
+'
+' SUB MAIN
+'
+' This sub procedure adds three commands to the Tools menu, and initializes
+' several variables including an array containing all of the standard
+' abbreviations for distance units used by MapInfo. 
+'
+'***********************************************************************************************
+Sub Main
+
+  OnError Goto ERROR_HANDLING
+
+  If LoadStrings((ApplicationDirectory$() + STR_RES_STR_FILE)) = FALSE Then
+    Note STR_FILE_NOT_ACCESSIBLE + ApplicationDirectory$() + STR_RES_STR_FILE
+    Exit Sub
+  End If
+
+  gsAppDescription = GetResString(IDS_APP_DESCRIPTION)
+  gsAppFileName    = STR_APP_FILE_NAME
+
+  Create Menu GetResString(IDS_MENU_NAME) as 
+    GetResString(IDS_MENU_ITEM_NAME_1)
+      HelpMsg GetResString(IDS_MENU_ITEM_HELP_MSG_1)
+      calling Start,
+    GetResString(IDS_MENU_ITEM_NAME_2)
+      HelpMsg GetResString(IDS_MENU_ITEM_HELP_MSG_2)
+      calling SelectRingTable,
+    STR_MENU_ITEM_SEPERATOR,
+    GetResString(IDS_ABOUT_MENU_ITEM_NAME)
+      HelpMsg GetResString(IDS_ABOUT_MENU_ITEM_HELP_MSG)
+      calling AboutRingBuffer,
+    GetResString(IDS_EXIT_MENU_ITEM_NAME)
+      HelpMsg GetResString(IDS_EXIT_MENU_ITEM_HELP_MSG)
+      calling EndProgram
+
+  Call set_tools_menu(GetResString(IDS_APP_DESCRIPTION))
+
+  ReDim aRings(0)
+
+  calc_sums    = 0  '*** These variables are used to set the values of controls in the
+  calc_avgs    = 0  '***   Ring Statistics dialog.
+  calc_counts  = 1
+  graph_sums   = 0 
+  graph_avgs   = 0
+  graph_counts = 0
+
+  distance_units_list$ = GetResString(IDS_DISTANCE_UNITS)
+  unitsabbr(1)  = STR_UNIT_IN
+  unitsabbr(2)  = STR_UNIT_LI
+  unitsabbr(3)  = STR_UNIT_FT
+  unitsabbr(4)  = STR_UNIT_SURVEY_FT
+  unitsabbr(5)  = STR_UNIT_YD
+  unitsabbr(6)  = STR_UNIT_RD
+  unitsabbr(7)  = STR_UNIT_CH
+  unitsabbr(8)  = STR_UNIT_MI
+  unitsabbr(9)  = STR_UNIT_NMI
+  unitsabbr(10) = STR_UNIT_MM
+  unitsabbr(11) = STR_UNIT_CM
+  unitsabbr(12) = STR_UNIT_M
+  unitsabbr(13) = STR_UNIT_KM
+
+  areaunitsabbr(1) = STR_AREA_UNIT_SQ_IN
+  areaunitsabbr(2) = STR_AREA_UNIT_SQ_LI
+  areaunitsabbr(3) = STR_AREA_UNIT_SQ_FT
+  areaunitsabbr(4) = STR_AREA_UNIT_SQ_SURVEY_FT
+  areaunitsabbr(5) = STR_AREA_UNIT_SQ_YD
+  areaunitsabbr(6) = STR_AREA_UNIT_SQ_RD
+  areaunitsabbr(7) = STR_AREA_UNIT_SQ_CH
+  areaunitsabbr(8) = STR_AREA_UNIT_SQ_MI
+  areaunitsabbr(9) = STR_AREA_UNIT_SQ_NMI
+  areaunitsabbr(10) = STR_AREA_UNIT_SQ_MM
+  areaunitsabbr(11) = STR_AREA_UNIT_SQ_CM
+  areaunitsabbr(12) = STR_AREA_UNIT_SQ_M
+  areaunitsabbr(13) = STR_AREA_UNIT_SQ_KM
+
+
+
+
+
+  buffer_radius_units = 8
+  smoothness$ = STR_DEFAULT_SMOOTHNESS
+  iStyleToUse = USE_SPECIFIED_STYLE
+  region_style = MakeBrush(1,0,0)
+  pen_style    = MakePen(1,2,BLACK)
+
+
+  If FileExists(GetFolderPath$(FOLDER_MYDOCS)) Then 
+    current_path$ = GetFolderPath$(FOLDER_MYDOCS) + STR_BACK_SLASH
+  Else 
+    current_path$ = PathToDirectory$(TempFileName$(STR_EMPTY_STR1))
+  End If
+  buff_table_name$ = current_path$ + STR_BUFF_TABLE_NAME
+
+
+  Call ReadPreferences
+
+  Exit Sub
+ERROR_HANDLING:
+
+  If Err() = 432 Then      ' Checks to see if table is already registered,
+    Exit Sub               ' If so, life is good and program will continue.
+  Else                     ' If a different error occurs program will end.
+    Call HandleError
+  End If
+End Sub
+
+'***********************************************************************************************
+'
+' SUB START
+'
+' This sub procedure is where the program operations start.  It is called
+' from the "Concentric Ring Buffers" menu command.  The program first checks 
+' to make sure that a selection exists, then the user is presented with the
+' dialog for them to input the desired buffer rings.  Once this dialog is
+' successfully completed then the buffers are created.
+'
+'***********************************************************************************************
+Sub Start
+
+  Call CheckForSelection     ' If a proper selection has been made then the 
+          ' variable Continue_On will be set to true
+  If Continue_On Then
+    Call InputDialog
+    If Input_Dlg_OK then  ' If the user cancels out of the Input dialog
+      Call CreateBuffers  ' then the progam will go back to sleep.
+      Call CleanUp
+    End If
+  End If
+
+End Sub
+
+'***********************************************************************************************
+'
+' SUB CHECK_FOR_SELECTION
+'
+' This sub procedure is called from the START procedure.  It checks to 
+' make sure that (1) a table is open and (2) a selection has been made. 
+' If there is a selection then the variable 'Continue_On' is set to TRUE, 
+' otherwise it is set to FALSE. The user is then prompted that there is no 
+' selection (or no open table) and the program will go 'back to sleep'.
+'
+'***********************************************************************************************
+Sub CheckForSelection
+
+  continue_on = TRUE
+
+'***FIRST: Is there a table open ??? ***
+
+  If continue_on Then
+    If NumTables() = 0 Then 
+      Note GetResString(IDS_NO_TABLES_OPEN)
+      continue_on = FALSE
+    End If
+  End If
+
+'*** SECOND:  Is something selected ??? ***
+
+  If continue_on Then
+    If SelectionInfo(SEL_INFO_NROWS) = 0 Then
+      Note GetResString(IDS_NO_SELECTION)
+      continue_on = FALSE
+    End If
+  End If
+
+'*** THIRD:  Is the selection mappable?
+'*** This is necessary because if you try selecting for map objects
+'***  (as is done next) and there is no map, an error occurs.
+  If continue_on Then
+    If Not TableInfo(Selection,TAB_INFO_MAPPABLE) Then  
+      Note GetResString(IDS_NO_OBJECTS_IN_TABLE)
+      Continue_on = FALSE
+    End If
+  End If
+
+'*** FOURTH:  Does the selection contain graphic objects?
+
+  If continue_on Then
+    Select * from Selection where object into Objects_to_Buffer
+    If TableInfo(Objects_to_Buffer, TAB_INFO_NROWS) = 0 Then
+      Note GetResString(IDS_NO_OBJECTS_IN_SELECTION)
+      Continue_on = FALSE
+    End If
+  End If      
+End Sub  
+
+'***********************************************************************************************
+'
+' SUB InputDialog
+'
+' This sub procedure displays the dialog for the user to enter what radii
+' they would like buffers created for.  A separate sub procedure is called 
+' to build the list of buffer rings (sub AddRing).  When the user presses
+' the OK button, the sub procedure VerifyInput is called.  This sub checks
+' to make sure that the smoothness value that is entered is valid and that 
+' at least one radius value was entered.  AddRing has its own validation
+
+' subprocedure (sub ValidateRadius).
+'
+'***********************************************************************************************
+Sub InputDialog
+
+  Dialog
+    Title GetResString(IDS_APP_DESCRIPTION) + STR_EMPTY_STR2 + STR_OPEN_BRAC + 
+          GetResString(IDS_VERSION) + STR_EMPTY_STR2 + Str$(AppVersion) + STR_CLOSE_BRAC
+
+  Control GroupBox
+    Title GetResString(IDS_RADII)
+    Position 10, 10
+    Width 160
+    Height 90
+
+  Control ListBox
+    Title From Variable aRings
+    Position 20,35
+    Width 50
+    Height 60
+    ID ID_RING_LIST_BOX 
+    Calling EnableChangeRing
+
+  Control StaticText              '*** Radius
+    Title GetResString(IDS_RADIUS)
+    Position 20, 20
+
+  Control EditText        '*** Radius EditText
+    Width 30
+    ID ID_RING_EDIT_TEXT
+
+  Control Button          '*** Add New Ring button
+    Position 80, 35
+    Title GetResString(IDS_ADD_RING)
+    Calling AddRing
+
+  Control Button          '*** Change Existing Ring button
+    Position 80, 50
+    Title GetResString(IDS_MODIFY_RING)
+    Calling ChangeRing
+    ID ID_MODIFY_RING_BUTTON
+    Disable
+
+  Control Button          '*** Delete ring button
+    Position 80, 65
+    Title GetResString(IDS_DELETE_RING)
+    Calling DeleteRing
+    ID ID_DELETE_RING_BUTTON
+    Disable 
+
+  Control Button
+    Position 80, 80
+    Title GetResString(IDS_CLEAR_ALL)
+    Calling ClearAllRings
+
+  Control GroupBox
+    Title GetResString(IDS_ALL_BUFFERS)
+    Position 180, 10
+    Width 180
+    Height 90
+
+  Control StaticText
+    Title GetResString(IDS_UNITS)
+    Position 190, 22
+
+  Control PopUpMenu        '*** Popup distance_units_list$
+    Title distance_units_list$
+    ID ID_UNITS_POP_UP_MENU
+    Value buffer_radius_units
+    Into buffer_radius_units
+
+  Control RadioGroup
+    Title GetResString(IDS_USE_THESE_STYLES) + STR_SEMI_COLON + GetResString(IDS_USE_OBJECT_STYLES)
+    Position 190,45
+    Value iStyleToUse
+    Into iStyleToUse
+
+  Control BrushPicker        '*** BrushPicker control
+    Position 330, 35
+    Value region_style
+    Into region_style
+
+  Control PenPicker        '*** PenPicker control
+    Position 330, 55
+    Value pen_style
+    Into pen_style
+
+  Control StaticText
+    Title GetResString(IDS_SMOOTHNESS)
+    Position 190, 82
+
+  Control EditText        '*** Smoothness EditText
+    Width 50
+    ID ID_SMOOTHNESS_EDIT_TEXT
+    Into Smoothness$
+    Value Smoothness$
+
+  Control GroupBox        '*** Name of table to store buffers in.    
+    Position 10, 105
+    Width 350 Height 55
+    Title GetResString(IDS_NAME_AND_PATH)
+
+  Control StaticText
+    Position 20, 120
+    Title GetResString(IDS_TABLE_NAME)
+  
+  Control EditText
+    Width 220
+    Value PathToFileName$(buff_table_name$)
+    Into buff_table_name$
+    ID ID_TABLE_NAME_EDIT_TEXT
+
+   Control Button
+    Title GetResString(IDS_PATH)
+    Position 20, 140 
+    Width 70
+    Calling ChangeDirectory
+
+  Control StaticText
+    Title current_path$
+    Position 100, 142
+    Width 270 Height 15
+    ID ID_PATH_STATIC_TEXT
+
+ 
+
+  Control Button          '*** Ring Statistics button
+    Title GetResString(IDS_CALCULATE_STATS)
+    Calling SetUpRingStatistics
+
+  Control OKButton
+    Title GetResString(IDS_OK)
+    Calling VerifyInput
+
+  Control CancelButton
+    Title GetResString(IDS_CANCEL)
+
+  Control Button
+    Title GetResString(IDS_HELP)
+    Calling AboutRingBuffer
+
+  If not CommandInfo(CMD_INFO_DLG_OK) then  ' In case user cancels, program
+    input_dlg_OK = FALSE        ' will go back to sleep.
+  Else
+    Set Style Brush region_style
+    Set Style Pen pen_style
+  End If
+  
+End Sub 'InputDialog
+
+'***********************************************************************************************
+'
+' SUB AddRing
+'
+' This sub procedure is called from the Add ring button in the Input dialog.
+' It first calls another sub procedure, ValidateRadius, to ensure that 
+' the radius that was entered is valid.  If so, then the radius is stored 
+' in an array.
+'
+'***********************************************************************************************
+Sub AddRing
+
+  Dim i, ArraySize As Integer
+  Dim TempRingValue As Float
+
+  Alter Control ID_MODIFY_RING_BUTTON Disable
+  Alter Control ID_DELETE_RING_BUTTON Disable
+
+  Call ValidateRadius(everythings_OK, ReadControlValue(ID_RING_EDIT_TEXT))
+
+  If everythings_OK Then     'If radius is valid, add it to the array.
+
+    ArraySize = Ubound(aRings) + 1
+    Redim aRings(ArraySize)                       '*** Make arrays larger
+
+    For i = 1 To ArraySize
+      If radius_val < Val(aRings(i)) Then
+        TempRingValue = aRings(i)
+        aRings(i) = radius_val
+        radius_val = TempRingValue
+      End If
+    Next
+    aRings(ArraySize) = radius_val          '*** Add new values to each array
+
+    Alter Control ID_RING_LIST_BOX Title From Variable aRings
+    Alter Control ID_RING_EDIT_TEXT Value STR_EMPTY_STR1 Active
+  Else
+    Note problem_message   'If there was a problem with the radius.
+    Alter Control ID_RING_EDIT_TEXT Value STR_EMPTY_STR1 Active
+  End If
+
+End Sub
+
+'***********************************************************************************************
+'
+' SUB DeleteRing
+'
+' This sub procedure allows the user to delete a ring from the radii list.
+'
+'***********************************************************************************************
+Sub DeleteRing
+
+  Dim i, ArraySize As Smallint
+
+  chosen_row = ReadControlValue(ID_RING_LIST_BOX)   '*** Determine which ring is selected. 
+  ArraySize = Ubound(aRings())-1
+
+  For i = chosen_row To ArraySize
+    aRings(i)= aRings(i+1)
+  Next
+
+  Redim aRings(ArraySize)                       '*** Make arrays larger
+  Alter Control ID_RING_EDIT_TEXT Value STR_EMPTY_STR1 Active
+
+  Alter Control ID_RING_LIST_BOX title From Variable aRings
+  If chosen_row > Ubound(aRings) Then
+    chosen_row = chosen_row -1
+  End If
+  If chosen_row > 0 Then
+    Alter Control ID_RING_LIST_BOX Value chosen_row
+    Alter Control ID_MODIFY_RING_BUTTON Enable  '*** Enables the "Change Radius" button.
+    Alter Control ID_DELETE_RING_BUTTON Enable  '*** Enables the "Delete Ring" button.
+  Else
+    Alter Control ID_MODIFY_RING_BUTTON Disable  '*** Enables the "Change Radius" button.
+    Alter Control ID_DELETE_RING_BUTTON Disable  '*** Enables the "Delete Ring" button.
+  End If
+
+End Sub 'DeleteRing'
+
+'***********************************************************************************************
+'
+' SUB ChangeRing
+'
+' This sub procedure is the handler for the radii list.  It's purpose is to 
+' allow the user to be able to change the radii that have been entered.  
+'
+' This sub procedure is called by pressing the 'Change Radius' button or by double-clicking.  
+' on a radius.  
+'
+'***********************************************************************************************
+Sub ChangeRing
+
+  chosen_row = ReadControlValue(ID_RING_LIST_BOX)   '*** Determine which ring is selected. 
+
+  everythings_OK = FALSE 
+
+  radius_str = ReadControlValue(ID_RING_EDIT_TEXT)  '*** Store new radius typed in by user.
+
+  If radius_str = aRings(chosen_row) Then  'no changes have been made - bring up dialog ...
+
+   Dialog 
+     Title GetResString(IDS_CHANGE_RADIUS)
+     Width 130  Height 70
+
+       Control StaticText 
+         Title GetResString(IDS_RING) + STR_EMPTY_STR2 + chosen_row + STR_COLON + STR_EMPTY_STR2 + GetResString(IDS_OLD_RADIUS) + STR_EMPTY_STR2 +  aRings(chosen_row)
+         Position 10, 10
+       Control StaticText
+         Title GetResString(IDS_OLD_RADIUS) + STR_COLON
+         Position 10, 25
+       Control EditText
+         Value aRings(chosen_row)
+         Width 30
+         Into radius_str         
+       Control OKButton
+         Title GetResString(IDS_OK)
+         Position 10, 50
+       Control CancelButton 
+         Title GetResString(IDS_CANCEL)
+       
+      If CommandInfo(CMD_INFO_DLG_OK) Then 
+      '*** ABOVE:  The program should only rewrite the radii when the user clicks OK. 
+
+      Call OrderRings
+
+      End If
+  Else
+
+      Call OrderRings
+  End If
+End Sub 'ChangeRing
+
+'***********************************************************************************************
+'
+' SUB OrderRings
+'
+' This sub-procedure is called from the change radius sub-procedure.  Here the radii lists 
+' are rebuilt if changes were made.
+'
+'***********************************************************************************************
+Sub OrderRings
+
+  Dim i, ArraySize As Integer
+  Dim TempRingValue As Float
+
+  Call ValidateRadius(everythings_OK, radius_str) 
+
+  If everythings_OK Then            '* If the radius is valid then update. 
+    ArraySize = Ubound(aRings)
+    For i = chosen_row To ArraySize - 1
+      aRings(i)= aRings(i+1)
+    Next
+    chosen_row = 0
+    For i = 1 To ArraySize
+      If radius_val < Val(aRings(i)) or i = ArraySize Then
+        TempRingValue = aRings(i)
+        aRings(i) = radius_val
+        radius_val = TempRingValue
+        If chosen_row = 0 Then
+          chosen_row = i
+        End If
+      End If
+    Next
+  Else
+    Note problem_message
+    Exit Sub
+  End If
+
+  Alter Control ID_RING_LIST_BOX Title From Variable aRings
+  Alter Control ID_RING_LIST_BOX Value chosen_row
+  Alter Control ID_RING_LIST_BOX Active
+  Alter Control ID_RING_EDIT_TEXT Value STR_EMPTY_STR1
+  Alter Control ID_MODIFY_RING_BUTTON Enable  '*** Enables the "Change Radius" button.
+  Alter Control ID_DELETE_RING_BUTTON Enable  '*** Enables the "Delete Ring" button.
+
+End Sub 'OrderRings
+
+'***********************************************************************************************
+'
+' SUB EnableChangeRing
+'
+' This sub procedure enables the 'Change Radius' button when the user selects one 
+' of the radii in the 'Create Ring Buffer' dialog.  It also sets the current radius and unit
+' values to the selected radius and unit values.
+'
+'***********************************************************************************************
+Sub EnableChangeRing
+  
+  If Ubound(aRings) > 0 Then
+    Alter Control ID_MODIFY_RING_BUTTON Enable  '*** Enables the "Change Radius" button.
+    Alter Control ID_DELETE_RING_BUTTON Enable  '*** Enables the "Delete Ring" button.
+    Alter Control ID_RING_EDIT_TEXT Value aRings(ReadControlValue(ID_RING_LIST_BOX)) '*** Make the radius match the chosen row.
+  Else
+    Alter Control ID_MODIFY_RING_BUTTON Disable  '*** Enables the "Change Radius" button.
+    Alter Control ID_DELETE_RING_BUTTON Disable  '*** Enables the "Delete Ring" button.
+    Alter Control ID_RING_EDIT_TEXT Value STR_EMPTY_STR1  '*** Make the radius match the chosen row.
+  End If
+  If CommandInfo(CMD_INFO_DLG_DBL) Then  '*** If the user double-clicked on a radius then
+    Call ChangeRing         '***   they will be presented with a dialog which permits
+  End If             '***   them to change that radius.
+  
+End Sub
+
+'***********************************************************************************************
+'
+' SUB ValidateRadius
+'
+' This sub procedure is called from the AddRing and ChangeRing sub procedures.  A series of
+' string functions are used to ensure that the radius value entered into the
+' input dialog is a number.
+'
+'***********************************************************************************************
+Sub ValidateRadius(everythings_OK As Logical, ByVal radius_str As String)
+
+  Dim ascii_code As Integer     '*** The ascii code of the first character entered.
+
+  OnError GoTo ERRORHANDLING  
+
+  radius_str = LTrim$(radius_str) 
+  '*** ABOVE:  Get rid of leading spaces.
+
+  radius_str = DeformatNumber$(radius_str)  
+  '*** ABOVE:  Get rid of commas, in case number was entered that way.
+
+  radius_val = Val(radius_str)
+  '*** ABOVE:  Convert string to a number for use in buffering.
+
+  ascii_code = ASC(radius_str)
+  '*** ABOVE:  Check to make sure that the first character is numeric.  Note, a typing 
+  '***    mistake such as a radius of "50e" will be treated as "50".
+
+  everythings_OK = FALSE
+  '*** ABOVE:  Will be changed to true if the number passes checks (below).
+
+
+    
+
+'  The following checks to make sure that the radii the user entered are valid.  
+  
+  If (ascii_code >= 48 And ascii_code <= 57) Then   '*** Is the first digit 0 - 9?
+
+    everythings_OK = TRUE 
+  End If 
+
+  If ascii_code = 46 Then    '*** Is the first digit a period??
+    everythings_OK = TRUE
+  End If
+
+  If not ascii_code in (46,48) Then 
+
+    If len(radius_str) <> len(str$(val(radius_str))) Then  '*** Are extraneous alpha characters present?
+      everythings_OK = FALSE
+    End If
+  End If
+
+  If not everythings_OK then
+    problem_message = radius_str + STR_EMPTY_STR2 + GetResString(IDS_RADIUS_VALUE_NOT_VALID)
+  End If
+  '*** ABOVE:  The problem message will be noted to the user.
+  radius_str = STR_EMPTY_STR1
+  Exit Sub
+
+ERRORHANDLING:
+'*** In case an error occurs.
+  everythings_OK = FALSE
+  If Err() = 854 Then   
+    'This error is "Could not convert data".
+    problem_message = radius_str + STR_EMPTY_STR2 + GetResString(IDS_RADIUS_VALUE_NOT_VALID)
+    Alter Control ID_RING_EDIT_TEXT Value STR_EMPTY_STR1
+    Resume Next
+  Else
+    Note Error$()
+  End If
+
+End Sub
+
+'***********************************************************************************************
+'
+' SUB ClearAllRings
+'
+' This sub procedure is called from the 'Clear' button in the input dialog.
+' It resets the array of radii values, the radius edittext box, and the 
+' listbox containing the array values.
+'
+'***********************************************************************************************
+Sub ClearAllRings
+
+  Redim aRings(0)
+
+  Alter Control ID_RING_LIST_BOX Title STR_EMPTY_STR1
+  Alter Control ID_RING_EDIT_TEXT Active
+
+End Sub 'ClearAllRings
+
+'***********************************************************************************************
+'
+' SUB VerifyInput
+'
+' This sub procedure is the handler for the Input dialogs OK button.  It
+' checks to make sure that the user has entered at least one radius value
+' to buffer and also checks to make sure that the smoothness is a valid
+' smoothness setting.
+'
+'***********************************************************************************************
+Sub VerifyInput
+
+  If UBound(aRings) > 0 then   ' Check to make sure at least one radii was entered.
+    input_dlg_OK = TRUE
+  Else
+    input_dlg_OK = FALSE
+    Note GetResString(IDS_NO_RADII)
+    Dialog Preserve
+  End If
+ 
+  '************************************
+  '*** VALIDATING THE SMOOTHNESS
+  '
+  ' This section checks to make sure that the smoothness setting is valid.  
+  ' It will catch both invalid smoothness values (i.e. <3 or > 100) or if 
+  ' the user typed in something that is not a number.
+  '
+  '************************************
+
+  If Len(Str$(Val(ReadControlValue(ID_SMOOTHNESS_EDIT_TEXT)))) = Len(LTrim$(RTrim$((ReadControlValue(ID_SMOOTHNESS_EDIT_TEXT))))) Then
+    smoothness = Val(ReadControlValue(ID_SMOOTHNESS_EDIT_TEXT))
+    If Not (smoothness >= 3 and smoothness <= 100) Then
+      Note GetResString(IDS_SMOOTHNESS_NOT_VALID)
+      Alter Control ID_SMOOTHNESS_EDIT_TEXT Active
+      Dialog Preserve
+    End If
+  Else
+    Note GetResString(IDS_SMOOTHNESS_NOT_VALID)
+    Alter Control ID_SMOOTHNESS_EDIT_TEXT Active
+    Dialog Preserve
+  End If
+
+End Sub
+
+'***********************************************************************************************
+'
+' SUB ChangeDirectory
+'
+'  This subprocedure allows the user to change the directory where the buffer table will
+'  be stored.
+'
+'***********************************************************************************************
+
+Sub ChangeDirectory
+
+  Dim temp_name$ As String
+
+  temp_name$ = FileSaveAsDlg(current_path$,ReadControlValue(ID_TABLE_NAME_EDIT_TEXT), STR_TAB,
+                             GetResString(IDS_ENTER_TABLE_NAME))
+
+  If temp_name$ <> STR_EMPTY_STR1 Then
+
+    current_path$ = PathToDirectory$(temp_name$)
+    
+    buff_table_name$ = PathToTableName$(temp_name$)
+
+    Alter Control ID_TABLE_NAME_EDIT_TEXT Value PathtoTableName$(temp_name$)
+    Alter Control ID_PATH_STATIC_TEXT Title PathtoDirectory$(temp_name$)
+
+  End If
+
+End Sub ChangeDirectory
+
+'***********************************************************************************************
+'
+' SUB CreateBuffers
+'
+
+' This is where the "action" happens.  The array containing the buffer
+' sizes is used.  A loop reads each buffer ring size from the array and 
+' creates the appropriate buffer.  The buffers are created in order from 
+' largest to smallest.
+'
+'***********************************************************************************************
+Sub CreateBuffers
+
+  Dim counter    As SmallInt
+  Dim lOverwrite As Logical
+  Dim oBuffer    As Object
+  Dim i          As SmallInt
+  Dim ArraySize  As Integer
+  Dim new_name$  As String
+
+  OnError Goto Error_Handling
+  Set ProgressBars Off
+  Set Event Processing Off
+  counter = 1
+  lOverwrite = FALSE
+
+  Call CreateBufferLayer                  '*** Creates the table Buffer_Layer
+  
+  Create_Buffer_Rings:
+
+  ArraySize = Ubound(aRings)
+
+  For i = 1 to ArraySize
+
+  Create Object As Buffer 
+      From objects_to_buffer                '*** This is the selection the user made.
+      Width aRings(i)
+      Units UnitsAbbr(buffer_radius_units)  
+      Resolution smoothness  
+      Into Table buffer_layer   
+
+  Fetch Rec counter From buffer_layer
+  oBuffer = buffer_layer.obj
+
+  If iStyleToUse = USE_SPECIFIED_STYLE Then
+    ' now get the object and explicitely set its style because of source object is a
+    ' region, the buffer takes on the source object's style no matter what the system
+    ' style is set to. (bug #5102)
+    Alter Object oBuffer Info OBJ_INFO_BRUSH, region_style
+    Alter Object oBuffer Info OBJ_INFO_PEN, pen_style
+  End If
+
+  Update buffer_layer 
+    Set ring_ = i,
+    radius_ = aRings(i),
+    dist_units  = UnitName$(unitsabbr(buffer_radius_units)),
+    area_ = Area(Obj,areaunitsabbr(buffer_radius_units)),
+    area_units  = UnitName$(areaunitsabbr(buffer_radius_Units)),
+    obj = oBuffer
+    Where Rowid = counter
+
+  counter = counter +1   'The counter is needed because the rings are stored in the 
+          ' array from smallest to largest, but the table contains 
+          ' the rings in order from largest to smallest.
+
+  Next
+
+  For i = ArraySize to 2 Step -1
+    Select obj From buffer_layer Where Rowid = i 
+    Set Target On
+    Select obj From buffer_layer Where Rowid = i - 1
+    Objects Erase Into Target  
+      Data
+        ring_       = ring_, 
+        radius_     = radius_,
+        dist_units  = dist_units,
+        area_       = proportion(area_),
+    area_units  = area_units
+     
+  Next
+
+'*** SAVING THE BUFFER TABLE OCCURS HERE
+' There appears to be no reason for doing this.
+'  Commit Table buffer_layer     '*** Save changes to buffer layer
+'  Pack Table buffer_layer data   '*** Pack buffer layer because of the object erase commands.
+
+  Select * from buffer_layer order by col1 into sorted_buffer
+
+  '*** BELOW: Determines if table already exists (but is not open).  If it exists user has the
+  '***     option to overwrite it.
+
+  new_name$ = buff_table_name$ 'default to something so not blank later if new name not prompted for
+  If FileExists(current_path$ + buff_table_name$ + STR_FILE_TYPE_TAB) Then
+    lOverwrite = Ask(GetResString(IDS_TABLE_NAMED) + STR_EMPTY_STR2 + buff_table_name$ + STR_EMPTY_STR2 + GetResString(IDS_ALREADY_EXISTS),
+                     GetResString(IDS_OK), GetResString(IDS_CANCEL))
+    If Not lOverwrite Then
+      new_name$ = FileSaveAsDlg(current_path$, buff_table_name$, STR_TAB, GetResString(IDS_ENTER_TABLE_NAME))
+      If new_name$ <> STR_EMPTY_STR1 Then
+        'now separate the results of FileSaveAsDlg back into path and file name.
+        current_path$ = PathToDirectory$(new_name$)
+        buff_table_name$ = PathToFileName$(new_name$)
+      End If
+    End If
+  End If
+  
+  If new_name$ <> STR_EMPTY_STR1 Then
+    Commit Table sorted_buffer as current_path$ + buff_table_name$
+    Open Table current_path$ + buff_table_name$ Interactive
+    buff_table_name$ = TableInfo(0, TAB_INFO_NAME) '*** In case name changed because of opening it interactively.
+  End If
+  Close table buffer_layer
+  
+  If new_name$ <> STR_EMPTY_STR1 Then
+    If NumWindows() > 0 then
+      If WindowInfo(FrontWindow(),WIN_INFO_TYPE) = WIN_MAPPER then
+        Add Map Auto Layer TableInfo(0,TAB_INFO_NAME)
+        Set Map Layer buff_table_name$ Label With STR_RING + col1 + STR_COLON + STR_EMPTY_STR2 + col2 + STR_EMPTY_STR2 + col3
+      End If
+    End If
+  End If
+
+  Set Event Processing On
+
+  If do_statistics Then
+    Call CalculateRingStatistics
+  End If
+
+  Exit Sub
+
+  ERROR_HANDLING:
+   
+  Do Case Err()
+    Case 420  '*** Occurs if table is saved as a table with the same name as an open table.
+              '***   This is a separate problem from having an existing file.  The reason is
+              '***   because you could have a table open with the same name, but located in a 
+              '***   different folder.
+      
+      If not lOverwrite Then  
+              '*** It is possible that the user has already indicated that the table should
+         '***   table should be overwritten.  This prevents the user from being asked
+              '***   twice.
+        lOverwrite = Ask(GetResString(IDS_TABLE_NAMED) + STR_EMPTY_STR2 + buff_table_name$ + STR_EMPTY_STR2 + GetResString(IDS_ALREADY_EXISTS),
+                         GetResString(IDS_OK), GetResString(IDS_CANCEL))
+        If lOverwrite then 
+          Close Table buff_table_name$ 
+          Resume 0 
+        Else 
+          buff_table_name$ = FileSaveAsDlg(current_path$, buff_table_name$, STR_TAB, GetResString(IDS_ENTER_TABLE_NAME))
+          Resume 0
+        End If
+      Else   ' This occurs if user has already indicated that the table should be overwritten.
+        Close Table buff_table_name$
+        Resume 0
+      End If
+
+    Case 900  '*** Buffer region too complex.
+      Note GetResString(IDS_BUFFER_TOO_COMPLEX) + Chr$(13) + STR_HASH_COLON + Err()
+      End Program
+
+    Case 1294 '*** Possibly a spatial data problem.
+      Note GetResString(IDS_OBJECT_ERROR) + Chr$(13) + STR_HASH_COLON + Err()
+      End Program
+
+    Case Else
+      Call HandleError
+    End Case
+
+End sub
+
+'***********************************************************************************************
+'
+' SUB CreateBufferLayer
+'
+' This sub procedure is called before buffers are created.  The table Buffer_Layer is created
+' here.  If it already is open, the program prompts the user if they wish to save it or not.
+' 
+' The Buffer_Layer table contains fields for the ring, the radius, the distance units, the area and the
+' area units for each ring.
+'
+'***********************************************************************************************
+Sub CreateBufferLayer
+
+  OnError Goto ERROR_HANDLING
+
+  Close Table buffer_layer
+
+  CreateBufferLayer:
+
+  Create Table buffer_layer  
+      (Ring_ Smallint, 
+       Radius_ Float, 
+       Dist_Units Char(14),
+       Area_ Float,
+       Area_Units  Char(18))
+       File GetFolderPath$(FOLDER_MI_LOCAL_APPDATA) + "buffer_layer.tab"
+
+  Create Map For buffer_layer
+
+  Exit Sub
+
+ERROR_HANDLING:
+
+  If Err() = 311 Then
+    Resume CreateBufferLayer
+  Else
+    Note Error$() + Chr$(13) + STR_HASH_COLON + Err()
+  End If
+
+End Sub
+
+'***********************************************************************************************
+'
+'SUB CleanUp
+'
+' This sub procedure closes some temporary tables.
+'
+
+'***********************************************************************************************
+Sub CleanUp
+
+  OnError Goto Error_handling
+  Run Menu Command M_ANALYZE_UNSELECT
+  Close Table Objects_to_Buffer
+
+  Exit sub
+
+ERROR_HANDLING:
+
+  If Err() = 311 then Resume next
+    Else call HandleError
+  End If
+
+End Sub
+
+'***********************************************************************************************
+'
+' SUB SetUpRingStatistics
+'
+' This subprocedure is where the user sets up what statistics they would like to have 
+' calculated for each ring.  
+'
+' It is called from the "Ring Statistic" button in the main dialog.
+'
+' The tables containing rings contain the following columns:
+'      Ring_      (Small Integer)     - contains the ring number, in order smallest to largest.
+'  Radius_    (Float)             - contains the radius value of that ring.
+'  Dist_units (Character 14 wide) - contains the distance units for the ring.  
+'  Area_      (Float)             - the area of the ring.
+'     Area_units (Character 18 wide) - the area units used for the ring.
+'
+'***********************************************************************************************
+Sub SetUpRingStatistics
+
+  Dim table_list, table_name_array() As String
+
+  Dim i As Smallint
+
+  Redim table_name_array(NumTables())
+
+  For i = 1 to NumTables()
+    table_list = table_list + TableInfo(i,TAB_INFO_NAME) + STR_SEMI_COLON
+    table_name_array(i) = TableInfo(i,TAB_INFO_NAME)
+  Next
+
+  Dialog
+    Title GetResString(IDS_CALCULATE_RING_STATS)
+    Calling RingStatisticsDialogHandler
+  
+  Control StaticText
+    Title GetResString(IDS_USE_DATA_FROM_TABLE)
+    Position 10, 10
+
+  Control Popupmenu
+    Title table_list
+    Into chosen_data_tabnum    '*** List of ring tables popup.
+    ID ID_TABLE_POPUP_MENU 
+
+  Control GroupBox      '*** GroupBox
+    Width 300
+    Height 100
+    Title GetResString(IDS_WITHIN_EACH_RING)
+    Position 10, 25
+
+  Control CheckBox      '*** Calculate the sums.
+    Position 20, 37
+    Value calc_sums
+    Into calc_sums
+    ID ID_CALC_SUMS_CHECK_BOX
+    Calling RingStatisticsHandler
+
+  Control StaticText
+    Title GetResString(IDS_CALCULATE_THE)
+    Position 35, 37
+
+  Control PopupMenu
+    Title GetResString(IDS_SUM) + STR_SEMI_COLON + GetResString(IDS_PROPORTION_SUM)
+    Width 60
+    Into sum_method
+
+  Control CheckBox      '*** Graph the sums.
+    Title GetResString(IDS_GRAPH_RESULTS)
+    Position 40, 51
+    Into graph_sums
+    Value graph_sums
+    ID ID_GRAPH_SUMS_CHECK_BOX
+ 
+  Control CheckBox      '*** Calculate the averages.
+    Position 20, 67
+    Value calc_avgs
+    Into calc_avgs
+    ID ID_CALC_AVG_CHECK_BOX
+    Calling RingStatisticsHandler
+
+  Control StaticText
+    Title GetResString(IDS_CALCULATE_THE)
+    Position 35, 67
+
+  Control PopupMenu
+    Title GetResString(IDS_AVERAGE) + STR_SEMI_COLON+ GetResString(IDS_PROPORTION_AVG)
+    Width 60
+    Into avg_method
+
+  Control CheckBox      '*** Graph the averages.
+    Title GetResString(IDS_GRAPH_RESULTS)
+    Position 40, 81
+    Value graph_avgs
+    Into graph_avgs
+    ID ID_GRAPH_AVG_CHECK_BOX
+ 
+  Control CheckBox      '*** Calculate the counts.
+    Position 20, 97
+    Value calc_counts
+    Into calc_counts
+    ID ID_CALC_COUNTS_CHECK_BOX
+    Calling RingStatisticsHandler
+
+  Control StaticText
+    Title GetResString(IDS_CALCULATE_RECORD_COUNT)
+    Position 35, 97
+
+  Control CheckBox      '*** Graph the counts.
+    Title GetResString(IDS_GRAPH_RESULTS)
+    Position 40, 111
+    Value graph_counts
+    Into graph_counts
+    ID ID_GRAPH_COUNTS_CHECK_BOX
+
+  Control StaticText
+    Title GetResString(IDS_INCLUDE_RECORDS)
+    Position 10, 137
+
+  Control PopupMenu
+    Title GetResString(IDS_WITHIN) + STR_SEMI_COLON + GetResString(IDS_PARTLY_WITHIN)
+    Into join_method
+
+  Control OKButton
+    Title GetResString(IDS_OK)
+    Calling VerifyStatisticsTable
+
+  Control CancelButton
+    Title GetResString(IDS_CANCEL)
+
+  Control Button
+    Title GetResString(IDS_HELP)
+    Calling AboutRingBufferStatistics
+
+'*** Below:  If the user clicked OK 
+
+  If CommandInfo(CMD_INFO_DLG_OK) Then
+    do_statistics = TRUE
+  Else
+    do_statistics = FALSE
+  End If
+
+End Sub
+
+'***********************************************************************************************
+'
+' SUB RingStatisticsDialogHandler
+'
+'  This sub-procedures takes care of enabling and disabling the graph option checkboxes.   
+'  It is called when the dialog is invoked so as to make sure that the graph checkboxes are
+'  enabled only if the associated calculations are being performed.
+'
+'***********************************************************************************************
+Sub RingStatisticsDialogHandler
+
+  If ReadControlValue(ID_CALC_SUMS_CHECK_BOX) = 1 Then 
+    Alter Control ID_GRAPH_SUMS_CHECK_BOX Enable
+  Else 
+    Alter Control ID_GRAPH_SUMS_CHECK_BOX Disable
+  End If
+
+  If ReadControlValue(ID_CALC_AVG_CHECK_BOX) = 1 Then 
+    Alter Control ID_GRAPH_AVG_CHECK_BOX Enable
+  Else 
+    Alter Control ID_GRAPH_AVG_CHECK_BOX Disable
+  End If
+
+  If ReadControlValue(ID_CALC_COUNTS_CHECK_BOX) = 1 Then 
+    Alter Control ID_GRAPH_COUNTS_CHECK_BOX Enable
+  Else 
+    Alter Control ID_GRAPH_COUNTS_CHECK_BOX Disable
+  End If
+
+End Sub
+
+'***********************************************************************************************
+'
+' SUB RingStatisticsHandler
+'
+'  This sub-procedures takes care of enabling and disabling the graph option checkboxes.  This 
+'  is done so as to avoid creating a graph if none of the appropriate columns are being 
+'  calculated.
+'
+'  This is called when the user checks or unchecks one of the boxes indicated they want 
+'  calculations.
+'
+'***********************************************************************************************
+Sub RingStatisticsHandler
+
+  Do Case TriggerControl()
+    Case ID_CALC_SUMS_CHECK_BOX
+      If ReadControlValue(ID_CALC_SUMS_CHECK_BOX) = 1 Then 
+        Alter Control ID_GRAPH_SUMS_CHECK_BOX Enable
+      Else 
+        Alter Control ID_GRAPH_SUMS_CHECK_BOX Disable
+      End If
+
+    Case ID_CALC_AVG_CHECK_BOX
+      If ReadControlValue(ID_CALC_AVG_CHECK_BOX) = 1 Then 
+        Alter Control ID_GRAPH_AVG_CHECK_BOX Enable
+      Else 
+        Alter Control ID_GRAPH_AVG_CHECK_BOX Disable
+      End If
+
+    Case ID_CALC_COUNTS_CHECK_BOX
+      If ReadControlValue(ID_CALC_COUNTS_CHECK_BOX) = 1 Then 
+        Alter Control ID_GRAPH_COUNTS_CHECK_BOX Enable
+      Else 
+        Alter Control ID_GRAPH_COUNTS_CHECK_BOX Disable
+      End If
+
+  End Case
+
+End Sub
+
+'***********************************************************************************************
+'
+' SUB VerifyStatisticsTable
+'
+' This sub-procedure checks to ensure that the table being used to aggregate the data
+' from is mappable and is not a raster table. 
+'
+'***********************************************************************************************
+Sub VerifyStatisticsTable
+
+  If Not TableInfo(ReadControlValue(ID_TABLE_POPUP_MENU),TAB_INFO_MAPPABLE) Then
+     Note GetResString(IDS_CANNOT_AGGREGATE_WITHOUT_OBJS)
+     Dialog Preserve
+  End If
+
+  If TableInfo(ReadControlValue(ID_TABLE_POPUP_MENU),TAB_INFO_TYPE) = TAB_TYPE_IMAGE Then
+     Note GetResString(IDS_CANNOT_AGGREGATE_RASTER)
+     Dialog Preserve
+  End If
+
+End Sub
+
+'***********************************************************************************************
+'
+' SUB SelectRingTable
+'
+'  This sub-procedure is called from the menu command "Calculate Ring Statistics".  The 
+'  purpose of having this is to permit the user to calculate ring statistics outside of the
+'  creation of ring buffers.  The user may then aggregate information from more than one
+'  table into a set of rings.
+'
+'***********************************************************************************************
+Sub SelectRingTable
+
+  OnError Goto ERROR_HANDLING
+  
+  Dim ring_tab_list$, ring_tab_arr$() As String
+  Dim i, num_ring_tabs, counter, chosen_tab As Smallint
+  Dim IsRingTab As Logical
+
+  counter = 0
+  For i = 1 to NumTables()
+	 If (NumCols(TableInfo(i, TAB_INFO_NAME)) > 0) Then
+
+		If ColumnInfo(i,STR_COL1,COL_INFO_NAME) = STR_RING_UNDERSCORE Then
+		   counter = counter + 1 
+	       
+		   ring_tab_list$ = ring_tab_list$ + TableInfo(i,TAB_INFO_NAME)+ STR_SEMI_COLON
+		   redim ring_tab_arr$(counter)
+		   ring_tab_arr$(counter) = TableInfo(i,TAB_INFO_NAME)
+	       
+		End If
+
+	 End If
+  Next
+
+  If counter > 0 Then 
+
+    Dialog
+      Title GetResString(IDS_SELECT_RING_TABLE)
+
+    Control StaticText
+      Title GetResString(IDS_SELECT_A_TABLE)
+      Position 10, 12
+
+    Control PopupMenu
+      Title ring_tab_list$
+      Width 90
+      Into chosen_tab
+
+    Control OKButton
+      Title GetResString(IDS_OK)
+
+    Control CancelButton
+      Title GetResString(IDS_CANCEL)
+
+    If CommandInfo(CMD_INFO_DLG_OK) Then
+      buff_table_name$ = ring_tab_arr$(chosen_tab)
+
+      Call SetUpRingStatistics
+
+      If do_statistics Then
+        Call CalculateRingStatistics
+      End If
+    End If
+  Else
+    Note GetResString(IDS_NO_RING_BUFFER_TABLES)
+  End If
+  
+  ExitSub:
+
+    Exit Sub
+
+  ERROR_HANDLING:
+
+	 Note Error$()
+    Resume ExitSub
+ 
+End Sub
+
+'***********************************************************************************************
+'
+' SUB CalculateRingStatistics
+'
+'
+'  This sub procedure is where the program aggregates the data for each ring.
+'  It is called if the user accessed the "Ring Statistics" dialog and clicked OK.
+'
+'***********************************************************************************************
+Sub CalculateRingStatistics
+
+  Dim
+    chosen_data_table$,
+    column_list$,
+    join_type$,
+    sum_method$,
+    avg_method$,
+    sum_col_list$,
+    avg_col_list$,
+    col_name$ As String
+  Dim i, column_type, numeric_column_counter, num_cols As Smallint
+
+  column_list$ = STR_EMPTY_STR1
+  Redim column_name_array$()
+
+  OnError Goto ERROR_HANDLING
+
+  '********************************************************************
+  '**** Step 1) Get name of table the data is being aggregated from. ****
+
+  chosen_data_table$ = tableinfo(chosen_data_tabnum,TAB_INFO_NAME)
+  numeric_column_counter = 0
+
+ 
+  '********************************************************************
+  '**** Step 2)  Build list (and corresponding array) of all the numeric columns
+
+  For i = 1 to NumCols(chosen_data_table$)
+
+    column_type = ColumnInfo(chosen_data_table$,STR_COL+i,COL_INFO_TYPE)
+
+    If column_type = Any(COL_TYPE_DECIMAL,COL_TYPE_FLOAT,COL_TYPE_INTEGER,COL_TYPE_SMALLINT) Then
+
+      numeric_column_counter = numeric_column_counter + 1
+      Redim column_name_array$(numeric_column_counter)
+      column_list$ = column_list$ + ColumnInfo(chosen_data_table$,STR_COL+i,COL_INFO_NAME) + STR_SEMI_COLON
+      column_name_array$(numeric_column_counter) = ColumnInfo(chosen_data_table$,STR_COL+i,COL_INFO_NAME)
+
+    End If
+
+  Next
+
+  '********************************************************************
+  '**** Step 3)  Assign proper value to string variable containing chosen type of join.
+   
+  Do Case join_method
+    Case 1
+      join_type$ = STR_WITHIN
+    Case 2
+      join_type$ = STR_INTERSECTS
+  End Case
+
+  '********************************************************************
+  '**** Step 4) If specified, create the COUNTS column.
+
+  If calc_counts Then
+
+    col_name$ = UniqueColumnName(buff_table_name$, STR_COUNT_OF+ chosen_data_table$)
+    Run Command STR_ADD_COLUMN + buff_table_name$ + STR_OPEN_BRAC + col_name$ + STR_INTEGER
+                 + STR_FROM + chosen_data_table$ 
+                 + STR_SET_TO_COUNT
+                 + STR_WHERE + join_type$
+  End If
+
+  '********************************************************************
+  '**** Step 5) If specified, create all the SUM and AVG columns.
+
+  If calc_sums or calc_avgs Then
+
+    Do Case sum_method
+      Case 1    
+        sum_method$ = STR_EMPTY_STR2 + STR_SUM + STR_EMPTY_STR2
+      Case 2
+        sum_method$ = STR_PROPORTION_SUM
+    End Case
+
+    Do Case avg_method
+      Case 1
+        avg_method$ = STR_EMPTY_STR2 + STR_AVG + STR_EMPTY_STR2
+      Case 2
+        avg_method$ = STR_PROPORTION_AVG
+    End Case
+
+    For i = 1 to numeric_column_counter
+
+      If calc_sums Then
+        col_name$ = UniqueColumnName(buff_table_name$, STR_SUM + column_name_array$(i))
+
+        Run Command STR_ADD_COLUMN + buff_table_name$ 
+                      + STR_OPEN_BRAC + col_name$ + STR_FLOAT
+                      + STR_FROM + chosen_data_table$ 
+                      + STR_SET_TO + sum_method$ + STR_OPEN_BRAC + column_name_array$(i) + STR_CLOSE_BRAC 
+                      + STR_WHERE + join_type$
+      End If
+
+      If calc_avgs Then
+        col_name$ = UniqueColumnName(buff_table_name$, STR_AVG + column_name_array$(i))
+        Run Command STR_ADD_COLUMN + buff_table_name$ 
+                      + STR_OPEN_BRAC + col_name$ + STR_FLOAT
+                      + STR_FROM + chosen_data_table$ 
+                      + STR_SET_TO + avg_method$ + STR_OPEN_BRAC + column_name_array$(i) + STR_CLOSE_BRAC 
+                      + STR_WHERE + join_type$
+      End If
+
+    Next
+  End If
+    
+  '*********************************************************************++
+  '***** Step 6) Browse the table and create the graphs.
+
+    Browse * from buff_table_name$
+
+    Set Event Processing Off
+  
+    If calc_counts Then
+      If graph_counts Then                '*** Graph counts
+        Graph col2+STR_EMPTY_STR2+col3,col6 from buff_table_name$
+        Set Graph Window FrontWindow() Type Line Rotated Off 
+          Value Axis
+            Major Grid On
+            Series 2 Symbol(34, BLUE, 12)  
+            Series 2 Line(1,2,BLUE)
+        Run Command STR_SET_GRAPH_VAL_AXIS_TITLE + STR_EMPTY_STR3 + GetResString(IDS_COUNTS) + STR_EMPTY_STR3
+        Run Command STR_SET_GRAPH_LABEL_AXIS_TITLE + Chr$(34) + STR_OPEN_BRAC + GetResString(IDS_DATA_AGGREGATED) +
+                    STR_EMPTY_STR2 + STR_EMPTY_STR1 + chosen_data_table$ + STR_EMPTY_STR1 + STR_CLOSE_BRAC + Chr$(34) 
+      End If
+      
+    Error 314
+
+  End If
+
+  num_cols = NumCols(buff_table_name$)
+  
+  If calc_sums or calc_avgs Then
+    If graph_sums or graph_avgs Then
+      For i = 5 to num_cols
+        col_name$ = ColumnInfo(buff_table_name$,STR_COL+i,COL_INFO_NAME)
+          
+        If Left$(col_name$,3)= STR_SUM Then
+           sum_col_list$ = sum_col_list$ + STR_COMMA + col_name$   
+        End If
+
+        If Left$(col_name$,3)= STR_AVG Then
+           avg_col_list$ = avg_col_list$ + STR_COMMA + col_name$   
+        End If
+
+      Next
+    End If
+  End If
+  
+  If calc_sums Then
+    If graph_sums Then               '*** Graph sums
+      If numeric_column_counter = 0 Then
+        Note GetResString(IDS_NO_NUMERIC_VALUES)
+        Exit Sub
+      End If
+      Run command STR_GRAPH_COL2+ STR_PLUS + Chr$(34)+STR_EMPTY_STR2+Chr$(34)+ STR_PLUS + STR_COL3 + sum_col_list$ + STR_FROM + buff_table_name$
+
+      Set Graph Window FrontWindow() Type Line Rotated Off 
+          Value Axis
+                Major Grid On
+                Series 2 Symbol(34, GREEN, 12)
+                Series 2 Line(1,2,GREEN)
+          Run Command STR_SET_GRAPH_VAL_AXIS_TITLE + STR_EMPTY_STR3 + GetResString(IDS_TOTALS) + STR_EMPTY_STR3
+          Run Command STR_SET_GRAPH_LABEL_AXIS_TITLE + Chr$(34) + STR_OPEN_BRAC + GetResString(IDS_DATA_AGGREGATED) +
+                      STR_EMPTY_STR2 + STR_EMPTY_STR1 + chosen_data_table$ + STR_EMPTY_STR1 + STR_CLOSE_BRAC + Chr$(34) 
+     End If
+  End If
+  
+  If calc_avgs Then
+    If graph_avgs Then
+      If numeric_column_counter = 0 Then
+        Note GetResString(IDS_NO_NUMERIC_VALUES)
+        Exit Sub
+      End If
+      Run command STR_GRAPH_COL2+ STR_PLUS +Chr$(34)+ STR_EMPTY_STR2 +Chr$(34)+ STR_PLUS + STR_COL3 + avg_col_list$+ STR_FROM  + buff_table_name$
+
+      Set Graph Window FrontWindow() Type Line Rotated Off 
+          Value Axis 
+                Major Grid On
+                Series 2 Symbol(34, BLACK, 12)
+                Series 2 Line(1,2,BLACK)
+          Run Command STR_SET_GRAPH_VAL_AXIS_TITLE + STR_EMPTY_STR3 + GetResString(IDS_AVERAGES) + STR_EMPTY_STR3
+          Run Command STR_SET_GRAPH_LABEL_AXIS_TITLE + Chr$(34) + STR_OPEN_BRAC + GetResString(IDS_DATA_AGGREGATED) +
+                      STR_EMPTY_STR2 + STR_EMPTY_STR1 + chosen_data_table$ + STR_EMPTY_STR1 + STR_CLOSE_BRAC + Chr$(34) 
+     End If
+  End If
+
+  Set Event Processing On
+
+  Exit Sub
+
+ERROR_HANDLING:
+
+  If Err() = 314 Then
+    Resume Next
+  Else
+    Note Error$() + Chr$(13) + Err()
+    End Program
+  End If 
+
+End Sub
+
+'***********************************************************************************************
+'
+'***********************************************************************************************
+Function UniqueColumnName(ByVal TableName$ As String, ByVal ColumnName$ As String) As String
+
+  Dim i, j, k As SmallInt
+  Dim NewColumnName$ As String
+
+  NewColumnName$ = ColumnName$
+  i = 1
+  Do While ColumnAlreadyExists(buff_table_name$, NewColumnName$)
+    i = i + 1
+    k = 0
+    j = InStr(1, NewColumnName$, STR_UNDER_SCORE)
+    Do While j > 0
+      k = j
+      j = InStr(k+1, NewColumnName$, STR_UNDER_SCORE)
+    Loop
+    If k > 0 Then
+      If Val(Mid$(NewColumnName$, k+1, 255)) > 0 Then
+        NewColumnName$ = Left$(NewColumnName$, k-1)
+      End If
+    End If
+    NewColumnName$ = NewColumnName$ + STR_UNDER_SCORE + Str$(i)
+  Loop 
+
+  UniqueColumnName = NewColumnName$
+
+End Function
+'***********************************************************************************************
+'
+
+'***********************************************************************************************
+Function ColumnAlreadyExists(ByVal TableName$ As String, ByVal ColumnName$ As String) As Logical
+
+  Dim i As SmallInt
+  Dim lFound As Logical
+
+  lFound = FALSE
+  For i = 1 To TableInfo(TableName$, TAB_INFO_NCOLS)
+    If ColumnInfo(TableName$, STR_COL+i, COL_INFO_NAME) = ColumnName$ Then
+      lFound = TRUE
+    End If
+  Next
+
+  ColumnAlreadyExists = lFound
+
+End Function
+'****************************************************************************
+' Sub ReadPreferences
+'
+'****************************************************************************
+Sub ReadPreferences
+
+  Dim iBrushPattern, iBrushForeColor, iBrushBackColor As Integer
+  Dim iPenWidth, iPenPattern, iPenColor As Integer
+  Dim fVersion As Float
+  Dim sPrefPath As String
+  Dim i As Integer
+
+  OnError Goto HandleError
+
+  If FileExists(GetFolderPath$(FOLDER_MI_APPDATA) + RingBufferPreferenceFile) Then
+    sPrefPath = GetFolderPath$(FOLDER_MI_APPDATA) + RingBufferPreferenceFile
+  ElseIf FileExists(GetFolderPath$(FOLDER_MI_PREFERENCE) + RingBufferPreferenceFile) Then
+    sPrefPath = GetFolderPath$(FOLDER_MI_PREFERENCE) + RingBufferPreferenceFile
+  ElseIf FileExists(ApplicationDirectory$() + RingBufferPreferenceFile) Then
+    sPrefPath = ApplicationDirectory$() + RingBufferPreferenceFile
+  Else
+    sPrefPath = RingBufferPreferenceFile
+    GoTo SkipFile
+  End If
+
+    OnError GoTo SkipFile
+    Open File sPrefPath For Input As #2
+    If Not EOF(2) Then
+      Input #2, fVersion
+      Do Case fVersion 
+        Case AppVersion, 1.4
+          Input #2, buffer_radius_units, smoothness$, current_path$, buff_table_name$, sum_method, avg_method, join_method,
+                    do_statistics, calc_sums, graph_sums, calc_avgs, graph_avgs, calc_counts, graph_counts,
+                    iStyleToUse, iBrushPattern, iBrushForeColor, iBrushBackColor, iPenWidth, iPenPattern, iPenColor
+          Input #2, i
+          ReDim aRings(i)
+          For i = 1 To UBound(aRings)
+            Input #2, aRings(i)
+          Next
+
+          region_style = MakeBrush(iBrushPattern, iBrushForeColor, iBrushBackColor)
+          pen_style = MakePen(iPenWidth, iPenPattern, iPenColor)
+        Case Else
+          Print GetResString(IDS_INCORRECT_VERSION) + STR_EMPTY_STR2 + sPrefPath + GetResString(IDS_USING_INTERNAL_DEFAULTS)
+      End Case
+    End If 
+
+    Close File #2 
+
+NoFile:
+  Exit Sub 
+
+SkipFile: 
+  'Print GetResString(IDS_UNABLE_TO_READ) + STR_EMPTY_STR2 + sPrefPath + GetResString(IDS_USING_INTERNAL_DEFAULTS)
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_READ_PREFERENCES + Error$()
+  Resume Next
+End Sub
+'****************************************************************************
+' Sub WritePreferences
+'
+'****************************************************************************
+Sub WritePreferences
+
+  Dim iBrushPattern, iBrushForeColor, iBrushBackColor As Integer
+  Dim iPenWidth, iPenPattern, iPenColor As Integer
+  Dim i As Integer
+
+  If FileExists(GetFolderPath$(FOLDER_MI_APPDATA)) then 
+    OnError GoTo SecondTry
+    Open File GetFolderPath$(FOLDER_MI_APPDATA) + RingBufferPreferenceFile For Output As #2 
+    Goto OpenOkay
+  End If
+
+SecondTry:
+  If FileExists(GetFolderPath$(FOLDER_MI_PREFERENCE)) then 
+    OnError GoTo ThirdTry
+    Open File GetFolderPath$(FOLDER_MI_PREFERENCE) + RingBufferPreferenceFile For Output As #2 
+    Goto OpenOkay
+  End If
+
+ThirdTry:
+  OnError GoTo SkipFile
+  Open File ApplicationDirectory$() + RingBufferPreferenceFile For Output As #2 
+
+OpenOkay:
+      iBrushPattern = StyleAttr(region_style, BRUSH_PATTERN)
+      iBrushForeColor = StyleAttr(region_style, BRUSH_FORECOLOR)
+      iBrushBackColor = StyleAttr(region_style, BRUSH_BACKCOLOR)
+      iPenWidth = StyleAttr(pen_style, PEN_WIDTH)
+      iPenPattern = StyleAttr(pen_style, PEN_PATTERN)
+      iPenColor = StyleAttr(pen_style, PEN_COLOR)
+
+      Write #2, AppVersion
+      Write #2, buffer_radius_units, smoothness$, current_path$, buff_table_name$, sum_method, avg_method, join_method,
+                do_statistics, calc_sums, graph_sums, calc_avgs, graph_avgs, calc_counts, graph_counts,
+                iStyleToUse, iBrushPattern, iBrushForeColor, iBrushBackColor, iPenWidth, iPenPattern, iPenColor
+      Write #2, UBound(aRings)
+      For i = 1 To UBound(aRings)
+        Write #2, aRings(i)
+      Next
+
+  Close File #2 
+
+NoFile: 
+    Exit Sub 
+
+SkipFile: 
+    Note GetResString(IDS_UNABLE_TO_WRITE) + STR_EMPTY_STR2 + GetFolderPath$(FOLDER_MI_APPDATA) + RingBufferPreferenceFile + GetResString(IDS_SKIPPING)
+    Resume NoFile
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_WRITE_PREFERENCES + Error$()
+  Resume Next
+End Sub
+
+'***********************************************************************************************
+'
+' SUB HandleError
+'
+' This is called from many different procedures.
+'
+'***********************************************************************************************
+Sub HandleError
+  Note GetResString(IDS_ERROR_OCCURRED) + Chr$(13) + Chr$(13) + Error$() + Chr$(13) 
+       + STR_HASH_COLON + Err()
+  End Program
+End Sub
+
+'***********************************************************************************************
+'
+' SUB AboutRingBuffer
+'
+' This is called from the Help & Instructions menu command.
+'
+'***********************************************************************************************
+Sub AboutRingBuffer
+
+  Dialog
+    Title GetResString(IDS_ABOUT) + STR_EMPTY_STR2 + GetResString(IDS_APP_DESCRIPTION) +STR_EMPTY_STR2+ STR_OPEN_BRAC + GetResString(IDS_VERSION) + STR_EMPTY_STR2 + Str$(AppVersion) + STR_CLOSE_BRAC
+
+    Control StaticText
+    Height 130   
+    Width  300
+    Title  GetResString(IDS_ABOUT_1) + + Chr$(13) +
+           GetResString(IDS_ABOUT_2) + GetResString(IDS_ABOUT_3) + Chr$(13) + Chr$(13) +
+           GetResString(IDS_ABOUT_4) + GetResString(IDS_ABOUT_5) + Chr$(13) + Chr$(13) +
+           GetResString(IDS_ABOUT_6) + GetResString(IDS_ABOUT_7) + Chr$(13) + Chr$(13) +
+           GetResString(IDS_ABOUT_8)  
+ 
+    Control OKButton    Title  GetResString(IDS_OK) 
+
+End Sub
+
+'***********************************************************************************************
+'
+' SUB AboutRingBufferStatistics
+'
+' This sub-procedure is called from the 'Help' button in the 'Ring Statistics' dialog box.
+' Its purpose is to offer a brief explanation of the purpose of this feature.
+'
+'***********************************************************************************************
+Sub AboutRingBufferStatistics
+
+  Dialog 
+    Title GetResString(IDS_ABOUT) + STR_EMPTY_STR2 + GetResString(IDS_CALCULATE_RING_STATS) + STR_EMPTY_STR2+ STR_OPEN_BRAC + GetResString(IDS_VERSION) + STR_EMPTY_STR2 + Str$(AppVersion) + STR_CLOSE_BRAC
+    
+    Control StaticText
+    Height 130   
+    Width  300
+    Title  GetResString(IDS_ABOUT_9) + Chr$(13) + Chr$(13) + 
+           GetResString(IDS_ABOUT_10) + GetResString(IDS_ABOUT_11) + Chr$(13) + Chr$(13) + 
+           GetResString(IDS_ABOUT_12) + GetResString(IDS_ABOUT_13) + GetResString(IDS_ABOUT_14) + GetResString(IDS_ABOUT_15) + Chr$(13) + Chr$(13) +
+           GetResString(IDS_ABOUT_16)  
+
+    Control OKButton    Title  GetResString(IDS_OK) 
+
+End Sub
+
+'***********************************************************************************************
+'
+' SUB EndProgram
+'
+' This sub does just what it sounds like.  Or did you really need me to 
+' tell you?
+'
+' This has been another 35,000 foot production from Tom the Trainer!
+'
+'***********************************************************************************************
+Sub EndProgram
+  Call WritePreferences
+  End Program
+End Sub

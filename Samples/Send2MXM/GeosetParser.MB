@@ -1,0 +1,230 @@
+Include "Mapbasic.def"
+Include "Geoset.def"
+Include "GeosetLoad.def"
+Include "Error.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+Dim bMetaData     As Logical    ' GeoSet metadata flag
+Dim lParserState  As Integer    ' Expected lexeme 
+Dim sCurrentKey   As String     ' Key of Geoset entry
+
+'---------------------------------------
+' Parse String from GeoSet file
+'---------------------------------------
+Function Parse( sLine As String ) As Integer
+  OnError Goto ErrorTrap
+  Dim lPos, lSQPos   As Integer
+  Dim lLineLen       As Integer
+
+    lLineLen = Len( sLine )
+
+    If Not bMetaData Then
+        lPos = InStr( 1, UCase$(sLine), UCase$(KEY_BEGIN_METADATA) ) 'AED
+        If lPos <> 0 Then
+            bMetaData = TRUE
+            lParserState = STATE_KEY
+            sLine = LTrim$( Mid$( sLine, lPos + Len( KEY_BEGIN_METADATA ), lLineLen ) )
+        Else
+            Call PrintErrMsg( SVRT_WARNING, ERR_AREA_READING, GetResString(IDS_ERR_MSG_CONST_IDNT) )
+Print "  " + GetResString(IDS_WHILE_LOOKING_FOR) + " " & KEY_BEGIN_METADATA & " " + GetResString(IDS_IN) + " " & sline
+            Parse = CODE_OK
+            Exit Function
+        End If
+    End If
+
+    Do While lLineLen > 0 
+        If InStr( 1, UCase$(sLine), UCase$(KEY_END_METADATA) ) = 1 Then  ' BP 12.06.98
+            Parse = CODE_END
+            Exit Function 
+        End If
+
+        Do Case lParserState 
+            Case STATE_KEY         ' Extract GeoSet Key
+                If LookForGeosetKey( sLine, lLineLen ) Then
+                    lParserState = STATE_DELIMETER
+                End If
+
+            Case STATE_VALUE       ' Extract GeoSet Value of corresponded key
+                If LookForGeosetValue( sLine, lLineLen ) Then
+                    lParserState = STATE_KEY
+                End If
+
+            Case STATE_DELIMETER   ' Look For Key-Value Delimeter "="
+                If LookForDelimere( sLine, lLineLen ) Then
+                    lParserState = STATE_VALUE
+                End If
+        End Case
+
+        lLineLen = Len( sLine )
+    Loop
+
+    Parse = CODE_OK
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "Parse: " & Error$()
+  Resume Done
+End Function 'Parse
+
+'---------------------------------------
+' Look for Delimeter in parsing string
+'---------------------------------------
+Function LookForDelimere( sLine As String, ByVal lLineLen As Integer ) As Logical
+  OnError Goto ErrorTrap
+  Dim lPos   As Integer
+
+    lPos = InStr( 1, sLine, "=" )
+    If lPos > 0 Then
+        If lPos <> 1 Then
+            Call PrintErrMsg( SVRT_WARNING, ERR_AREA_READING, GetResString(IDS_ERR_MSG_CONST_DLMT) +  " ""=""." )
+        End If
+
+        sLine = LTrim$( Mid$( sLine, lPos + 1, lLineLen ) )
+        LookForDelimere = TRUE
+    Else
+        sLine = ""
+    End If
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "LookForDelimere: " & Error$()
+  Resume Done
+End Function 'LookForDelimere
+
+'---------------------------------------
+' Look for Geoset Key in parsing string
+'---------------------------------------
+Function LookForGeosetKey( sLine As String, ByVal lLineLen As Integer ) As Logical
+  OnError Goto ErrorTrap
+  Dim lPos, lSQPos   As Integer
+
+    lPos = InStr( 1, sLine, QUOTE )
+    If lPos = 0 Then
+        sLine = "" 
+        Exit Function
+    End If
+             
+    lSQPos = InStr( lPos + 1, sLine, QUOTE )
+    If lSQPos = 0 Then
+        lSQPos = lLineLen
+    End If
+
+    If lPos + 1 < lSQPos Then 
+        sCurrentKey = Mid$( sLine, lPos + 1, lSQPos - lPos - 1 )
+        LookForGeosetKey = TRUE
+    End If
+    sLine = LTrim$( Mid$( sLine, lSQPos + 1, lLineLen ) )
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "LookForGeosetKey: " & Error$()
+  Resume Done
+End Function 'LookForGeosetKey
+
+'---------------------------------------
+' Look for Geoset Value of corresponded Key in parsing string
+'---------------------------------------
+Function LookForGeosetValue( sLine As String, ByVal lLineLen As Integer ) As Logical
+  OnError Goto ErrorTrap
+  Dim lPos            As Integer
+  Dim lSQPos          As Integer
+  Dim sValue          As String
+  Dim bInsideLexeme   As Logical
+
+    lPos = InStr( 1, sLine, QUOTE )
+    If lPos = 0 Then
+        sLine = "" 
+        Exit Function
+    Else 
+        If lPos <> 1 Then
+            Call PrintErrMsg( SVRT_WARNING, ERR_AREA_READING, GetResString(IDS_ERR_MSG_CONST_IDNT) )
+Print "  " + GetResString(IDS_WHILE_LOOKING_FOR) + " " & "QUOTE" & " " + GetResString(IDS_IN) + " " & sline
+        End If
+        bInsideLexeme = TRUE
+        sLine = LTrim$( Mid$( sLine, lPos + 1, lLineLen ) )
+    End If
+
+
+
+    Do While bInsideLexeme
+        lPos = InStr( 1, sLine, QUOTE )
+
+        If lPos <> 0 Then
+            lSQPos = InStr( lPos + 1, sLine, QUOTE )
+            If lPos + 1 = lSQPos Then  
+                ' Double Quote: add the quote to Value  
+                sValue = sValue & Left$( sLine, lPos )
+                sLine = Mid$( sLine, lSQPos + 1, lLineLen )
+            Else
+                ' the end of Lexeme
+                sValue = sValue & Left$( sLine, lPos - 1 )
+                sLine = LTrim$( Mid$( sLine, lPos + 1, lLineLen ) )
+                bInsideLexeme = FALSE     
+            End If
+        Else  ' Terminating quote is missed
+            Call PrintErrMsg( SVRT_WARNING, ERR_AREA_READING, GetResString(IDS_ERR_MSG_MISS_QUOTE) )
+            sValue = sValue & sLine 
+            sLine = ""
+            bInsideLexeme = FALSE     
+        End If
+    Loop
+
+    ' Parse Geoset Key and Memorize Geoset Value depended on Geoset Key
+    If MemorizeGeosetValue( sCurrentKey , sValue ) Then
+        LookForGeosetValue = TRUE
+    End If
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "LookForGeosetValue: " & Error$()
+  Resume Done
+End Function 'LookForGeosetValue
+
+
+'---------------------------------------
+' Extract Subkey from Goeset Key  
+'---------------------------------------
+Function GetSubKey( sKey As String ) As String
+  OnError Goto ErrorTrap
+  Dim lPos  As Integer
+  Dim lLen  As Integer
+
+    ' Search for first back slash
+    lPos = InStr( 1, sKey, SYBKEY_DELIMETER ) 
+    If lPos <> 0 Then
+        lLen = Len( sKey )
+        sKey = Mid$( sKey, lPos + 1 , lLen )
+
+        If lPos <> 1 Then
+            Call PrintErrMsg( SVRT_WARNING, ERR_AREA_READING, GetResString(IDS_ERR_MSG_CONST_IDNT) )
+Print "  " + GetResString(IDS_WHILE_LOOKING_FOR) + " " & SYBKEY_DELIMETER & " " + GetResString(IDS_IN) + " " & sline
+        End If
+     
+        ' Search for next back slash
+        lPos = InStr( 1, sKey, SYBKEY_DELIMETER ) 
+        If lPos = 0 Then
+            ' Last Subkey
+            GetSubKey = Left$( sKey, lLen )      
+            sKey = ""
+        Else 
+            GetSubKey = Left$( sKey, lPos - 1 )
+            sKey = Mid$( sKey, lPos, lLen )
+        End If
+    End If        
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "GetSubKey: " & Error$()
+  Resume Done
+End Function 'GetSubKey
+

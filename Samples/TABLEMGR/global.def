@@ -1,0 +1,120 @@
+'/*****************************************************************************
+'*       Copyright © 2011 Pitney Bowes Software Inc.
+'*       All rights reserved.
+'*****************************************************************************/
+'****************************************************************************
+' Include files
+'****************************************************************************
+Include "MapBasic.def"
+Include "..\Inc\STR_Lib.def"
+Include "..\Inc\Auto_lib.def"
+Include "..\Inc\MiStdLib.def"
+'****************************************************************************
+' Define constants
+'****************************************************************************
+Define AppVersion 2.0
+
+Define LB_TABLELIST        100
+Define ST_NAME             101
+Define ST_TYPE             102
+Define ST_NCOLS            103
+Define ST_NROWS            104
+Define ST_MAPPABLE         105
+Define ST_READONLY         106
+Define LB_KEYLIST          110
+Define TB_VALUE            111
+Define ST_TABLELOCATION    112
+Define ST_TEMPLATELOCATION 113
+Define BT_ADD              114
+Define BT_UPDATE           115
+Define BT_DELETE           116
+Define PUM_FUNCTIONS       117
+Define BT_CLEAR            118
+Define BT_SAVE             119
+Define BT_LOAD             120
+Define BT_SAVEAS           121
+Define BT_EXPORT           122
+Define CB_MODIFYMETADATA   123
+Define ET_NEWKEY           124
+Define ST_VERSION          126
+Define ST_DATATYPE         127
+
+Define MAX_VALID_FUNCTIONS 27 
+Define META_DATA_TEMPLATE "mdt"
+'****************************************************************************
+' Data Types
+'****************************************************************************
+Type structMetaDataArray
+	sKeyName as string
+	sKeyValue as string
+	sKeyFunction as string
+End Type
+'****************************************************************************
+' Global Variables
+'****************************************************************************
+Global gsTableList As String
+Global gsCurTable As String
+Global giCurKeyIndex As Integer
+Global glModifyMetaData As Logical
+Global glMetaDataModified As Logical
+Global gaMetaData(0) as structMetaDataArray
+Global giMetaDataCount as Integer
+Global gsMetaDataTemplate As String
+'****************************************************************************
+' Subroutine and Function Declarations
+'****************************************************************************
+'in Tablemgr.mb
+Declare Sub Main
+Declare Sub TableManager
+Declare Function GetMetadataKeys(byVal gCurTable as String) As String
+Declare Sub TableListHandler
+Declare Sub KeyListHandler
+Declare Sub TableLocationStaticTextHandler
+Declare Sub AddMetaDataKey
+Declare Sub UpdateMetaDataKey
+Declare Sub DeleteMetaDataKey
+Declare Sub InitializeDialog
+Declare Sub ModifyMetaDataCheckBoxHandler
+Declare Sub AddNewKeyOKButtonHandler
+Declare Sub AboutTableManager
+Declare Sub EndTableManager
+Declare Sub ClearMetaData
+Declare Sub SaveMetaData
+Declare Sub ApplyMetaDataTemplate(ByVal lEvaluate As Logical)
+Declare Function BuildMetaDataKeyList() As String
+Declare Sub DoneHandler
+Declare Sub TemplateDoneHandler
+
+'in
+Declare Sub ExportMetaData
+Declare Sub ExportFGDCMetaData(sTableName As String)
+Declare Sub PrintMetaData(ByVal level, ByVal position, ByVal linked As Integer)
+Declare Sub ParseAndStoreMetaData()
+Declare Sub ReadMetaData(sTableName As String)
+Declare Sub DefinitionPrintOut()
+Declare Sub CallPrintOut()
+Declare Sub FindNumberOfFIelds()
+Declare Sub ReadDefinitionTable()
+
+Declare Sub TemplateManager
+Declare Sub xApplyMetaDataTemplate
+Declare Sub yApplyMetaDataTemplate
+
+'in TableUtilities.mb
+Declare Sub ReadTableInfo(sTableName As String, iVersion As Integer, sType As String)
+
+'in FunctionUtilities.mb
+Declare Sub InitValidFunctions
+Declare Sub AppendFunction
+Declare Function PerformFunction(iFunctions As Integer) As String
+
+'in ReadAndWriteTemplates.mb
+Declare Sub LoadMetaDataTemplate(lEvaluate As Logical)
+Declare Sub SaveMetadataTemplate
+Declare Sub ReadMetadataFromTemplate(sTemplate as String, lEvaluate As Logical)
+Declare Sub WriteMetadataToTemplate(sTemplate as String)
+
+'In TableMetaDataUtilities.MB
+Declare Sub ReadMetadataFromTable(sTable as String)
+Declare Sub WriteMetaDataToTable(sTable as String)
+Declare Sub ClearMetaDataFromTable(sTable as String)

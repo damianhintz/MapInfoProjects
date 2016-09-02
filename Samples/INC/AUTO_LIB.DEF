@@ -1,0 +1,42 @@
+' NOTE! This library is provided as is and cannot be supported by MapInfo
+' Technical support.  These routines have been tested, but in some cases there
+' are specific assumptions that may not be evident from the prototypes.  If you
+' use these routines, test your code thoroughly.  If in doubt, review the source
+' code in the Lib directory.
+'
+'  AUTO_LIB.DEF:  This file defines the various procedures and functions
+'  contained in the AUTO_LIB.MB[O] library. 
+'
+'  To incorporate the AUTO_LIB library into an application, 
+'  have the application issue the statement: 
+'
+'       Include "AUTO_LIB.DEF" 
+'
+'  then create a project file which incorporates AUTO_LIB.MBO. 
+'  For examples, see the project files TEXTBOX.MBP and SCALEBAR.MBP 
+'
+' Version 1.1
+
+Declare Sub HandleInstallation() 
+
+Declare Function StartupWorName() As String 
+Declare Function InstalledAlready(ByVal filename As String ) As SmallInt 
+
+Declare Function ConfirmInstall  (ByVal descr As String) As Logical
+Declare Function GrowStartup (ByVal which As SmallInt, 
+                              ByVal filename As String) As SmallInt 
+
+Declare Function ConfirmUnInstall(ByVal descr As String) As Logical
+Declare Function PruneStartup (ByVal which as SmallInt, 
+                               ByVal filename As String) As Logical
+
+Declare Sub  CannotUnInstall( ByVal descr As String) 
+Declare Function LookInFileFor(ByVal filename As String ) As Logical
+
+Declare Sub set_tools_menu(ByVal menuName as String)
+
+
+Global  gsAppDescription,  ' brief name of app, e.g. "ScaleBar"
+        gsAppFilename      ' name of compiled app, e.g. "scalebar.mbx" 
+ As String                 ' these must be initialized by parent app. 
+

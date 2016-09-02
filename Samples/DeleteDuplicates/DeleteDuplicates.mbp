@@ -1,0 +1,5 @@
+[Link]
+Application=DeleteDuplicates.mbx
+Module=DeleteDuplicates.mbo
+Module=..\lib\auto_lib.mbo
+Module=..\lib\resstrng.mbo

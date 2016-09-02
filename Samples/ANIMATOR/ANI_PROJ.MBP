@@ -1,0 +1,4 @@
+[Link] 
+Application=animator.mbx 
+Module=animator.mbo
+Module=..\Lib\auto_lib.mbo

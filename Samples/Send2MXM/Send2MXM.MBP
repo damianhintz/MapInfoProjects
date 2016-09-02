@@ -1,0 +1,17 @@
+[Link]
+Application=Send2MXM.mbx
+Module=Send2MXM.mbo
+Module=FileSize.mbo
+Module=RenameTable.mbo
+Module=GeosetLayer.mbo
+Module=GeosetStyle.mbo
+Module=GeosetWrite.mbo
+Module=Service.mbo
+Module=GeosetMapLayer.mbo
+Module=GeosetRead.mbo
+Module=Error.mbo
+Module=GeosetParser.mbo
+Module=GeosetData.mbo
+Module=GeosetKeys.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\Lib\resstrng.mbo

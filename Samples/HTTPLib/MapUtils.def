@@ -1,0 +1,18 @@
+'*****************************************************************************
+'       Copyright © 2009 Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 66276 $
+'
+' Module Description:
+'
+' MapBasic functions/subs to help on map-associated activities
+'
+'*****************************************************************************
+Declare Function IsLayerInMap(ByVal WindowID As Integer, ByVal LayerName As String) As Logical
+Declare Function GetLayerNum(ByVal WindowID As Integer, ByVal LayerName As String) As SmallInt
+Declare Function IsTableOpen(ByVal LayerName As String) As Logical
+Declare Sub ApplyLabelClause(ByVal WindowID As Integer, ByVal LayerName As String, ByVal LabelFont As Font)
+
+Declare Sub ShowOnMap(ByVal LayerName As String, ByVal LabelFont As Font, ByVal bLabel As Logical)
+Declare Sub PackTempLayer(ByVal LayerName As String)

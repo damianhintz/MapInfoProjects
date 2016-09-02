@@ -1,0 +1,554 @@
+'*****************************************************************************
+'       Copyright (c) 2000, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: DMSCNVRT.MB $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+' Overview:
+'  This program will take columns from a table and convert them
+'  from degrees,minutes,seconds format to Decimal Degrees
+'  and vice versa.  The data needs to be in a specific format.
+'  The d,m,s must be just the degree value, minute value and Second
+'  value all seperated by a delimiter.  This column must be a 
+'  character value, (because of the delimter) and the Long/lat 
+'  column must be a Numerical value.
+
+'  Note:
+
+'  The calculations of this conversion could possibly result in
+'  some low level precision loss.  The program does conversion
+'  between character and Numerical values which might account for 
+'  this.
+'
+' Revision History:
+'
+'    Rev 1.0   24 Jul 1995 16:14:56 John LeBrun 
+'    Rev 1.1   19 Apr 2000 16:14:56 Dressel
+'               - work with more than 32,768 records #10782
+'               - support decimal seconds to avoid round off errors #5931
+'    Rev 1.2   30 Jan 2008 Rajan Batra
+'               - Internationalization of Tool 
+'****************************************************************
+
+
+'*******  LongLats Declarations
+Declare Sub LongLatsMain
+Declare Sub GoodBye
+Declare Sub about
+'*******
+
+
+Include "..\Inc\MapBasic.Def"
+Include "..\Inc\Menu.Def"
+Include "..\Inc\Auto_Lib.Def"
+Include "Dmscnvrt.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+
+Declare Sub main
+Declare Sub List_handler
+Declare Sub dms_to_latlong
+Declare Sub latlong_to_dms
+Declare Sub latlong2dms_dialog
+Declare Sub dms2Latlong_dialog
+Declare Sub end_prog
+Declare Function Correct_tables() As Logical
+Declare Sub Help_Dialog
+Declare Sub OKhandler1
+Declare Sub OKhandler2
+Declare Function GetTableList(List() As String, ByVal TabType As Integer) As Integer
+Declare Function GetColList(List() As String, ByVal TabName As String,ByVal ColType As Integer) As Integer
+
+
+'  Defines & Global declarations
+'Define r *4
+'Define s *8
+'Define t *9
+
+Global table_list(20) As String
+Global Column_list(20) As String
+Global Table_name As String
+Global Column_name As String
+Global num_list(1) As String
+Global char_list(1) As String
+Global sep As String
+Global num_choice,char_choice,table_choice As SmallInt
+Global browse_it As Logical
+Global DecimalSeconds As Logical
+
+Define AppVersion 1.2
+
+'*********************************************************************
+'*  Main subroutine to set up menu for program
+Sub Main
+  If LoadStrings((ApplicationDirectory$() + STR_RES_STR_FILE)) = FALSE   Then 
+    Note STR_FILE_NOT_ACCESSIBLE + ApplicationDirectory$() + STR_RES_STR_FILE
+    Exit Sub
+  End If
+
+  Set ProgressBars Off
+  Create Menu GetResString(IDS_LONG_LAT_CALC) as
+    GetResString(IDS_CNVRT_COORD)  Calling LongLatsMain,
+    GetResString(IDS_ABT_LONGLATS)  Calling about
+
+  Create Menu GetResString(IDS_CNVRTER) As
+    GetResString(IDS_CNVRT_COL_DMS) Calling latlong2dms_dialog,
+    GetResString(IDS_CNVRT_COL_DEC_DEG) Calling dms2latlong_dialog,
+    GetResString(IDS_LONG_LAT_CALC) As GetResString(IDS_LONG_LAT_CALC),
+    GetResString(IDS_MENU_ITEM_SEPERATOR),
+    GetResString(IDS_ABT_CNVRT)    Calling help_dialog,
+    GetResString(IDS_EXIT_CNVRT)       Calling end_prog
+  
+  Call set_tools_menu(GetResString(IDS_CNVRTER))
+  
+End Sub 'main'
+
+'*********************************************************************
+Sub end_prog
+  End Program
+End Sub 'end 
+
+'*********************************************************************
+'*  The following procedure creates the dialog box used when 
+'*  Convert to DMS menu choice is chosen 
+Sub latlong2dms_dialog
+  Dim x As Smallint
+  Dim y As Logical
+
+  If Correct_tables() = STR_TRUE Then
+    Dialog 
+    Title GetResString(IDS_CNVRT_DEC_DEG_TO_DMS) + Str$(AppVersion) + GetResString(IDS_CLOSE_BRAC)
+    Control StaticText Title GetResString(IDS_TABLE) 
+      Position 7,5
+    Control Popupmenu 
+      Position 7,15 
+      ID 1 
+      Title From Variable table_list Calling List_handler
+      Into table_choice
+    Control StaticText  
+      Position 7,40
+      Title GetResString(IDS_GET_DEC_DEG_VAL)
+    Control Popupmenu  
+      Position 7,50
+      ID 2 
+      Title From Variable num_list Into num_choice
+    Control StaticText  
+      Position 7,75
+      Title GetResString(IDS_STORE_RESULT)
+    Control Popupmenu  
+      Position 7,85
+      ID 3
+      Title From Variable char_list Into char_choice
+    Control Statictext   
+      Position 7,110  
+      Title GetResString(IDS_STR_RESULT_SEPARTOR)
+    Control Edittext Value GetResString(IDS_COMMA_SEPARATOR) 
+      Position 7,120  Width 20  
+      ID 5 into sep
+    Control CheckBox Title GetResString(IDS_BROWSE_RESULTS) Value browse_it Into browse_it 
+      Position 7,145
+    Control CheckBox Title GetResString(IDS_DEC_SECONDS) Value DecimalSeconds Into DecimalSeconds 
+      Position 7,160
+    Control OKButton Calling OKhandler1 
+    Control CancelButton  
+    
+    If CommandInfo(CMD_INFO_DLG_OK) Then
+      Call latlong_to_dms
+    End If
+
+    If browse_it Then
+      Browse * From table_name
+    End If
+  End If
+End Sub 'dms_dialog'
+
+'***********************************************
+'* okhandler for LatLong2Dms
+Sub OKhandler1
+  Dim separator As String
+
+  separator = ReadControlvalue(5)  
+  If separator > Chr$(48) And separator < Chr$(57) Then
+    Note GetResString(IDS_NUM_SEP_NOT_VALID)
+    Dialog Preserve
+  End If
+
+  ' We can't allow a dash to be the separator because we then get confused by 
+  ' negative signs.
+  If separator = Chr$(45) Then
+    Note GetResString(IDS_DASH_DELIMIT_NOT_SUPPORTED)
+    Dialog Preserve
+  End If
+
+End Sub
+
+'*********************************************************************
+'*  The following procedure creates the dialog box used when 
+'*  Convert to LongLat menu choice is chosen 
+Sub dms2Latlong_dialog
+  Dim x As Smallint
+  Dim y As Logical
+
+  If Correct_tables() = STR_TRUE Then
+    Dialog 
+    Title GetResString(IDS_CNVRT_DMS_TO_DEC_DEG) + Str$(AppVersion) + GetResString(IDS_CLOSE_BRAC)
+    Control StaticText Title GetResString(IDS_TABLE)
+      Position 7,5
+    Control Popupmenu
+      Position 7,15 Width 70 
+      ID 1 
+      Title From Variable table_list Calling List_handler
+      Into table_choice
+    Control StaticText
+      Position 7,40   
+      Title GetResString(IDS_GET_DMS_VALUE)
+    Control Popupmenu
+      Position 7,50   
+      ID 3 
+      Title From Variable char_list Into char_choice
+    Control Statictext
+       Position 7,75  
+       Title GetResString(IDS_DMS_SEPRATOR_STR)
+    Control Edittext Value GetResString(IDS_COMMA_SEPARATOR)
+      Position 7,85  Width 20
+      ID 5 into sep
+    Control StaticText
+      Position 7,110
+      Title GetResString(IDS_STORE_RESULT)
+    Control Popupmenu  
+      Position 7,120
+      ID 2
+      Title From Variable num_list Into num_choice
+    Control CheckBox 
+      Title GetResString(IDS_BROWSE_RESULTS) Value browse_it Into browse_it
+      Position 7,145
+    Control OKButton Calling OKhandler1 
+    Control CancelButton  
+    
+    If CommandInfo(CMD_INFO_DLG_OK) Then
+      Call dms_to_latlong
+    End If
+
+    If browse_it Then
+      Browse * From table_name
+    End If
+  End If
+End Sub 'Latlong_dialog'
+
+'*********************************************************************
+'*  OKhandler for dms2longlat
+Sub OKhandler2
+  Dim separator,char_column_name As String
+  Dim temp_alias As Alias
+
+  separator = ReadControlvalue(5)  
+  If separator > Chr$(48) And separator < Chr$(57) Then
+    Note GetResString(IDS_NUM_SEP_NOT_VALID)
+    Dialog Preserve
+  End If
+  table_name = table_list(ReadControlValue(1))
+  char_column_name = char_list(ReadControlValue(3))
+  temp_alias = table_name + STR_DOT_SEPRATOR + char_column_name
+  Fetch First From table_name
+  If Instr(1,temp_alias,separator) = 0 Then
+    Note GetResString(IDS_SEPRATOR_DIFF_FROM_TABLE_SEPARATOR)
+
+    Dialog Preserve
+  End If
+End Sub
+
+
+'*********************************************************************
+'*  The following function does some error checking to see if 
+'*  chosen tables are valid
+Function Correct_tables() As Logical
+  Dim x,y,count_it As Smallint
+  Dim tot_valid,num_valid,char_valid As Logical
+  Dim mesg As String
+  Dim New_list(1) As String
+
+  count_it = 0
+
+  '* Check to see if tables are open
+  Correct_tables = STR_TRUE
+  x = GetTableList(Table_List(),1) 
+  ReDim New_list(x)
+  If x < 1 Then
+    Note GetResString(IDS_NO_OPEN_TABLE)
+    Correct_tables = STR_FALSE
+    Exit Function
+  End If
+
+'* Check to make sure tables are not read only
+  
+  For y = 1 To x
+    If GetColList(column_list(),table_list(y),1) >= 2 And
+       GetColList(num_list(),table_list(y),2) >= 1 And
+       GetColList(char_list(),table_list(y),3) >= 1 And
+      TableInfo(table_list(y),TAB_INFO_READONLY) = False Then
+      Count_it = Count_it + 1
+       new_list(count_it) = table_list(y)
+    End If 
+  Next  
+
+'* Check tables for validity
+  
+  If Count_it = 0 Then
+    Mesg = GetResString(IDS_NO_VALID_TABLE_OPEN)
+    Mesg = Mesg + GetResString(IDS_VALID_TABLE_REQT_1)
+    Mesg = Mesg + GetResString(IDS_VALID_TABLE_REQT_2)
+    Note Mesg
+    Correct_tables = STR_FALSE
+    Exit Function
+  End If
+  
+  ReDim table_list(Count_it)
+  For y = 1 to (count_it)
+    table_list(y) = new_list(y)
+  Next
+  y = GetColList(num_list(),table_list(1),2)
+  y = GetColList(char_list(),table_list(1),3)
+End Function  'Correct_tables
+
+'*********************************************************************
+'*  Handler used by dialog control to get listing of files 
+'*  that would fit in correct listbox
+sub List_handler
+  Dim x,y as integer
+  
+  x = readControlValue(1)
+  If TableInfo(table_list(x),TAB_INFO_READONLY) = true then
+    note GetResString(IDS_READONLY_TABLE)
+    exit sub
+  end if  
+  y = GetColList(num_list(),table_list(x),2)
+  y = GetColList(char_list(),table_list(x),3)
+  Alter Control 2
+    Title From Variable num_list()
+  Alter Control 3
+    Title From Variable char_list()
+End Sub
+
+'*********************************************************************
+'*  Procedure used to convert degrees,minutes,seconds column to 
+'*  Decimal Degrees
+Sub dms_to_latlong 
+  Dim col,num_col As Alias
+  Dim d,m,sec As Float
+  Dim x As Integer 'support more than 32,768 records
+  Dim num_column_name,char_column_name As String
+  Dim final As Float
+  Dim bNegZero As Logical
+  
+  table_name = table_list(table_choice)
+  num_column_name = num_list(num_choice)
+  char_column_name = char_list(char_choice)
+  num_col  = table_name + STR_DOT_SEPRATOR + num_column_name
+  col = table_name + STR_DOT_SEPRATOR + char_column_name 
+  
+  Fetch First From table_name
+  For x = 1 to TableInfo(table_name,TAB_INFO_NROWS)
+    bNegZero = (STR_MINUS_SIGN = Left$(col, 1))
+    d=val(left$(col,instr(1,col,sep)-1))
+    m=val(mid$(col,instr(1,col,sep)+1,instr(instr(1,col,sep)+1,col,sep)-instr(1,col,sep)-1))
+    sec=val(right$(col,len(col)-(instr(instr(1,col,sep)+1,col,sep))))
+    If d < 0 Or bNegZero = TRUE Then
+      final = -1 * (abs(d)+((m+(sec/60))/60))
+    Else 
+      final = d+((m+(sec/60))/60)
+    End If
+    Update table_name set num_column_name=final where rowid = x
+    Fetch Next From table_name
+  Next
+End Sub
+
+
+'*********************************************************************
+'*  Procedure used to convert decimal degrees column to Degrees, minutes,
+'*  seconds
+Sub latlong_to_dms
+  Dim char_col,num_col As Alias
+  Dim d,m,sec,final,value As String
+  Dim x As Integer 'support more than 32,768 records
+  Dim num_column_name,char_column_name As String
+  Dim holder As Float
+  Dim f_decimal_degrees As Float
+  Dim f_degrees As Float
+  Dim f_minutes As Float
+  Dim f_seconds As Float
+  Dim work As Float
+  
+  table_name = table_list(table_choice)
+  num_column_name = num_list(num_choice)
+  char_column_name = char_list(char_choice)
+  num_col  = table_name + STR_DOT_SEPRATOR + num_column_name
+  Fetch First From table_name
+  For x = 1 to TableInfo(table_name,TAB_INFO_NROWS)
+
+    If (Val(Str$(num_col)) = Int(Val(Str$(num_col))))  Then
+      d=Str$(num_col)
+      m=STR_ZERO
+      sec=STR_ZERO
+    Else
+      f_decimal_degrees = num_col
+      work = Abs(f_decimal_degrees) 
+      f_degrees = work \ 1            ' round off the remainder
+      work = 60 * (work - f_degrees)  
+      f_minutes = work \ 1
+      f_seconds = 60 * (work - f_minutes)
+      If Not DecimalSeconds Then
+        f_seconds = Round(f_seconds, 1)
+      End If
+      ' now round off to integers, and clean up weirdnesses like 23° 0' 60''
+      If f_seconds = 60 Then
+        f_seconds = 0
+
+        f_minutes = f_minutes + 1
+      End If
+      f_minutes = Round(f_minutes, 1)
+
+      If f_minutes = 60 Then
+        f_minutes = 0
+        f_degrees = f_degrees + 1
+      End If
+      
+      d = STR_EMPTY_STR3
+      If f_decimal_degrees < 0 Then
+        d = STR_MINUS_SIGN
+      End If
+      d = d & Str$(f_degrees)
+      m = Str$(f_minutes)
+      sec = Str$(f_seconds)
+    End If
+    final = d + sep + m + sep + sec
+    Update table_name Set char_column_name = final Where rowid = x
+    Fetch next From table_name
+  Next
+
+ End Sub
+
+
+'----------------------------------------------------------------------------
+Sub Help_Dialog
+
+  Dialog
+    Title GetResString(IDS_ABT_CNVRT_VER) + Str$(AppVersion) + GetResString(IDS_CLOSE_BRAC)
+    
+  Control StaticText
+    Title GetResString(IDS_PROG_DESC_1) + Chr$(13) + Chr$(13) +
+          GetResString(IDS_DMS_FORMAT_1) + Chr$(13) + GetResString(IDS_DMS_FORMAT_2) + Chr$(13) +
+          GetResString(IDS_DEC_DEG_FORMAT_1) + Chr$(13) + GetResString(IDS_DEC_DEG_FORMAT_2) + Chr$(13)  + Chr$(13) +
+          GetResString(IDS_DMS_COL_REQT)
+    Position 10,10
+    Width 260
+    Height 130
+  Control OKButton
+    'Position 121,130
+
+End Sub
+
+
+'*****************************************************************
+'*  The following function will Fill an array based on a criteria sent
+'*  to it.  The criteria are 1 for all tables, 4 for Mapable tables, and 
+'*  5 for Indexed tables.  The value returned will be the number of 
+'*  tables placed into the list array. The function assumes that the array
+'*  sent in is empty and will re dimension the array.  The array will 
+'*  Contain the table name(s) of the file(s) that fit the criteria.
+'*  
+Function GetTableList(List() As String, ByVal TabType As Integer) As Integer
+Dim Map_test,index_test As Logical
+Dim table_count,I,J As Integer
+Dim table_name,table_path_name As String
+
+  '****** Error check  ******
+  'If tabtype <> 1 And tabtype <> 4 And tabtype <> 5  Then
+  If tabtype NOT in(1,4,5)  Then
+
+    Note GetResString(IDS_ERR_INVALID_TABLE_TYPE)
+    Exit Sub
+  End If
+     
+  table_count = 0      'Originate the table count
+
+  ReDim list(0)      'Clear out array
+  ReDim list(NumTables())  'Dimension work array to max number
+  
+  For I = 1 to NumTables()
+    Map_test = TableInfo(I,TAB_INFO_MAPPABLE)         'Map logical test
+    table_name = TableInfo(I,TAB_INFO_NAME)        'assign table name
+    table_path_name = TrueFileName$(table_name)+ STR_IND  'determine path
+    Index_test = FileExists(table_path_name)         'Index logical test
+    Do Case TabType
+      Case 1
+        table_count = table_count + 1
+        list(table_count) = table_name  'case all
+      Case 4
+        If Map_test Then          'case table mappable
+          table_count = table_count + 1
+          list(table_count) = table_name
+        End If
+      Case 5
+        If index_test Then        'case table indexed
+          table_count = table_count + 1
+          list(table_count) = Tablename
+        End If
+    End Case
+  Next
+  GetTableList = table_count      'Assign return value
+  ReDim list(table_count)        'Re Dimension array to number of tables added
+End Function
+
+
+'*****************************************************************
+'*  The following function will fill an array based on a criteria sent
+'*  to it.  The criteria are 1 for all columns, 2 for numeric columns, and 
+'*  3 for character columns.  The value returned will be the number of 
+'*  columns placed into the list array. The function assumes that the array
+'*  sent in is empty and will re dimension the array.  The array will 
+'*  Contain the column name(s) that fit the criteria.
+'*  
+Function GetColList(List() As String, ByVal TabName As String,ByVal ColType As Integer) As Integer
+Dim test_condition As SmallInt
+Dim Column_count,I,J As Integer
+Dim col_name As String
+
+  '****** Error check  ******
+  If ColType NOT IN(1,2,3)  Then
+    Note GetResString(IDS_ERR_INVALID_COL_TYPE)
+    Exit Sub
+  End If
+     
+  Column_count = 0      'Originate the table count
+
+  ReDim list(0)      'Clear out array
+  ReDim list(NumCols(TabName))  'Dimension work array to max number
+  
+  For I = 1 to NumCols(TabName)
+    col_name = ColumnInfo(TabName,STR_COL_NUM + I, COL_INFO_NAME)
+    test_condition = ColumnInfo(TabName,col_name,COL_INFO_TYPE)
+    Do Case ColType
+      Case 1
+        Column_count = Column_count + 1      
+        list(Column_count) = col_name    'case all
+      Case 2
+        If test_condition = Any(2,3,4,8) Then  'case Column numeric
+          Column_count = Column_count + 1
+          list(Column_count) = Col_name
+        End If
+      Case 3
+        If test_condition =1 Then  'case Column Character
+          Column_count = Column_count + 1
+          list(Column_count) = Col_name
+        End If
+    End Case
+  Next
+  GetColList = Column_count        'Assign return value
+  ReDim list(Column_count)        'Re Dimension array to number of tables added
+End Function

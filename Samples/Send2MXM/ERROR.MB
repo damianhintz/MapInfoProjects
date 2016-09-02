@@ -1,0 +1,82 @@
+Include "MapBasic.def"
+Include "Error.def"
+Include "GeoSet.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+Dim glLineNumber    As Integer
+
+'---------------------------------------
+' Increment the number of current line in Geoset file
+'---------------------------------------
+Sub IncrementCurrentLineNumber()
+  OnError Goto ErrorTrap
+    glLineNumber = glLineNumber + 1
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "IncrementCurrentLineNumber: " + Error$()
+  Resume Done
+End Sub 'IncrementCurrentLineNumber
+
+'---------------------------------------
+' Print Error Message into Message Window
+'---------------------------------------
+Sub PrintErrMsg( ByVal lSeverity As Integer, ByVal lArea As Integer, ByVal sErrMsg As String )
+  OnError Goto ErrorTrap
+  Dim sSeverity    As String
+  Dim sErrorArea   As String
+  Dim sErrorMsg    As String
+
+    Do Case lSeverity
+        Case SVRT_WARNING
+            sSeverity = GetResString(IDS_ERR_MSG_SEVERITY_WRN)
+        Case SVRT_ERROR
+            sSeverity = GetResString(IDS_ERR_MSG_SEVERITY_ERR)
+    End Case
+
+    Do Case lArea
+        Case ERR_AREA_READING
+            sErrorArea = GetResString(IDS_ERR_MSG_STR_NUM) + glLineNumber + ".  " + GetResString(IDS_ERR_MSG_AREA_READING)
+            sErrorMsg = sErrMsg
+
+        Case ERR_AREA_PARSING_GEOSET
+            sErrorArea = GetResString(IDS_ERR_MSG_STR_NUM) + glLineNumber + ".  " + GetResString(IDS_ERR_MSG_AREA_PARSING)
+            sErrorMsg = GetResString(IDS_ERR_MSG_UNKNOWN_GEOSET) + " " + sErrMsg
+
+        Case ERR_AREA_PARSING_TABLE
+            sErrorArea = GetResString(IDS_ERR_MSG_STR_NUM) + glLineNumber + ".  " + GetResString(IDS_ERR_MSG_AREA_PARSING)
+            sErrorMsg = GetResString(IDS_ERR_MSG_UNKNOWN_TABLE) + " " + sErrMsg
+
+        Case ERR_AREA_OPENING_TABLE
+            sErrorArea = GetResString(IDS_ERR_MSG_AREA_OPENING)
+            sErrorMsg = GetResString(IDS_ERR_MSG_MISS_FILENAME1) + " """ + sErrMsg + """ " + GetResString(IDS_ERR_MSG_MISS_FILENAME2) ' BP 12.06.98
+            sErrorMsg =  sErrMsg   ' BP 12.06.98
+
+        Case ERR_AREA_BRUSH_STYLE
+            sErrorArea = GetResString(IDS_ERR_MSG_AREA_STYLE)
+            sErrorMsg = GetResString(IDS_ERR_MSG_CREATE_STYLE) + " " + sErrMsg 
+
+        Case ERR_AREA_PEN_STYLE
+            sErrorArea = GetResString(IDS_ERR_MSG_AREA_STYLE)
+            sErrorMsg = GetResString(IDS_ERR_MSG_CREATE_STYLE) + " " + sErrMsg 
+
+        Case ERR_AREA_FONT_STYLE
+            sErrorArea = GetResString(IDS_ERR_MSG_AREA_STYLE)
+            sErrorMsg = GetResString(IDS_ERR_MSG_CREATE_STYLE) + " " + sErrMsg 
+
+        Case ERR_AREA_SYMBOL_STYLE
+            sErrorArea = GetResString(IDS_ERR_MSG_AREA_STYLE)
+            sErrorMsg = GetResString(IDS_ERR_MSG_CREATE_STYLE) + " " + sErrMsg 
+    End Case
+
+    Print sSeverity
+    Print Space$(2) + sErrorArea + " - " + sErrorMsg 
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "PrintErrMsg: " + Error$()
+  Resume Done
+End Sub 'PrintErrMsg

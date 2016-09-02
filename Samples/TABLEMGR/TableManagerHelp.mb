@@ -1,0 +1,81 @@
+'/*****************************************************************************
+'*       Copyright © 2011 Pitney Bowes Software Inc.
+'*       All rights reserved.
+'*****************************************************************************/
+Include "TableManager.def"
+'****************************************************************************
+' Sub procedure: TableManagerHelp
+'****************************************************************************
+Sub TableManagerHelp
+
+  OnError Goto HandleError
+
+  Dialog
+    Title GetResString(IDS_APP_DESCRIPTION) + STR_EMPTY_STR1 + GetResString(IDS_HELP) 
+           + STR_EMPTY_STR1 + STR_OPEN_BRAC + GetResString(IDS_VERSION)+ STR_EMPTY_STR1
+           + AppVersion + STR_CLOSE_BRAC
+
+    Control StaticText 
+		Position 10, 10
+		Title GetResString(IDS_HELP_1)+ Chr$(13) + Chr$(13) +
+			GetResString(IDS_HELP_2)+ Chr$(13) + Chr$(13) +
+			GetResString(IDS_HELP_3)+ Chr$(13) + Chr$(13) +
+			GetResString(IDS_HELP_4)+ Chr$(13) + Chr$(13) +
+			GetResString(IDS_HELP_5)+ Chr$(13) + Chr$(13) +
+			GetResString(IDS_HELP_6)+ Chr$(13) + Chr$(13) +
+			GetResString(IDS_HELP_7)+ Chr$(13) + Chr$(13) +
+			GetResString(IDS_HELP_8)+ Chr$(13) + Chr$(13) +
+			GetResString(IDS_HELP_9)+ Chr$(13) + Chr$(13) +
+			GetResString(IDS_HELP_10)
+			Width 260
+			Height 300
+    
+    Control OKButton
+      Title GetResString(IDS_OK)
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_TABLE_MANAGER_HELP + Error$()
+  Resume Next
+
+End Sub
+
+'****************************************************************************
+' Sub procedure: MetaDataTemplateHelp
+'****************************************************************************
+Sub MetaDataTemplateHelp
+
+  OnError Goto HandleError
+
+  Dialog
+    Title GetResString(IDS_META_DATA_HELP_VER) + STR_EMPTY_STR1+ AppVersion + STR_CLOSE_BRAC
+
+    
+    Control StaticText 
+		' The first few lines of text are a repeat of part of the main help screen: 
+		' To add a new key...  
+    	Title 
+    	GetResString(IDS_HELP_4)+ Chr$(13) + Chr$(13) +
+		GetResString(IDS_HELP_5)+ Chr$(13) + Chr$(13) +
+		GetResString(IDS_HELP_6)+ Chr$(13) + Chr$(13) +
+    	GetResString(IDS_HELP_11)+
+		' The rest of the text on this help screen is slightly different 
+		' than the main help screen
+		' To use an automatic value in a key value... 
+		GetResString(IDS_HELP_12)+ Chr$(13) + Chr$(13) +
+		GetResString(IDS_HELP_13)+ Chr$(13) + Chr$(13) +
+		GetResString(IDS_HELP_14)
+		Width 270
+		Height 200
+
+    Control OKButton
+      Title GetResString(IDS_OK)
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_META_DATA_TEMPLATE_HELP + Error$()
+  Resume Next
+
+End Sub

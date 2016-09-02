@@ -1,0 +1,134 @@
+'** DESCTAB.MB *************************************************************
+'* An SQL DataLink Utility function that given a table opens a dislog 
+'* that describes it
+'****************************************************************************
+INCLUDE "MAPBASIC.DEF"
+INCLUDE "..\INC\DLSAMP.DEF"
+
+'****************************************************************************
+'* Main external Subroutine
+'****************************************************************************
+Sub DescribeTable(BYVAL TableOwner AS STRING, BYVAL TableName AS STRING)
+  DIM NumRows, NumCols AS INTEGER
+  DIM ColName()  As String
+  DIM ColType() As STRING
+  DIM ColWidth() As STRING
+  DIM ColPrecision() As STRING
+  DIM ColScale() As STRING
+  DIM i AS INTEGER
+  DIM FullTabName AS STRING
+
+  ONERROR GOTO WHOCARES
+
+  IF dbg THEN
+    PRINT "Describe TableOwner: " + TableOwner
+    PRINT "Describe TableName: " + TableName
+  END IF
+  IF TableOwner="" THEN
+    FullTabName = demoquotechar + TableName + demoquotechar
+  Else
+    FullTabName =  demoquotechar + TableOwner + demoquotechar + "." + demoquotechar + TableName + demoquotechar
+  END IF
+
+  '* Fetch the first row to populate the SERVER_COLUMNINFO values      
+  demohstmnt = SERVER_EXECUTE(demohdbc,"SELECT COUNT(*) FROM " + FullTabName)
+
+  SERVER demohstmnt FETCH NEXT
+  NumRows = SERVER_COLUMNINFO(demohstmnt, 1, SRV_COL_INFO_VALUE)
+  SERVER demohstmnt CLOSE
+  IF dbg THEN
+    PRINT "Num Rows: " + NumRows
+  END IF
+
+  demohstmnt = SERVER_EXECUTE(demohdbc,"SELECT * FROM " + FullTabName)
+'  SERVER demohstmnt FETCH NEXT
+
+  NumCols = SERVER_NUMCOLS(demohstmnt)
+  IF dbg THEN
+    PRINT "Num Cols: " + NumCols
+  END IF
+
+  IF NumCols=0 THEN
+    NOTE("Table is Empty!")
+    GOTO ALLDONE
+  END IF
+
+  REDIM ColName(NumCols)
+  REDIM ColType(NumCols)
+  REDIM ColWidth(NumCols)
+  REDIM ColPrecision(NumCols)
+  REDIM ColScale(NumCols)
+
+  FOR i = 1 TO NumCols
+    ColName(i)      = SERVER_COLUMNINFO(demohstmnt, i, SRV_COL_INFO_NAME)
+    ColType(i)      = FORMAT$(SERVER_COLUMNINFO(demohstmnt, i, SRV_COL_INFO_TYPE), "#")
+    DO CASE ColType(i)
+      Case "1"
+        ColType(i) = "Character"
+	  Case "2"
+        ColType(i) = "Decimal"
+      Case "3"
+        ColType(i) = "Integer"
+      Case "4"
+        ColType(i) = "SmallInt"
+      Case "5"
+        ColType(i) = "Date"
+      Case "6"
+        ColType(i) = "Logical"
+      Case "8"
+        ColType(i) = "Float"
+      Case "16"
+        ColType(i) = "Fixed Character"
+      Case "17"
+        ColType(i) = "Binary"
+    END CASE        
+
+    ColWidth(i)     = FORMAT$(SERVER_COLUMNINFO(demohstmnt, i, SRV_COL_INFO_WIDTH), "#")
+
+    ColScale(i)     = FORMAT$(SERVER_COLUMNINFO(demohstmnt, i, SRV_COL_INFO_SCALE), "#")
+    IF      ColScale(i) = ""   THEN ColScale(i) = "0"
+    ELSEIF ColScale(i) = "-1" THEN ColScale(i) = ""
+    END IF 
+ 
+    ColPrecision(i) = FORMAT$(SERVER_COLUMNINFO(demohstmnt, i, SRV_COL_INFO_PRECISION), "#")
+    IF      ColPrecision(i) = ""   THEN ColPrecision(i) = "0"
+    ELSEIF ColPrecision(i) = "-1" THEN ColPrecision(i) = ""
+    END IF 
+  NEXT 
+
+  '* Be nice and close the statement!
+  SERVER demohstmnt CLOSE
+
+  DIALOG
+    TITLE "Table: " + FullTabName
+    
+    CONTROL STATICTEXT Position 8,   10 TITLE "Columns:" Width 30
+    CONTROL EDITTEXT   Position 46,   8 ID 2             Width 30 VALUE FORMAT$(NumCols, "#")
+    CONTROL STATICTEXT Position 84,  10 TITLE "Rows:"    Width 30 
+    CONTROL EDITTEXT   Position 122,  8 ID 1             Width 30 VALUE FORMAT$(NumRows, "#")
+
+    CONTROL STATICTEXT Position 8,    30 TITLE "Column Name" Width 120 
+    CONTROL STATICTEXT Position 130,  30 TITLE "Type"      Width 60
+    CONTROL STATICTEXT Position 192,  30 TITLE "Width"     Width 20
+    CONTROL STATICTEXT Position 214,  30 TITLE "Prcsn"     Width 20 
+    CONTROL STATICTEXT Position 236,  30 TITLE "Scale"     Width 20
+
+    CONTROL LISTBOX    Position 8,    42 ID 3 Height 130   Width 120 TITLE FROM VARIABLE ColName 
+    CONTROL LISTBOX    Position 130,  42 ID 4 Height 130   Width 60  TITLE FROM VARIABLE ColType
+    CONTROL LISTBOX    Position 192,  42 ID 5 Height 130   Width 20  TITLE FROM VARIABLE ColWidth
+    CONTROL LISTBOX    Position 214,  42 ID 6 Height 130   Width 20  TITLE FROM VARIABLE ColPrecision
+    CONTROL LISTBOX    Position 236,  42 ID 7 Height 130   Width 20  TITLE FROM VARIABLE ColScale
+
+    CONTROL CANCELBUTTON    POSITION 115, 190 WIDTH 45
+
+  GOTO ALLDONE
+
+  WHOCARES:
+    RESUME NEXT
+
+  ALLDONE:
+END SUB
+
+
+
+

@@ -1,0 +1,309 @@
+'*****************************************************************************
+'       Copyright (c) 2004, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: DialogFunctions.mb $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+'Helper functions and sub routines for the Distance Calculator tool.
+'
+' Revision History:
+'
+'    Rev 1.0   10 June 2004               Salmon
+'                Initial version.
+'        1.1   30 July 2004               Johnson
+'                Fixes for T11888 and T11554
+'*****************************************************************************
+Include "DistanceCalc.def"
+
+Sub ChangeMapperDoc
+
+  OnError goto whats_wrong
+
+  Dim intSelection, iHwnd as integer
+  Dim strChangeCoord as string
+
+  Close window iWin_ID1
+  intSelection = ReadControlValue(59)
+  iHwnd = ReadControlValue(1)
+  Set Next Document Parent iHwnd Style WIN_STYLE_CHILD
+  Run Command WindowInfo(intMapId(intSelection), WIN_INFO_CLONEWINDOW)
+  iWin_Id1 = WindowID(frontwindow())
+  Set Window iWin_ID1 scrollbars on
+  
+  Exit Sub
+
+whats_wrong:
+  note "ChangeMapperDoc: " & Error$()
+
+End Sub
+
+
+
+Sub SelChangedHandler
+
+  Dim intArrayBound as integer
+  Dim strSelection, strSelectionA,strSelectionName as string
+  
+  If WindowID(frontwindow()) = iWin_Id1 then
+    If SelectionInfo(SEL_INFO_NROWS) > 0 then
+      strSelectionName = SelectionInfo(SEL_INFO_TABLENAME)
+      If left$(strSelectionName,8) <> "Cosmetic" then
+        strSelection = SelectionInfo(SEL_INFO_SELNAME)
+        Select * from selection into Current_Selection noselect
+        Close Table strSelection
+      End If
+    Else 
+      OnError goto ExitThis
+      Close table selection
+    End If
+    If SelectionInfo(SEL_INFO_NROWS) > 0 and left$(strSelectionName,8) <> "Cosmetic" then
+      If strTableList(ubound(strTableList)) <> "Current_Selection" then
+        intArrayBound = Ubound(strTableList) + 1
+        redim strTableList(intArrayBound)
+        redim strDisplayList(intArrayBound)
+        strTableList(intArrayBound) = "Current_Selection"
+        strDisplayList(intArrayBound) = GetResString(IDS_Select_From) & strSelectionName
+        Alter Control 42 title from variable strDisplayList
+        Alter Control 43 Title from Variable strDisplayList
+      Else
+        If strDisplayList(ubound(strDisplayList)) <> GetResString(IDS_Select_From) & strSelectionName then
+          intArrayBound = Ubound(strTableList)
+          strTableList(intArrayBound) = "Current_Selection"
+          strDisplayList(intArrayBound) = GetResString(IDS_Select_From) & strSelectionName
+          Alter Control 42 title from variable strDisplayList
+          Alter Control 43 Title from Variable strDisplayList
+        End If
+      End If
+    Else
+      If strTableList(ubound(strTableList)) = "Current_Selection" then
+        redim strTableList(ubound(strTableList)-1)
+        redim strDisplayList(ubound(strDisplayList)-1)
+        Close Table Current_Selection
+        Alter Control 42 title from variable strDisplayList
+        Alter Control 43 Title from Variable strDisplayList
+        Alter Control 42 Value 1
+        Alter Control 43 Value 1
+      End If
+    End If
+    Call ChangeOriginTable
+    Call ChangeDestinationTable
+  End If
+
+  Exit Sub
+
+ExitThis:
+
+End Sub
+
+
+
+Sub ChangeOriginTable
+
+  Dim strTable as string
+
+  strTable = strTableList(readcontrolvalue(42))
+  Call ColumnList(strTable,strColumnListOrigin())
+  Alter Control 44 Title from Variable strColumnListOrigin
+
+End Sub
+
+
+
+Sub ChangeDestinationTable
+
+  Dim strTable as string
+
+  strTable = strTableList(readcontrolvalue(43))
+  Call ColumnList(strTable,strColumnListDest())
+  Alter Control 45 Title from Variable strColumnListDest
+  Alter Control 46 Title from Variable strColumnListDest
+  Alter Control 47 Title from Variable strColumnListDest
+
+End Sub
+
+
+Sub ChangeBrowserDoc
+
+  OnError goto whats_wrong
+
+  Dim intSelection, iHwnd2 as integer
+  Dim strChangeCoord as string
+
+  iHwnd2 = ReadControlValue(2)
+
+  Set Next Document Parent iHwnd2 Style WIN_STYLE_CHILD
+  Browse * from TempBrowser
+  iWin_Id2 = WindowID(frontwindow())
+  Set Window iWin_ID2 scrollbars on
+
+  Exit Sub
+
+whats_wrong:
+  note "ChangeBrowserDoc: " & Error$()
+
+End Sub
+
+
+
+Sub DeleteTable
+
+  Call CreateTable
+  Call ChangeBrowserDoc
+
+End Sub
+
+
+
+Sub SaveTable
+
+  Dim strTableLocation as string
+
+  strTableLocation = FileSaveAsDlg("","","tab",GetResString(IDS_Save))
+  If strTableLocation <> "" then
+    commit table tempBrowser as strTableLocation
+  End If
+
+End Sub
+
+
+
+Sub MoreAnal
+
+  If ReadControlValue(50) > 1 then  
+    Alter Control 47 enable
+    Alter Control 49 enable
+    Alter Control criteria2 enable
+  Else
+    Alter Control 47 disable
+    Alter Control 49 disable
+    Alter Control criteria2 disable
+  End If
+
+End Sub
+
+
+
+Sub EnableCriteria
+
+  If readControlValue(84) then
+    Alter Control 46 enable
+    Alter Control 48 enable
+    Alter Control 50 enable
+    Alter Control criteria1 enable
+    Call MoreAnal
+  Else
+    Alter Control 46 disable
+    Alter Control 48 disable
+    Alter Control 50 disable
+    Alter Control criteria1 value ""
+    Alter Control criteria1 disable
+    Alter Control 47 disable
+    Alter Control 49 disable
+    Alter Control criteria2 Value ""
+    Alter Control criteria2 disable
+  End If
+
+End Sub
+
+
+
+Sub ZoomIn
+
+  run menu command 1705
+
+End Sub
+
+
+
+Sub ZoomOut
+
+  run menu command 1706
+
+End Sub
+
+
+
+Sub Snap
+
+  OnError goto whats_wrong
+
+  If WindowInfo(iWin_ID1,WIN_INFO_SNAPMODE) then
+    Set Window iWin_ID1 snap mode Off
+  Else
+    Set Window iWin_ID1 Snap Mode On
+  End If
+
+  Exit Sub
+
+whats_wrong:
+  note "Snap: " & Error$()
+
+End Sub
+
+
+
+Sub Pan
+
+  Set Window iWin_Id1 front
+  run menu command 1702
+
+End Sub
+
+
+
+Sub Select
+
+  Set Window iWin_Id1 front
+  Run Menu Command 1701
+
+End Sub
+
+
+
+Sub Marquee
+
+  Set Window iWin_Id1 front
+  Run Menu Command 1722
+
+End Sub
+
+
+
+Sub Polygon
+
+  Set Window iWin_Id1 front
+  Run Menu Command 1733
+
+End Sub
+
+
+
+Sub Boundary
+
+  Set Window iWin_Id1 front
+  Run Menu Command 1704
+
+End Sub
+
+
+
+Sub UnSelect
+
+  Set Window iWin_Id1 front
+  Run Menu Command 304
+
+End Sub
+
+
+
+Sub LayerControl
+
+  Set Window iWin_Id1 front
+  Run Menu Command 801
+
+End Sub

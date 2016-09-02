@@ -1,0 +1,248 @@
+
+
+' **************************************************************************
+' AddNodes is a utility application that inserts itself into the MapInfo 
+' menu system and goes to sleep.  When activated by the end-user selecting
+' Add from the menu, it determines which table the user wants to modify and
+' increases the resolution of region objects in that table to a value
+' specified by the user.  This allows a more accurate rendition of these
+' objects when the table is displayed as a projected map.
+'
+' This requires that at least one mappable table is open.
+'
+' MapBasic features demonstrated:
+'
+'   ProgressBar
+'   Alter Object
+'   Update
+'   Commit Table
+'   Rollback Table
+'   TableInfo()
+'   ObjectInfo()
+'   ObjectNodeX()
+'   ObjectNodeY()
+' **************************************************************************
+
+
+' **************************************************************************
+' Standard MapBasic Defines.
+' **************************************************************************
+Include "mapbasic.def"
+Include "menu.def"
+
+
+' **************************************************************************
+' Declares for Sub procedures and Functions.
+' **************************************************************************
+Declare Sub        Main()
+Declare Sub        QuitHandler()
+Declare Sub        AddHandler()
+Declare Sub        ProgressHandler()
+
+Declare Function   GetTable()         As Logical
+
+
+' **************************************************************************
+' Global variables.
+' **************************************************************************
+Global  MaxSegLen       As Float,             ' Required resolution
+        NumRowsToDo,                          ' Total # of rows in table
+        NumRowsDone     As Integer,           ' Current completion status
+        TableName       As String             ' Name of table
+
+
+' **************************************************************************
+' Main() creates the new menu for AddNodes and inserts it into the 
+' MapInfo menu bar.
+' **************************************************************************
+Sub Main()
+
+  Create Menu "Add&Nodes"
+    As "&Add"              Calling AddHandler,
+       "E&xit"             Calling QuitHandler
+
+  Alter Menu Bar Add "Add&Nodes"
+
+End Sub
+
+
+
+' **************************************************************************
+' QuitHandler(), called when the user selects Exit from the AddNodes menu,
+' simply terminates the execution of AddNodes.
+' **************************************************************************
+Sub QuitHandler()
+
+  End Program
+
+End Sub
+
+
+
+' **************************************************************************
+' AddHandler(), called when the user selects Add from the AddNodes menu,
+' invokes a function to get a table name and then executes a ProgressBar
+' command to process that table.
+' **************************************************************************
+Sub AddHandler()
+
+  If  GetTable() Then
+    NumRowsToDo = TableInfo(TableName, TAB_INFO_NROWS)
+    NumRowsDone = 0
+    Fetch First From TableName
+    Print "Adding nodes to table: " + TableName
+    ProgressBar "Adding nodes to table: " + TableName
+      Calling ProgressHandler Range NumRowsToDo
+    If CommandInfo(CMD_INFO_STATUS) Then
+      Commit Table TableName
+    Else
+      RollBack Table TableName
+    End If
+  End If
+
+End Sub
+
+
+
+' **************************************************************************
+' ProgressHandler() is called repeatedly by MapInfo.  On each call, it
+' modifies a row's region object in the table identified by the global
+' variable TableName.
+' **************************************************************************
+Sub ProgressHandler()
+  Dim     i, j            As Integer,
+          curx, cury,
+          prevx, prevy    As Float,
+          curobj          As Object,
+          ObjColumn       As Alias
+
+  If EOT(TableName) Then
+    ProgressBar = -1             ' All done, terminate the ProgressBar
+  Else
+    ObjColumn = TableName + ".obj"
+
+    ' Skip over non-region objects
+    Do While Not EOT(TableName)
+             And ObjectInfo(ObjColumn, OBJ_INFO_TYPE) <> OBJ_REGION
+      Fetch Next From TableName
+      NumRowsDone = NumRowsDone + 1
+    Loop
+
+    curobj = ObjColumn           'pick up the object to modify 
+
+
+    '
+    ' We now execute two nested loops.  The outer loop goes through
+    ' all the polygons in the region.  For each of these, the inner loop 
+    ' goes through each of the segments, adding nodes as necessary.
+    '
+    ' Note that in the inner loop, we repeatedly add new nodes to a segment
+    ' until the current segment length drops below the required resolution.
+    '
+    ' Also note that the While condition for the inner loop is dynamic
+    ' because we are adding nodes to the polygon.  We could not use a
+    ' For...Next loop here because its number of iterations is determined
+    ' at the start of the loop.
+    '
+    For i = 1 To ObjectInfo(curobj, OBJ_INFO_NPOLYGONS)
+      j = 1
+      Do While j <= ObjectInfo(curobj, OBJ_INFO_NPOLYGONS + i)
+      retry:
+        curx = ObjectNodeX(curobj, i, j)
+        cury = ObjectNodeY(curobj, i, j)
+        If j > 1 Then
+          If Distance(prevx, prevy, curx, cury, "mi") > MaxSegLen Then
+            ' keep chopping the segment in half till required resolution 
+            ' is reached
+            Alter Object curobj
+              Node Add
+                Position i, j
+                ((prevx+curx)/2, (prevy+cury)/2)
+            GoTo retry
+          End If
+        End If
+        prevx = curx
+        prevy = cury
+        j = j + 1
+      Loop
+    Next
+
+    '
+    ' Cleanup from this entry to ProgressHandler(), prepare for the next
+    ' entry and indicate the current completion status.
+    '
+    NumRowsDone = NumRowsDone + 1
+    Update TableName Set obj = curobj Where Rowid = NumRowsDone
+    Fetch Rec NumRowsDone + 1 From TableName
+    ProgressBar = NumRowsDone
+
+  End If
+
+End Sub
+
+
+
+' **************************************************************************
+' GetTable() is called by AddHandler() above to determine which table the
+' user wants to modify and to what resolution.
+' **************************************************************************
+Function GetTable()    As Logical
+  Dim Resolution$,
+      TableList$,
+      TabNameArray()   As String,
+      ReturnValue      As Logical,
+      TableIndex,
+      i, j             As Integer
+
+
+  TableName = ""
+  ReturnValue = FALSE
+
+  j = NumTables()
+  If j > 0 Then
+    ReDim TabNameArray(j)
+    TableIndex = 0
+    For i = 1 To j
+      If TableInfo(i, TAB_INFO_MAPPABLE)
+         And Not TableInfo(i, TAB_INFO_READONLY) Then
+        TableIndex = TableIndex + 1
+        TabNameArray(TableIndex) = TableInfo(i, TAB_INFO_NAME)
+        TableList$ = TableList$ + TabNameArray(TableIndex) + ";"
+      End If
+    Next
+    If TableIndex > 0 Then     ' may have been no mappable/writeable tables
+      Resolution$ = "150"
+      Dialog Title "AddNodes"
+        Control StaticText
+          Position 8, 10
+          Title    "Select a table to modify"
+        Control ListBox
+          Position 8, 25
+          Height 40
+          Title    TableList$
+          Into     TableIndex
+        Control StaticText
+          Position 8, 75
+          Title    "Resolution in miles"
+        Control EditText
+          Position 8, 90
+          Value    Resolution$
+          Into     Resolution$
+        Control CancelButton
+          Position 8, 110
+        Control OKButton
+      If CommandInfo(CMD_INFO_DLG_OK) Then
+        MaxSegLen = Val(Resolution$)
+        TableName = TabNameArray(TableIndex)
+        ReturnValue = TRUE
+      End If
+    Else
+      Note "No tables to modify"
+    End If
+  Else
+    Note "No tables to modify"
+  End If
+
+  GetTable = ReturnValue
+
+End Function

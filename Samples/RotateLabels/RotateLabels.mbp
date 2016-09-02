@@ -1,0 +1,5 @@
+[Link] 
+Application=RotateLabels.mbx 
+Module=RotateLabels.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\Lib\resstrng.mbo

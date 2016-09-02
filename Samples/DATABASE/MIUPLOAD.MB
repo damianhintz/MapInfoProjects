@@ -1,0 +1,1743 @@
+'******************************************************************************
+'                             MAPINFO CORPORATION
+'
+' Date:         10/12/95          
+'
+' Module:       MIUPLOAD.mb
+' Application:  MIUPLOAD.mbx
+' For Version:  MapInfo 4.0
+' 
+' Overview:
+'
+'   This application provides the ability to upload a MapInfo table to a remote database 
+'   with spatial column information. The Spatial columns are used with DBMS linked tables, which
+'   allows a remote database table to be mappable in MapInfo.
+ '****************************************************************************/
+'NOTE ABOUT THE CONNECTION OF THE DRIVER. The Function WhichSQLDatabase is in the 
+'SQLUTIL.MB. The error will report the name of the driver we are detecting.
+'All you have to do is add another CASE statement with the exact name of the driver 
+'and the upload utility should work.
+'****************************************************************************/
+include "MAPBASIC.DEF"
+include "..\inc\DLSAMP.DEF"
+include "..\inc\Auto_lib.DEF"
+
+' To Turn debugging on, create MIUPLOAD.DBG in your WIndows directory with 
+'   a single text record containing:
+'   ON
+
+' Defines
+DEFINE MITABLE_NAME_ID           	1
+DEFINE SRVTABLE_NAME_ID          	2
+DEFINE COMMIT_INTERVAL_ID        	3
+
+DEFINE UPLOAD_RECNO              	10   ' Upload MIRECNO
+DEFINE UPLOAD_MAP_ID             	11   ' Upload MI_X,MI_Y, MI_SYMBOL_ID, MI_SYMBOL_SIZE, MI_SYMBOL_COLOR
+DEFINE UPLOAD_XY_ID              	12   ' Upload LOCATION_XY CODE
+DEFINE UPLOAD_MICODE_ID          	13   ' Upload LOCATION_MICODE
+DEFINE UPLOAD_HHCODE_ID          	14   ' Upload LOCATION_HHCODE
+DEFINE UPLOAD_SQSXY_ID          	15   ' Upload Point object to SQS
+DEFINE UPLOAD_SQSREGN_ID         	16   ' Upload Region object to SQS
+DEFINE UPLOAD_SQSLINE_ID         	17   ' Upload Line object to SQS
+DEFINE UPLOAD_INGRESXY_ID        	18   ' Upload Point object to Ingres
+
+DEFINE CONNECTION_NAME_ID        	20
+DEFINE CONNECTION_BUTTON_ID      	21
+
+DEFINE UPLOAD_SYM_ID					22	  ' Create and populate symbology column
+DEFINE SYM_COLNAME_ID					23
+
+DEFINE DEFAULT_SYM_COLNAME				"MI_SYMBOLOGY"
+
+' Functions and subs
+' Main program and dialog handlers
+DECLARE SUB Main
+DECLARE SUB InitDLG()
+DECLARE SUB Map_Range()
+DECLARE SUB GoDialog()
+DECLARE SUB PickTable()
+DECLARE SUB UploadTable()
+DECLARE SUB SQLConnect()
+DECLARE SUB EnableCheckBoxes()
+
+
+' Utility functions
+DECLARE FUNCTION SRVCreateTable(BYVAL MITableName As STRING, BYVAL SRVTableName As STRING) As LOGICAL
+DECLARE SUB UploadTableData(BYVAL MITableName As STRING, BYVAL SRVTableName  As STRING)
+DECLARE SUB All_Stop
+DECLARE SUB UpLoad_About
+DECLARE FUNCTION BuildCreateString(BYVAL MITableName As STRING, BYVAL SRVTableName As STRING) As STRING
+DECLARE FUNCTION BuildInsertString(BYVAL MITableName As STRING) As STRING
+'DECLARE FUNCTION DoesTableExist(BYVAL SRVTableName As STRING) As LOGICAL
+
+DECLARE FUNCTION FixCharVal(BYVAL CharVal As STRING) As STRING
+
+'Create functions for all the various databases  
+DECLARE FUNCTION BuildOracleCreateString(BYVAL MITableName As STRING, BYVAL SRVTableName As STRING) As STRING
+DECLARE FUNCTION BuildIngresCreateString(BYVAL MITableName As STRING, BYVAL SRVTableName As STRING) As STRING
+DECLARE FUNCTION BuildSQLBaseCreateString(BYVAL MITableName As STRING, BYVAL SRVTableName As STRING) As STRING
+DECLARE FUNCTION BuildAccessCreateString(BYVAL MITableName As STRING, BYVAL SRVTableName As STRING) As STRING
+DECLARE FUNCTION BuildFoxProCreateString(BYVAL MITableName As STRING, BYVAL SRVTableName As STRING) As STRING
+DECLARE FUNCTION BuildInformixCreateString(BYVAL MITableName As STRING, BYVAL SRVTableName As STRING) As STRING
+DECLARE FUNCTION BuildSQLServerCreateString(BYVAL MITableName As STRING, BYVAL SRVTableName As STRING) As STRING
+DECLARE FUNCTION BuildDbaseCreateString(BYVAL MITableName As STRING, BYVAL SRVTableName As STRING) As STRING
+DECLARE FUNCTION BuildDB2CreateString(BYVAL MITableName As STRING, BYVAL SRVTableName As STRING) As STRING
+DECLARE FUNCTION BuildSybaseCreateString(BYVAL TableName As STRING, BYVAL NewTableName As STRING) As STRING
+
+'Structure used for the bounds of the coordinate system
+
+TYPE CSYS_Ranges
+	X_L_B As FLOAT
+	X_U_B As FLOAT
+	Y_L_B As FLOAT
+	Y_U_B As FLOAT
+END TYPE
+
+' global variables
+Dim MITableName, SRVTableName, strSymbolCol As STRING
+Dim CommitInterval As INTEGER
+Dim  bUploadMap, bUploadHHCODE, bUploadSymbology As LOGICAL
+Dim MAP_ranges As CSYS_Ranges
+
+'****************************************************************************
+'* Main program - attach DataLink Upload to Tool Menu and launch it!
+'****************************************************************************
+SUB Main
+  'gsAppDescription and gsAppFilename are for the autoload utility
+  gsAppDescription = "DBMS Upload Tool"
+  gsAppFilename = "MIUPLOAD.mbx"
+   
+  ' Add menu item to Tools menu
+  Create menu "DBMS &Upload" As 
+    "DBMS &Upload Table..."  Calling GoDialog,
+    "(-",
+    "&About DBMS Upload..." Calling UpLoad_About,
+    "E&xit DBMS Upload" Calling All_Stop
+
+  Call set_tools_menu("DBMS &Upload")
+
+END SUB 
+
+
+'****************************************************************************/
+'All_stop teminate the application and clears the tools menu
+'****************************************************************************/
+SUB All_Stop 
+  END PROGRAM
+END SUB
+ 
+
+'****************************************************************************/
+'Map_Ranges uses a new functions to get the bounds of the coordinate system.
+'These values are the min and max a point can have with in the coordinate system.
+'The map basic coordinate system is set to the coordinate system of the table.
+'****************************************************************************/
+SUB Map_Range
+  Dim obj As Object
+  'Set the coodinate system to the Mapinfo table. If the line is taken out, it will upload in the current MapBasic 
+  'coodinate system.
+  Set Coordsys Table MITableName     
+  MAP_ranges.X_L_B = TableInfo(MITableName,TAB_INFO_COORDSYS_MINX)
+  MAP_ranges.Y_L_B = TableInfo(MITableName,TAB_INFO_COORDSYS_MINY)
+  MAP_ranges.X_U_B = TableInfo(MITableName,TAB_INFO_COORDSYS_MAXX)
+  MAP_ranges.Y_U_B = TableInfo(MITableName,TAB_INFO_COORDSYS_MAXY)
+  IF dbg then
+    PRINT  MAP_ranges.X_L_B + " " + MAP_ranges.X_U_B+" "+ MAP_ranges.Y_L_B+" "+MAP_ranges.Y_U_B
+  END IF 
+END SUB 
+
+
+'****************************************************************************/
+'Main dialog
+'****************************************************************************/
+SUB GoDialog
+  Call DebugInit("MIUPLOAD")
+ 
+  MITableName=""
+
+   ' Allow user to select an open table to upload  
+  DIALOG
+    Calling InitDLG
+
+    TITLE "Upload MapInfo Table to a Remote Database"
+    '_____________________________________________________________________
+    ' Connection maintenance
+    Control StaticText
+      Title "Database:"
+      Position 8, 8
+      WIDTH 60
+    Control EditText
+      Value    democonnname 
+      Position 86, 8
+      Width 120
+      Id CONNECTION_NAME_ID
+      Disable
+    Control Button
+      Title "Connection..."
+      Position 212, 8
+      Calling SqlConnect
+      Id CONNECTION_BUTTON_ID
+    '-------------------------------------------------
+    CONTROL STATICTEXT
+      TITLE "MapInfo Table:"
+      POSITION 8,28
+      WIDTH 60
+    CONTROL EditText
+      INTO MITableName
+      ID MITABLE_NAME_ID
+      POSITION 86,28
+      WIDTH 120
+    CONTROL BUTTON
+      TITLE "Tables..."
+      Calling PickTable
+      POSITION 212,28
+      WIDTH 45
+    CONTROL STATICTEXT
+      TITLE "Server Table:"
+
+      POSITION 8,48
+      WIDTH 60
+    CONTROL EditText
+      ID SRVTABLE_NAME_ID
+      POSITION 86, 48
+      WIDTH 120
+
+    CONTROL STATICTEXT
+      TITLE "Commit Interval:"
+      POSITION 8,68
+      WIDTH 60
+    CONTROL EditText
+      VALUE "5"
+      ID COMMIT_INTERVAL_ID
+      POSITION 86, 68
+      WIDTH 60
+
+    CONTROL CHECKBOX  
+      Position 13,88
+      TITLE "Upload Recno"  ' Adds RECNO
+      ID UPLOAD_RECNO 
+      VALUE TRUE     
+
+
+    '-------------------------------------------------
+    CONTROL CHECKBOX
+      Position 13,108
+      TITLE "Upload Map"  ' Adds X,Y,STYLE_ID,COLOR,SIZE,RECNO
+      ID UPLOAD_MAP_ID
+      VALUE FALSE
+      DISABLE
+      Calling  EnableCheckBoxes
+    CONTROL CHECKBOX
+      Position 23,118
+      TITLE "X/Y"      ' ADDs x / y
+      ID UPLOAD_XY_ID
+      VALUE FALSE
+      DISABLE
+      Calling  EnableCheckBoxes    
+    CONTROL CHECKBOX
+      Position 75,118
+      TITLE "MICODE"      ' ADDs MICODE
+      ID UPLOAD_MICODE_ID
+      VALUE FALSE
+      DISABLE
+      Calling  EnableCheckBoxes   
+
+    ' The following are mutually exclusive database dependant spatial
+    ' types.  Their controls are intentinally positioned in the same place.
+    ' They are not mutually exclusive with MICODE or XY - TGL
+    CONTROL CHECKBOX
+      Position 23,128
+      Title "SQS Point"
+      ID UPLOAD_SQSXY_ID
+      VALUE False
+      Disable
+      Hide
+      Calling  EnableCheckBoxes   'radio behavior
+    CONTROL CHECKBOX
+      Position 75,128
+      Title "SQS Region"
+      ID UPLOAD_SQSREGN_ID
+      VALUE False
+      Disable
+      Hide
+      Calling  EnableCheckBoxes   'radio behavior
+    CONTROL CHECKBOX
+      Position 135,128
+      Title "SQS Line"
+      ID UPLOAD_SQSLINE_ID
+      VALUE False
+      Disable
+      Hide
+      Calling  EnableCheckBoxes   'radio behavior
+
+    CONTROL CHECKBOX
+      Position 23,128
+      Title "Ingres Point"
+      ID UPLOAD_INGRESXY_ID
+      VALUE False
+      Disable
+      Hide
+      Calling  EnableCheckBoxes   'radio behavior
+
+    CONTROL CHECKBOX
+      Position 23,128
+      Title "HHCODE"
+      ID UPLOAD_HHCODE_ID
+      VALUE False
+      Disable
+      Hide
+      Calling  EnableCheckBoxes   'radio behavior
+  
+   ' Symbology checkbox 
+	CONTROL CHECKBOX
+      Position 23,143
+      TITLE "Server S&ymbology Column"      
+      ID UPLOAD_SYM_ID
+      VALUE TRUE
+      DISABLE
+      Calling  EnableCheckBoxes    
+
+   ' Symbology col name 
+	CONTROL EditText
+      VALUE DEFAULT_SYM_COLNAME
+      ID SYM_COLNAME_ID
+      POSITION 125, 143
+      WIDTH 80
+	   DISABLE
+
+    CONTROL OKBUTTON
+      TITLE "Upload!"
+      Calling UploadTable
+      POSITION 69, 162
+      WIDTH 45
+    CONTROL CANCELBUTTON
+      POSITION 120, 162
+      WIDTH 45
+
+  GOTO ALLDONE
+
+  ConnectError:
+    Note "Connect Error: " + Error$()
+    RESUME ALLDONE
+  ALLDONE:
+
+END SUB
+ 
+
+'****************************************************************************/
+'InitDLG()
+'****************************************************************************/
+SUB InitDLG()
+  ' First connect to the desired database
+  ' SQLConnect sets the connection name and some dialog controls  
+  if demohdbc=0 THEN   
+     Call SQLConnect()
+   END IF 
+END SUB
+ 
+
+'****************************************************************************/
+'Picktable: Get the MapInfo Table to upload
+'****************************************************************************/
+SUB PickTable
+  Dim TableObject As ALIAS
+  Dim TableObjectType As INTEGER
+
+  Call EnableCheckBoxes
+
+  ONERROR GOTO NO_VALID_TABLES
+  MITableName = READCONTROLVALUE(MITABLE_NAME_ID )
+  CALL MITablePickerDialog (MITableName, "Pick Open MI Table")
+  ALTER CONTROL MITABLE_NAME_ID VALUE MITableName
+  SRVTableName = MITableName
+  ALTER CONTROL SRVTABLE_NAME_ID VALUE SRVTableName
+
+  'If the table is mappable, enable the controls
+  IF TableInfo(MITableName,TAB_INFO_MAPPABLE) THEN
+    ALTER CONTROL UPLOAD_MAP_ID Enable  
+  ELSE   
+    ALTER CONTROL UPLOAD_MAP_ID DISable  
+    ALTER CONTROL UPLOAD_MAP_ID VALUE FALSE
+    ALTER CONTROL UPLOAD_XY_ID     VALUE FALSE 
+    ALTER CONTROL UPLOAD_MICODE_ID VALUE FALSE
+    ALTER CONTROL UPLOAD_SQSXY_ID  VALUE FALSE
+    ALTER CONTROL UPLOAD_SQSREGN_ID  VALUE FALSE
+    ALTER CONTROL UPLOAD_SQSLINE_ID  VALUE FALSE
+    ALTER CONTROL UPLOAD_INGRESXY_ID  VALUE FALSE
+    ALTER CONTROL UPLOAD_HHCODE_ID VALUE FALSE
+     
+    ALTER CONTROL UPLOAD_XY_ID     DISABLE
+    ALTER CONTROL UPLOAD_MICODE_ID DISABLE
+    ALTER CONTROL UPLOAD_SQSXY_ID  DISABLE
+    ALTER CONTROL UPLOAD_SQSREGN_ID  DISABLE
+    ALTER CONTROL UPLOAD_SQSLINE_ID  DISABLE
+    ALTER CONTROL UPLOAD_INGRESXY_ID  DISABLE
+    ALTER CONTROL UPLOAD_HHCODE_ID DISABLE 
+  END IF 
+  GOTO ALL_DONE
+
+NO_VALID_TABLES:
+  NOTE "Table Not Found"
+  Resume ALL_DONE
+
+ALL_DONE:
+
+END SUB
+
+
+'****************************************************************************/
+'EnableCheckBoxes: enables the checkboxes of the different upload modes for 
+'mapable tables
+'****************************************************************************/
+SUB EnableCheckBoxes
+  DIM PickerFocus AS INTEGER
+  DIM CheckOn AS LOGICAL
+
+  ' Which box was checked to trigger this dialog handler 
+  PickerFocus = TRIGGERCONTROL()
+
+  Do Case PickerFocus
+
+    CASE UPLOAD_MAP_ID 
+      'bUploadMap is set if the user selected to upload map data
+      bUploadMap = READCONTROLVALUE(PickerFocus)
+
+      IF bUploadMap THEN
+        'The user chose to upload map data - Enable the map format radio checkboxes 
+        ALTER CONTROL UPLOAD_XY_ID        VALUE TRUE  ' Set default radio selection
+        ALTER CONTROL UPLOAD_MICODE_ID    VALUE FALSE
+        ALTER CONTROL UPLOAD_SQSXY_ID     VALUE FALSE
+        ALTER CONTROL UPLOAD_SQSREGN_ID   VALUE FALSE
+        ALTER CONTROL UPLOAD_SQSLINE_ID   VALUE FALSE
+        ALTER CONTROL UPLOAD_INGRESXY_ID  VALUE FALSE
+        ALTER CONTROL UPLOAD_HHCODE_ID    VALUE FALSE
+     
+        ALTER CONTROL UPLOAD_XY_ID        ENABLE
+        ALTER CONTROL UPLOAD_MICODE_ID    ENABLE
+        ALTER CONTROL UPLOAD_SQSXY_ID     ENABLE
+        ALTER CONTROL UPLOAD_SQSREGN_ID   ENABLE
+        ALTER CONTROL UPLOAD_SQSLINE_ID   ENABLE
+        ALTER CONTROL UPLOAD_INGRESXY_ID  ENABLE
+        ALTER CONTROL UPLOAD_HHCODE_ID    ENABLE
+
+        ' Set the symbology column controls
+        ALTER CONTROL UPLOAD_SYM_ID ENABLE
+        if READCONTROLVALUE(UPLOAD_SYM_ID) = TRUE then
+          ALTER CONTROL SYM_COLNAME_ID ENABLE     
+        end if
+
+        'Map_Ranges sets the coodinate system to the tables CSYS and sets the maximum bounds
+        Call Map_Range()
+      ELSE 
+        'The user chose not to upload map data - Disable the map format radio checkboxes 
+        ALTER CONTROL UPLOAD_XY_ID     VALUE FALSE 
+        ALTER CONTROL UPLOAD_MICODE_ID VALUE FALSE
+        ALTER CONTROL UPLOAD_SQSXY_ID  VALUE FALSE
+        ALTER CONTROL UPLOAD_SQSREGN_ID  VALUE FALSE
+        ALTER CONTROL UPLOAD_SQSLINE_ID  VALUE FALSE
+        ALTER CONTROL UPLOAD_INGRESXY_ID  VALUE FALSE
+        ALTER CONTROL UPLOAD_HHCODE_ID VALUE FALSE
+     
+        ALTER CONTROL UPLOAD_XY_ID     DISABLE
+        ALTER CONTROL UPLOAD_MICODE_ID DISABLE
+        ALTER CONTROL UPLOAD_SQSXY_ID  DISABLE
+        ALTER CONTROL UPLOAD_SQSREGN_ID  DISABLE
+        ALTER CONTROL UPLOAD_SQSLINE_ID  DISABLE
+        ALTER CONTROL UPLOAD_INGRESXY_ID  DISABLE
+        ALTER CONTROL UPLOAD_HHCODE_ID DISABLE
+
+        ALTER CONTROL UPLOAD_SYM_ID DISABLE
+        ALTER CONTROL SYM_COLNAME_ID DISABLE
+
+      END IF
+
+    CASE UPLOAD_XY_ID, UPLOAD_MICODE_ID
+      CheckOn = READCONTROLVALUE(PickerFocus) 
+      ALTER CONTROL UPLOAD_XY_ID     VALUE FALSE
+      ALTER CONTROL UPLOAD_MICODE_ID VALUE FALSE
+      ALTER CONTROL PickerFocus VALUE CheckOn
+
+    CASE UPLOAD_SQSXY_ID,UPLOAD_SQSREGN_ID,UPLOAD_SQSLINE_ID
+      CheckOn = READCONTROLVALUE(PickerFocus)  
+
+      ' radio behavior
+      ALTER CONTROL UPLOAD_SQSXY_ID   VALUE FALSE
+      ALTER CONTROL UPLOAD_SQSREGN_ID VALUE FALSE
+      ALTER CONTROL UPLOAD_SQSLINE_ID VALUE FALSE
+      ALTER CONTROL PickerFocus VALUE CheckOn
+
+    CASE UPLOAD_INGRESXY_ID
+      CheckOn = READCONTROLVALUE(PickerFocus) 
+      ALTER CONTROL PickerFocus VALUE CheckOn
+    CASE UPLOAD_SYM_ID
+      CheckOn = READCONTROLVALUE(PickerFocus) 
+      if CheckOn = True then
+        ALTER CONTROL SYM_COLNAME_ID ENABLE
+      else
+        ALTER CONTROL SYM_COLNAME_ID DISABLE
+      end if
+    CASE ELSE
+      ' Called following a conneciton change
+      ' Show the correct options based on the connection  
+      ' They will be enabled/disabled later     
+      ALTER CONTROL UPLOAD_XY_ID	   SHOW
+      ALTER CONTROL UPLOAD_MICODE_ID   SHOW
+      ALTER CONTROL UPLOAD_SQSXY_ID    HIDE
+      ALTER CONTROL UPLOAD_SQSREGN_ID  HIDE
+      ALTER CONTROL UPLOAD_SQSLINE_ID  HIDE
+      ALTER CONTROL UPLOAD_INGRESXY_ID HIDE
+      ALTER CONTROL UPLOAD_HHCODE_ID   HIDE
+
+      IF Demodb = DATA_SOURCE_SQS  THEN
+        ALTER CONTROL UPLOAD_SQSXY_ID     SHOW
+        ALTER CONTROL UPLOAD_SQSREGN_ID   SHOW
+        ALTER CONTROL UPLOAD_SQSLINE_ID   SHOW
+      ELSEIF Demodb = DATA_SOURCE_INGRES THEN
+        ALTER CONTROL UPLOAD_INGRESXY_ID  SHOW
+      ELSEIF Demodb = DATA_SOURCE_ORACLE THEN
+        ALTER CONTROL UPLOAD_HHCODE_ID    SHOW
+      ELSE
+      END IF
+    END CASE
+END SUB
+
+'***************************************************************
+'UploadTable reads the status of the check boxes and set the flags
+'calls server create table after the flag are set
+'****************************************************************************/
+SUB UploadTable()
+  DIALOG PRESERVE
+
+  MITableName    = READCONTROLVALUE(MITABLE_NAME_ID)
+  SRVTableName   = READCONTROLVALUE(SRVTABLE_NAME_ID)
+  CommitInterval = READCONTROLVALUE(COMMIT_INTERVAL_ID)
+  bUploadRecno    = READCONTROLVALUE(UPLOAD_RECNO)              
+  bUploadMap      = READCONTROLVALUE(UPLOAD_MAP_ID)             
+  bUploadXY		    = READCONTROLVALUE(UPLOAD_XY_ID)     
+  bUploadMICODE   = READCONTROLVALUE(UPLOAD_MICODE_ID)          
+  bUploadHHCODE   = READCONTROLVALUE(UPLOAD_HHCODE_ID)    
+  bUploadSQSXY   = READCONTROLVALUE(UPLOAD_SQSXY_ID)        
+  bUploadSQSREGN   = READCONTROLVALUE(UPLOAD_SQSREGN_ID)        
+  bUploadSQSLINE   = READCONTROLVALUE(UPLOAD_SQSLINE_ID)        
+  bUploadINGRESXY   = READCONTROLVALUE(UPLOAD_INGRESXY_ID)  
+  bUploadSymbology =  READCONTROLVALUE(UPLOAD_SYM_ID)
+  strSymbolCol =  READCONTROLVALUE(SYM_COLNAME_ID)
+   
+    
+  IF dbg THEN
+    PRINT  "MITableName   = " + MITableName
+    PRINT  "SRVTableName  = " + SRVTableName
+    PRINT  "CommitInterval= " + CommitInterval
+    PRINT "bUploadMap="+ bUploadMap
+    PRINT "bUploadXY="+ bUploadXY
+    PRINT "bUploadMICODE="+ bUploadMICODE
+    PRINT "bUploadSQSXY="+ bUploadSQSXY
+    PRINT "bUploadSQSREGN="+ bUploadSQSREGN
+    PRINT "bUploadSQSLINE="+ bUploadSQSLINE
+    PRINT "bUploadINGRESXY = " + bUploadINGRESXY 
+    PRINT "UploadHHcode = " + bUploadHHcode 
+  END IF
+ 
+  ' check first if the table exists on the server
+  IF (DoesTableExist(SRVTableName)= TRUE) THEN
+    IF ASK("Table already exists." + Chr$(10)+ 
+		"Do you want to continue with upload and append it to the existing table?", "Yes", "No") THEN
+      'Now call FUNCTION to Insert the data into the new server table
+      Call UploadTableData(MITableName, SRVTableName)
+    END IF
+  ELSE
+    IF SRVCreateTable(MITableName, SRVTableName) THEN
+      'Now call FUNCTION to Insert the data into the new server table
+      Call UploadTableData(MITableName, SRVTableName)
+    END IF
+  END IF
+END SUB
+ 
+
+'****************************************************************************/
+'ServerCreatetable calls the correct create statement for all the different 
+'databases
+'****************************************************************************/
+FUNCTION SRVCreateTable(BYVAL MITableName As STRING, BYVAL SRVTableName As STRING) As LOGICAL
+  Dim CreateString As STRING
+  Dim UniqueString As STRING
+  Dim hstmnt As INTEGER
+  
+  IF dbg THEN
+	  print "create server table called"
+  END IF
+
+  ' Get the create table string
+  CreateString = BuildCreateString(MiTableName, SRVTableName)
+  IF CreateString = "" THEN
+    SRVCreateTable = FALSE
+    GOTO ALLDONE
+  END IF
+
+  ' Execute the Create Table
+  ONERROR GOTO CREATEERROR    
+  hstmnt = Server_Execute(demohdbc, CreateString)
+  Server hstmnt Close
+
+  'Create a unique index on the Recnum column to insure it is
+  ' editable.  If it fails, continue, the column has a primary key from the 
+  'create statement
+  IF bUploadRecno THEN
+    Do Case Demodb
+      CASE DATA_SOURCE_DBASE
+	      UniqueString = "create unique index " + 
+          demoquotechar + SRVTableName+"_IX" + demoquotechar + " ON " +
+          demoquotechar + SRVTableName + demoquotechar + "(MISQLREC)"
+	
+    	CASE ELSE
+        UniqueString = "create unique index " + 
+          demoquotechar + SRVTableName+"_IX" + demoquotechar + " ON " +
+          demoquotechar + SRVTableName + demoquotechar + "(MI_SQL_REC_NUM)"
+    END CASE
+
+    IF dbg THEN
+    	print uniquestring
+    END IF 
+    ONERROR GOTO DISREGARD
+
+    hstmnt = Server_Execute(demohdbc,UniqueString)
+    Server hstmnt Close 
+  END IF 
+
+  'If the table was HHCODE indexed, register it with Oracle SDO
+  IF bUploadHHCODE THEN
+    ONERROR GOTO MDERROR
+    Server demohdbc begin transaction 
+    hstmnt = Server_execute(demohdbc, "begin md_ddl.register_md_table ('" + SRVTableName + "'); end;")
+    Server hstmnt Close     
+    IF dbg THEN
+      PRINT  "Registering  HH table"
+    END IF
+    'The format$() function ensures that all the precision is maintained while converting to 
+    'to a string
+    hstmnt = Server_execute(demohdbc,"begin md_ddl.add_hhcode_column('"+ SRVTableName + 
+                                    "','MI_SQL_HHCODE',false,'MI_SQL_X',"+
+                                    Format$(MAP_ranges.X_L_B,"#.########")+
+                                    ","+Format$(MAP_ranges.X_U_B,"#.########")+
+                                    ",10,'MI_SQL_Y',"+
+                                    Format$(MAP_ranges.Y_L_B,"#.########")+","+
+                                    Format$(MAP_ranges.Y_U_B,"#.########")+",10); end;")
+    Server hstmnt Close 
+    IF dbg THEN
+      PRINT  "added hhcolumn"
+    END IF
+    Server demohdbc commit
+  END IF	
+
+  'Commit for a complete table creation
+  IF dbg   THEN
+    PRINT  "Table " + SRVTableName + " Created in Server Database!"
+  END IF
+  SRVCreateTable = TRUE
+ 
+  GOTO ALLDONE
+
+  DISREGARD:
+    Resume Next
+
+  MDERROR:
+    NOTE ERROR$()
+    Server demohdbc Rollback
+    SRVCreateTable = FALSE
+    RESUME ALLDONE
+  
+  CREATEERROR:
+    NOTE ERROR$()
+    SRVCreateTable = FALSE
+    RESUME ALLDONE
+
+  ALLDONE:
+END FUNCTION
+ 
+ 
+'****************************************************************************/
+' Build the appropriate Create Table string depending on the database
+'****************************************************************************/
+FUNCTION BuildCreateString(BYVAL MITableName As STRING, BYVAL SRVTableName As STRING) As STRING
+  DIM CreateString AS STRING
+
+  CreateString=""
+  Do Case Demodb
+    CASE DATA_SOURCE_ORACLE  
+      CreateString = BuildOracleCreateString(MiTableName, SRVTableName)
+    CASE DATA_SOURCE_SQS 
+      CreateString = BuildSQSCreateString(MiTableName, SRVTableName)  
+    CASE DATA_SOURCE_SYBASE
+      CreateString = BuildSybaseCreateString(MiTableName, SRVTableName)   
+    CASE DATA_SOURCE_SQLSERVER
+	CreateString = BuildSQLServerCreateString(MiTableName, SRVTableName)   
+    CASE DATA_SOURCE_SQLSERVER_SW
+      CreateString = BuildSQLServerCreateString(MiTableName, SRVTableName)   
+    CASE DATA_SOURCE_SQLBASE        
+      CreateString = BuildSQLBaseCreateString(MiTableName, SRVTableName)
+    CASE DATA_SOURCE_INFORMIX
+ 	CreateString = BuildInformixCreateString(MiTableName, SRVTableName)  
+    CASE DATA_SOURCE_IUS
+      CreateString = BuildInformixCreateString(MiTableName, SRVTableName)
+    CASE DATA_SOURCE_INGRES 
+      CreateString = BuildIngresCreateString(MiTableName, SRVTableName)   
+    CASE DATA_SOURCE_DB2       
+      CreateString = BuildDB2CreateString(MiTableName, SRVTableName)
+    CASE DATA_SOURCE_MSACCESS 
+      CreateString = BuildAccessCreateString(MiTableName, SRVTableName)
+    CASE DATA_SOURCE_DBASE
+      CreateString = BuildDbaseCreateString(MiTableName, SRVTableName)
+    CASE ELSE      
+      NOTE "Sorry! MIUPLOAD does not support your database and/or DBMS driver"
+  END CASE
+
+  BuildCreateString = CreateString
+END FUNCTION
+ 
+ 
+'****************************************************************************/
+'The BuildInsertString is the same for all databases.
+'There special insert formats for Oracle MD, SQS.
+'****************************************************************************/
+FUNCTION BuildInsertString(BYVAL MITableName As STRING) As STRING
+  Dim InsertStr, Sep As STRING
+  Dim ColAlias As Alias
+  Dim ColVal As STRING
+  Dim i As INTEGER
+  Dim aTableObject As ALIAS
+  Dim oTableObject as Object
+  Dim TableObjectPointX, TableObjectPointY As FLOAT
+  Dim SIKey As STRING
+  Dim MICode As SmallInt 
+  Dim ColDate As Date
+  Dim ColFloat As Float
+  Dim bNullObject As Logical  
+  Dim num_polys, poly_num, tot_nodes as INTEGER
+  Dim strSymbol, strPen, strBrush as STRING
+
+  ONERROR GOTO Err_exit   
+  Sep = ""
+
+  ' Get the map point object if desired
+  IF bUploadMap THEN
+    ' Get the object data (As a point)
+    bNullObject = FALSE   
+    ONERROR GOTO BAD_OBJ    'We don't want to die if column does not have a Object
+    aTableObject = MITableName + ".obj"
+    TableObjectPointX = CentroidX(aTableObject)
+    TableObjectPointY = CentroidY(aTableObject)
+    IF dbg THEN
+      PRINT "bNullObject=" + bNullObject + ", X="+TableObjectPointX + " Y="+TableObjectPointY
+    END IF
+  END IF
+
+
+  IF bUpLoadHHCODE THEN 
+    'The Format$() function ensures that all the precision is maintained while converting to 
+    'to a string
+    IF bNullObject THEN
+      InsertStr = InsertStr + "NULL"
+    ELSE 
+      InsertStr = InsertStr + "HHENCODE(" + Format$(TableObjectPointX,"#.########")  + ","+
+				 				  MAP_ranges.X_L_B+","+MAP_ranges.X_U_B+",10," + 
+								  Format$(TableObjectPointY,"#.########") + ","+
+								  MAP_ranges.Y_L_B+","+MAP_ranges.Y_U_B+",10)" 
+    END IF
+
+    Sep = ","
+  END IF
+
+  FOR i = 1 TO TableInfo(MITableName, TAB_INFO_NCOLS)
+    ColAlias = MITableName + ".COL" + i
+	  ColVal = Str$(ColAlias)
+
+    ' Strings must be enclosed on single quotes
+    Do Case ColumnInfo(MITableName, "COL"+i, COL_INFO_TYPE)
+      Case COL_TYPE_CHAR
+        ' Each single quote within a string must be doubled up!
+        IF ColVal = "" THEN 
+          ColVal = "NULL"
+          InsertStr = InsertStr + Sep + ColVal 
+        ELSE
+          ColVal = FixCharVal(ColVal)
+          InsertStr = InsertStr + Sep +  "'" + ColVal + "'"
+        END IF
+      Case COL_TYPE_DECIMAL
+        ColFloat = ColAlias
+        ColVal = Format$(ColFloat, "0." + String$(ColumnInfo(MITableName, "COL"+i, COL_INFO_DECPLACES), "#"))
+        InsertStr = InsertStr + Sep + ColVal
+      Case COL_TYPE_FLOAT
+        ColFloat = ColAlias
+        ColVal = Format$(ColFloat, "0.################E+000")
+        InsertStr = InsertStr + Sep + ColVal
+      Case COL_TYPE_INTEGER, COL_TYPE_SMALLINT
+        ColVal = Format$(ColAlias, "0")
+        InsertStr = InsertStr + Sep + ColVal
+      Case COL_TYPE_DATE
+        IF ColVal = "" THEN 
+          ColVal = "NULL"
+        ElSE
+          ColDate = StringToDate(ColVal)
+  	     'Format$ used to make sure the month and day have two characters "1995-1-1" is invalid
+          ColVal = "{d '" + Year(ColDate) + "-" + Format$(Month(ColDate), "00") + "-" + Format$(Day(ColDate), "00") + "'}"
+        END IF
+        InsertStr = InsertStr + Sep + ColVal 
+      Case COL_TYPE_LOGICAL
+        IF ColVal = "T" THEN 
+          ColVal = "1"
+        ElSE
+          ColVal = "0"
+        END IF
+        InsertStr = InsertStr + Sep + ColVal
+      Case Else 
+        ' Ignore Object column (COL_TYPE_GRAPHIC) and anything else we don't know about
+    End Case 'ColumnInfo(MITableName, "COL"+i, COL_INFO_TYPE)
+    If Len(InsertStr) Then
+      Sep = ","
+    End If 'Len(InsertStr)
+  NEXT 'i
+
+  ' Now append spatial columns 
+  IF bUploadMap THEN
+    IF bUpLoadMICODE THEN
+      'The Format$() function ensures that all the precision is maintained 
+      ' while converting to a string
+      IF bNullObject THEN
+        InsertStr = InsertStr + Sep + "NULL" + Sep + "NULL" + Sep + "NULL"
+      ELSE
+        IF dbg THEN
+          PRINT "InsertStr before UpLoadMICode=" + InsertStr
+        END IF
+        ' Get he MICode (calculated in the following DLLs)
+        ONERROR GOTO ERR_EXIT
+        'The dll's are loaded at the time they are called. 
+        'This makes the upload program platform independent
+'***********************************************************************************************'
+'         Blank pad the buffer into which the code will be returned.  This should be only       '
+'         17 characters, but UploadMICode seems to be trashing memory, so will pad it some more '
+'***********************************************************************************************'
+        SIKey = Space$(17)  '1024
+        IF SystemInfo(SYS_INFO_MIPLATFORM) = MIPLATFORM_WIN16 THEN
+          MICode = UpLoadMICode16(MAP_ranges.X_L_B,MAP_ranges.X_U_B,
+                  	           MAP_ranges.Y_L_B,MAP_ranges.Y_U_B,
+                        	     TableObjectPointX,TableObjectPointY,
+                        	     SIKey)
+        ELSE
+          MICode = UpLoadMICode32(MAP_ranges.X_L_B,MAP_ranges.X_U_B,
+                  	           MAP_ranges.Y_L_B,MAP_ranges.Y_U_B,
+                        	     TableObjectPointX,TableObjectPointY,
+                        	     SIKey)
+        END IF
+        IF dbg THEN
+          PRINT "InsertStr after UpLoadMICode=" + InsertStr
+          PRINT "MICode=" + MICode + "; SIKey=" + SIKey
+        END IF
+
+        InsertStr = InsertStr + Sep + Format$(TableObjectPointX,"#.########") + Sep + 
+                             Format$(TableObjectPointY,"#.########") + Sep + "'" + SIKey + "'"     
+      END IF
+    ELSEIF bUploadXY THEN
+      IF bNullObject THEN
+        InsertStr = InsertStr + Sep + "NULL" + Sep + "NULL"
+      ELSE	
+        InsertStr = InsertStr + Sep + Format$(TableObjectPointX,"#.########") + Sep + 
+                     Format$(TableObjectPointY,"#.########")
+      END IF
+    END IF 'bUpLoadMICODE
+
+    ' Ingres Objects
+    IF bUploadINGRESXY THEN
+      IF bNullObject THEN
+        InsertStr = InsertStr + Sep + "NULL"
+      ELSE	
+        InsertStr = InsertStr + Sep + "'(" + Format$(TableObjectPointX,"#.########") + "," + 
+                    Format$(TableObjectPointY,"#.########") + ")'"
+      END IF
+    END IF 'bUploadINGRESXY
+
+    '  SQS Objects
+    IF bUploadSQSXY Or bUploadSQSLINE Or bUploadSQSREGN THEN
+' Check for Too Many Nodes 
+     IF  bUploadSQSLINE Or bUploadSQSREGN THEN
+        oTableObject = aTableObject
+        num_polys = ObjectInfo(oTableObject , OBJ_INFO_NPOLYGONS)
+        tot_nodes = 0
+        FOR poly_num = 1 to num_polys 
+          tot_nodes = tot_nodes + ObjectInfo(oTableObject , OBJ_INFO_NPOLYGONS+poly_num)
+        NEXT
+
+        IF tot_nodes > MAX_SQS_NODES THEN
+'          Note "Object for this record is too complex to upload. Set to NULL"
+'          BuildInsertString="X"
+'          GOTO ALL_DONE
+          IF ASK("Object too complex to upload. Record will upload with NULL object. Skip record ?", "Yes", "No") THEN
+             BuildInsertString="X"
+             GOTO ALL_DONE
+          ELSE
+             bNullObject = TRUE
+          END IF ' Skip record
+        END IF
+      END IF  ' End checking for too complex 
+      IF bNullObject THEN
+' print "null object is true"
+        InsertStr = InsertStr + Sep + "NULL"
+      ELSEIF 	bUploadSQSXY THEN
+        InsertStr = InsertStr + Sep + "point(" + Format$(TableObjectPointY,"#.########") + "," + 
+                     Format$(TableObjectPointX,"#.########") + ")"
+      ELSEIF bUploadSQSLINE THEN
+        oTableObject = aTableObject
+	      InsertStr =  BuildLineInsertString(InsertStr, oTableObject )
+      ELSEIF bUploadSQSREGN THEN
+        oTableObject = aTableObject
+           InsertStr = BuildRegnInsertString(InsertStr, oTableObject, num_polys)
+      END IF  ' End different SQS types
+    END IF 'bUploadSQSXY Or bUploadSQSLINE Or bUploadSQSREGN
+  END IF 'bUploadMap
+
+  ' Append RowId?
+  IF bUploadRecno THEN
+    ColAlias = MITableName + ".RowId"
+    ColVal = Str$(ColAlias)
+    InsertStr=InsertStr + Sep + ColVal
+  END IF
+
+  IF bUploadSymbology = TRUE THEN
+    strSymbol = Str$(ObjectInfo(aTableObject, OBJ_INFO_SYMBOL))
+    InsertStr=InsertStr + Sep + "'" + strSymbol + "'"
+	IF bUploadSQSLINE THEN
+	  strPen = Str$(ObjectInfo(aTableObject, OBJ_INFO_PEN))
+	  InsertStr=InsertStr + Sep + "'" + strPen + "'"
+	ELSEIF bUploadSQSREGN THEN
+	  strPen = Str$(ObjectInfo(aTableObject, OBJ_INFO_PEN))
+	  InsertStr=InsertStr + Sep + "'" + strPen + "'"
+	  strBrush = Str$(ObjectInfo(aTableObject, OBJ_INFO_BRUSH))
+	  InsertStr=InsertStr + Sep + "'" + strBrush + "'"
+	END IF
+  END IF
+  InsertStr= "(" + InsertStr + ")" 
+  BuildInsertString = InsertStr
+  GOTO ALL_DONE
+
+ERR_EXIT:
+  NOTE ERROR$()
+  BuildInsertString=""
+  RESUME ALL_DONE
+
+BAD_OBJ:
+  bNullObject = TRUE
+  TableObjectPointX = 0
+  TableObjectPointY = 0
+  Resume Next
+
+ALL_DONE:
+
+END Function
+ 
+ 
+'*************************************************************************
+'UpLoadTableData: Loops through the MapInfo table and for each row,
+' calls BuildInsertString and then server_execute.
+'*************************************************************************
+SUB UploadTableData(BYVAL MITableName As STRING, BYVAL SRVTableName  As STRING)
+  Dim rowindex, numrows As INTEGER
+  Dim IString, InsertString As String
+  DIM NoTransaction AS LOGICAL
+
+  NoTransaction = FALSE
+
+  ' Build a select string that creates the upload data!  
+  IString="INSERT INTO "  + 
+    demoquotechar + SRVTableName + demoquotechar + " VALUES "
+  
+  STATUSBAR MESSAGE "MIUPLOAD: Beginning upload..."
+  ONERROR GOTO NOTRANS
+  SERVER demohdbc BEGIN TRANSACTION
+  IF dbg THEN
+    PRINT "Begin Transaction" 
+  END IF
+
+  ONERROR GOTO ExecuteError
+  ' Loop through the selection and process each record insert
+  numrows = TABLEINFO(MiTableName, TAB_INFO_NROWS)       
+
+  FETCH FIRST FROM MITableName
+  FOR rowindex=1 TO numrows
+    IF dbg THEN
+       PRINT  rowindex + " of " + numrows 
+    END If
+
+    IF rowindex MOD 10 = 0 THEN
+      STATUSBAR MESSAGE "MIUPLOAD: " + rowindex + " of " + numrows + " processed!"
+    END IF 
+    InsertString =  BuildInsertString(MiTableName)
+
+    If InsertString="" THEN   ' Error building insert string, quit upload
+      Server demohdbc ROLLBACK
+      GOTO ALLDONE
+    ELSEIF InsertString="X" THEN  ' This means object is too complex
+       IF ASK("Object too complex to upload for  record #" + rowindex + ";" + Error$() + " " +  
+            "Insert row Failed.  Continue with upload?", "Yes", "No") THEN
+        GOTO NextRecord
+      ELSE
+        Server demohdbc ROLLBACK
+        GOTO ALLDONE
+      END IF ' End ASK
+    END IF
+
+    InsertString = IString + InsertString 
+    IF dbg THEN
+       PRINT  "Insert Statement = " + InsertString
+       IF (bUploadSQSXY or bUploadSQSLINE or bUploadSQSREGN) THEN
+         PRINT  #1, InsertString           'Store SQS SQL statement in a file
+       END IF
+    END IF 
+    demohstmnt = Server_Execute(demohdbc, InsertString)
+    IF demohstmnt <> 0 THEN
+      SERVER demohstmnt CLOSE
+    END IF
+   
+    ' Intermediate commits?   (Checkpointing) How often?
+    IF NOT NoTransaction AND CommitInterval <> 0 THEN
+      IF (rowindex MOD CommitInterval) = 0 THEN
+        SERVER demohdbc COMMIT
+        STATUSBAR MESSAGE "MIUPLOAD: " + rowindex + " of " + numrows + " Committed!"
+        
+        SERVER demohdbc BEGIN TRANSACTION
+       END IF   
+    END IF
+NextRecord:
+    FETCH NEXT FROM MITableName
+  NEXT
+
+  ' Commit all or none!
+  ONERROR GOTO COMMITERR
+  SERVER demohdbc COMMIT
+
+  ONERROR GOTO 0
+  STATUSBAR MESSAGE "MIUPLOAD: ... Upload Complete!"
+  Note "DBMS Upload completed successfully!" + CHR$(13) 
+			+ CHR$(13) + 
+        "Uploaded MapInfo table: " + MITableName  + CHR$(13) + 
+        "     to Database table: " + SRVTableName + CHR$(13) +
+        "           (" + numrows + " records)"
+
+  GOTO ALLDONE
+
+  ExecuteError:
+    IF ASK("Insert row Failed. Continue with upload?"  + Chr$(10)+
+		"Error processing record #" + rowindex + ";" + Error$(), "Yes", "No") THEN
+
+      RESUME NEXT
+    END IF
+
+    Server demohdbc ROLLBACK
+    RESUME ALLDONE
+
+  NOTRANS:
+    NoTransaction=TRUE
+    RESUME NEXT
+
+  COMMITERR:
+    IF NoTransaction THEN   
+      RESUME NEXT
+    ELSE
+      Print Error$()
+      RESUME ALLDONE
+    END IF
+       
+
+  ALLDONE:
+
+END SUB
+
+
+'******************************************************************
+'FixCharVal replaces single quotes with double quotes
+'*******************************************************************
+FUNCTION FixCharVal(BYVAL ColVal As STRING) As STRING
+  Dim NewColVal As STRING
+  Dim i, spos, qpos As INTEGER
+  
+  spos=1      
+  DO WHILE (TRUE)
+    qpos = INSTR(spos, ColVal, "'") 
+    IF qpos = 0 THEN
+      NewColVal = NewColVal + MID$(ColVal, spos, 255)  ' tac end on
+      EXIT DO
+    ELSE
+      NewColVal = NewColVal +  MID$(ColVal, spos, qpos-spos) + "''"
+    END IF
+    spos=qpos+1
+  LOOP
+  FixCharVal = NewColVal
+END FUNCTION
+
+
+'***************************************************************************
+'* Get a new connection (replace the old one)
+'* Use QELIB DLG=1 option for Windows
+'* Use MB connect dialog for MAC and UNIX
+'***************************************************************************
+SUB SQLConnect()
+  ' SQLConnectDialog sets the demodb and the demodbname
+  demohdbc = SQLConnectDialog() 
+  ONERROR GOTO DISREGARD
+
+  ' set dislog controls for map check boxes
+  Call EnableCheckBoxes
+
+  ' Set dialog connection control to display connection name 
+  ALTER CONTROL CONNECTION_NAME_ID VALUE democonnname
+  GOTO ALLDONE
+
+DISREGARD:
+  RESUME NEXT
+ALLDONE:   
+END SUB
+
+
+'****************************************************************************
+'  About: This procedure displays an About dialog box.      
+'****************************************************************************         
+SUB UpLoad_About
+  Dialog 
+     Title "About the DBMS Upload Utility Program..." 
+     Control StaticText 
+        Title "MIUPLOAD.mbx is now running." 
+        Position 10, 10 
+     Control StaticText
+        Title "This MapBasic application allows a user to upload a " 
+        Position 10, 25
+     Control StaticText
+        Title "MapInfo table to a remote database. By selecting Upload Map,"
+        Position 10, 35
+
+     Control StaticText
+        Title "the user can upload coordinate information from a mappable" 
+        Position 10, 45
+     Control StaticText
+        Title "table to the remote database." 
+        Position 10, 55
+     Control OKButton
+        Title "OK"  Position 88, 70
+
+END SUB 
+    
+
+'*************************************************************************
+'Creates a table for dBase
+'*************************************************************************
+FUNCTION BuildDbaseCreateString(BYVAL TableName As STRING, BYVAL NewTableName As STRING) As STRING
+  Dim CreateStr, sep, uptype As STRING
+  Dim i As INTEGER
+  ' Build a create string that creates the upload data! 
+  CreateStr="CREATE TABLE " + demoquotechar + NewTableName + demoquotechar + " ("
+  sep=""
+  FOR i=1 TO TABLEINFO(TableName, TAB_INFO_NCOLS)
+    ' Strings must be enclosed on singhle quotes
+    uptype=""  
+    DO CASE COLUMNINFO(TableName,"COL"+i, COL_INFO_TYPE)
+      CASE COL_TYPE_CHAR       uptype = 
+             "CHAR(" + COLUMNINFO(TableName, "COL"+i, COL_INFO_WIDTH) + ")"
+
+      CASE COL_TYPE_DECIMAL    uptype =  
+             "NUMERIC("+COLUMNINFO(TableName, "COL"+i, COL_INFO_WIDTH) +","+COLUMNINFO(TableName, "COL"+i, COL_INFO_DECPLACES) + ")"
+      CASE COL_TYPE_FLOAT uptype = 
+             "NUMERIC(19,9)"
+      CASE COL_TYPE_INTEGER uptype = 
+             "NUMERIC(11)"
+      CASE COL_TYPE_SMALLINT uptype = 
+             "NUMERIC(6)"
+      CASE COL_TYPE_LOGICAL uptype =
+             "BIT"
+      CASE COL_TYPE_DATE uptype = 
+             "DATE"
+    END CASE
+
+    IF uptype <> "" THEN
+      CreateStr=CreateStr + sep + demoquotechar +
+         COLUMNINFO(TableName, "COL"+i, COL_INFO_NAME) + demoquotechar + " " + uptype
+      sep=","        
+    END IF 
+  Next
+
+  IF bUploadMICODE   THEN  
+    CreateStr= CreateStr + sep + 
+      demoquotechar + "MISQLX"   + demoquotechar + " NUMERIC(19,9)" + sep +
+      demoquotechar + "MISQLY"   + demoquotechar + " NUMERIC(19,9)" + sep +
+      demoquotechar + "MISQLMIC" + demoquotechar + " CHAR(17)"
+  ELSEIF bUploadXY THEN
+    CreateStr= CreateStr + sep + 
+      demoquotechar + "MISQLX"   + demoquotechar + " NUMERIC(19.9)" + sep +
+      demoquotechar + "MISQLY"   + demoquotechar + " NUMERIC(19,9)"
+  END IF 
+
+  IF bUploadRecno THEN
+    CreateStr = CreateStr + sep +  
+      demoquotechar + "MISQLREC" + demoquotechar + " NUMERIC(11)"
+  END IF
+  IF bUploadSymbology THEN
+     CreateStr=CreateStr + sep + 
+	 demoquotechar + strSymbolCol + demoquotechar + " CHAR(254)" 
+  END IF
+
+  CreateStr=CreateStr + ")"
+
+  IF dbg THEN
+    PRINT   "Create String = " + CreateStr
+  END IF
+  BuildDBaseCreateString=CreateStr
+END FUNCTION
+
+
+'*************************************************************************
+'Creates a table for Ingres
+'*************************************************************************
+FUNCTION BuildIngresCreateString(BYVAL TableName As STRING, BYVAL NewTableName As STRING) As STRING
+  Dim CreateStr, sep, uptype As STRING
+  Dim i As INTEGER
+
+  ' Build a create string that creates the upload data! 
+  CreateStr="CREATE TABLE " + demoquotechar + NewTableName + demoquotechar + " ("
+  sep=""
+  FOR i=1 TO TABLEINFO(TableName, TAB_INFO_NCOLS)
+    ' Strings must be enclosed on single quotes
+    uptype=""  
+ 
+    DO CASE COLUMNINFO(TableName,"COL"+i, COL_INFO_TYPE)
+      CASE COL_TYPE_CHAR       uptype = 
+             "VARCHAR(" + COLUMNINFO(TableName, "COL"+i, COL_INFO_WIDTH) + ")"
+      CASE COL_TYPE_DECIMAL    uptype = 
+             "FLOAT"
+      CASE COL_TYPE_FLOAT uptype = 
+             "FLOAT"
+      CASE COL_TYPE_INTEGER uptype = 
+
+             "INTEGER"
+      CASE COL_TYPE_SMALLINT, COL_TYPE_LOGICAL uptype = 
+             "SMALLINT"
+      CASE COL_TYPE_DATE uptype = 
+             "DATE"
+    END CASE
+
+    IF uptype <> "" THEN
+      CreateStr=CreateStr + sep + demoquotechar +
+         COLUMNINFO(TableName, "COL"+i, COL_INFO_NAME) + demoquotechar + " " + uptype
+      sep=","        
+    END IF 
+  Next
+
+  IF bUploadMICODE   THEN  
+    CreateStr = CreateStr + sep + 
+      demoquotechar + "MI_SQL_X" + demoquotechar + " FLOAT" + sep + 
+      demoquotechar + "MI_SQL_Y" + demoquotechar + " FLOAT" + sep +
+      demoquotechar + "MI_SQL_MICODE" + demoquotechar + " CHAR(17)"
+  ELSEIF bUploadXY THEN
+    CreateStr = CreateStr + sep + 
+      demoquotechar + "MI_SQL_X" + demoquotechar + " FLOAT" + sep +
+      demoquotechar + "MI_SQL_Y" + demoquotechar + " FLOAT"
+  END IF
+  
+  IF bUploadINGRESXY THEN
+    CreateStr = CreateStr + sep + 
+      demoquotechar + "MI_INGRES_POINT" + demoquotechar + " Point"
+  END IF 
+
+  IF bUploadRecno THEN
+    CreateStr=CreateStr + sep + 
+      demoquotechar + "MI_SQL_REC_NUM" + demoquotechar + " INTEGER"
+  END IF
+  IF bUploadSymbology THEN
+     CreateStr=CreateStr + sep + 
+	 demoquotechar +strSymbolCol + demoquotechar + " VARCHAR(254)" 
+  END IF
+
+  CreateStr=CreateStr + ")"
+
+  IF dbg THEN
+
+    PRINT   "Create String = " + CreateStr
+  END IF
+  BuildIngresCreateString=CreateStr
+END FUNCTION              
+
+
+'*************************************************************************
+' Create table for SqlBase
+'************************************************************************
+FUNCTION BuildSQLBaseCreateString(BYVAL TableName As STRING, BYVAL NewTableName As STRING) As STRING
+  Dim CreateStr, sep, uptype As STRING
+  Dim i As INTEGER
+
+  ' Build a create string that creates the upload data! way cool! 
+  CreateStr="CREATE TABLE " + demoquotechar + NewTableName + demoquotechar + " ("
+  sep=""
+  FOR i=1 TO TABLEINFO(TableName, TAB_INFO_NCOLS)
+    ' Strings must be enclosed on singhle quotes
+    uptype=""  
+ 
+    DO CASE COLUMNINFO(TableName,"COL"+i, COL_INFO_TYPE)
+      CASE COL_TYPE_CHAR       uptype = 
+             "VARCHAR(" + COLUMNINFO(TableName, "COL"+i, COL_INFO_WIDTH) + ")"
+      CASE COL_TYPE_DECIMAL    uptype = 
+             "DECIMAL("+COLUMNINFO(TableName, "COL"+i, COL_INFO_WIDTH) +","+COLUMNINFO(TableName, "COL"+i, COL_INFO_DECPLACES) + ")"
+      CASE COL_TYPE_FLOAT uptype = 
+             "REAL"
+      CASE COL_TYPE_INTEGER uptype = 
+             "INTEGER"
+      CASE COL_TYPE_SMALLINT, COL_TYPE_LOGICAL uptype = 
+             "SMALLINT"
+      CASE COL_TYPE_DATE uptype = 
+             "DATE"
+    END CASE
+
+    IF uptype <> "" THEN
+      CreateStr=CreateStr + sep + demoquotechar +
+         COLUMNINFO(TableName, "COL"+i, COL_INFO_NAME) + demoquotechar + " " + uptype
+      sep=","        
+    END IF 
+  Next
+
+  IF bUploadMICODE   THEN  
+    CreateStr = CreateStr + sep +
+      demoquotechar + "MI_SQL_X" + demoquotechar + " REAL" + sep + 
+      demoquotechar + "MI_SQL_Y" + demoquotechar + " REAL" + sep +
+      demoquotechar + "MI_SQL_MICODE" + demoquotechar + " CHAR(17)"
+  ELSEIF bUploadXY THEN
+    CreateStr= CreateStr + sep + 
+      demoquotechar + "MI_SQL_X" + demoquotechar + " REAL" + sep + 
+      demoquotechar + "MI_SQL_Y" + demoquotechar + " REAL"
+  END IF 
+
+  IF bUploadRecno THEN
+    CreateStr = CreateStr + sep +  
+      demoquotechar + "MI_SQL_REC_NUM" + demoquotechar + " INTEGER"
+  END IF
+  IF bUploadSymbology THEN
+     CreateStr=CreateStr + sep + 
+	 demoquotechar + strSymbolCol + demoquotechar + " VARCHAR(254)" 
+  END IF
+
+  CreateStr=CreateStr + ")"
+
+  IF dbg THEN
+    PRINT   "Create String = " + CreateStr
+  END IF
+  BuildSQLBaseCreateString=CreateStr
+END FUNCTION
+
+
+'*************************************************************************
+'Creates a table for Sybase and SQL Server
+'*************************************************************************
+FUNCTION BuildSybaseCreateString(BYVAL TableName As STRING, BYVAL NewTableName As STRING) As STRING
+  Dim CreateStr, sep, uptype As STRING
+  Dim i As INTEGER
+  ' Build a create string that creates the upload data! way cool! 
+
+  CreateStr="CREATE TABLE " + demoquotechar + NewTableName + demoquotechar + " ("
+  sep=""
+  FOR i=1 TO TABLEINFO(TableName, TAB_INFO_NCOLS)
+    ' Strings must be enclosed on singhle quotes
+    uptype=""  
+ 
+    DO CASE COLUMNINFO(TableName,"COL"+i, COL_INFO_TYPE)
+      CASE COL_TYPE_CHAR       uptype = 
+             "varchar(" + COLUMNINFO(TableName, "COL"+i, COL_INFO_WIDTH) + ")"
+      CASE COL_TYPE_DECIMAL    uptype = 
+             "decimal("+COLUMNINFO(TableName, "COL"+i, COL_INFO_WIDTH) +","+COLUMNINFO(TableName, "COL"+i, COL_INFO_DECPLACES) + ")"
+      CASE COL_TYPE_FLOAT uptype = 
+             "float"
+      CASE COL_TYPE_INTEGER uptype = 
+             "int"
+      CASE COL_TYPE_SMALLINT uptype = 
+             "smallint"
+      CASE COL_TYPE_LOGICAL uptype = 
+             "bit"
+      CASE COL_TYPE_DATE uptype = 
+             "datetime"
+    END CASE
+    
+    IF uptype <> "" THEN
+      CreateStr=CreateStr + sep + demoquotechar +
+         COLUMNINFO(TableName, "COL"+i, COL_INFO_NAME) + demoquotechar + " " + uptype
+      sep=","        
+    END IF 
+  Next
+
+  IF bUploadMICODE   THEN  
+    CreateStr = CreateStr + sep + 
+      demoquotechar + "MI_SQL_X" + demoquotechar + " float" + sep + 
+      demoquotechar + "MI_SQL_Y" + demoquotechar + " float" + sep +
+      demoquotechar + "MI_SQL_MICODE" + demoquotechar + " char(17)"
+  ELSEIF bUploadXY THEN
+    CreateStr = CreateStr + sep +
+      demoquotechar + "MI_SQL_X" + demoquotechar + " float" + sep +
+      demoquotechar + "MI_SQL_Y" + demoquotechar + " float"
+  END IF 
+
+  IF bUploadRecno THEN
+    CreateStr = CreateStr + sep +
+      demoquotechar + "MI_SQL_REC_NUM" + demoquotechar + " int"
+  END IF
+  IF bUploadSymbology THEN
+     CreateStr=CreateStr + sep + 
+	 demoquotechar + strSymbolCol + demoquotechar + " VARCHAR(254)" 
+  END IF
+
+  CreateStr=CreateStr + ")"
+
+  IF dbg THEN
+    PRINT   "Create String = " + CreateStr
+  END IF
+  BuildSybaseCreateString=CreateStr
+END FUNCTION
+
+'*************************************************************************
+'Creates a table for Informix
+'*************************************************************************
+FUNCTION BuildInformixCreateString(BYVAL TableName As STRING, BYVAL NewTableName As STRING) As STRING
+  Dim CreateStr, sep, uptype As STRING
+  Dim i As INTEGER
+  ' Build a create string that creates the upload data! way cool! 
+  CreateStr="CREATE TABLE " + demoquotechar + NewTableName + demoquotechar + " ("
+  sep=""
+  FOR i=1 TO TABLEINFO(TableName, TAB_INFO_NCOLS)
+    ' Strings must be enclosed on singhle quotes
+    uptype=""  
+    DO CASE COLUMNINFO(TableName,"COL"+i, COL_INFO_TYPE)
+      CASE COL_TYPE_CHAR       uptype = 
+             "VARCHAR(" + COLUMNINFO(TableName, "COL"+i, COL_INFO_WIDTH) + ")"
+      CASE COL_TYPE_DECIMAL    uptype = 
+             "DECIMAL("+COLUMNINFO(TableName, "COL"+i, COL_INFO_WIDTH) +","+COLUMNINFO(TableName, "COL"+i, COL_INFO_DECPLACES) + ")"
+      CASE COL_TYPE_FLOAT uptype = 
+             "FLOAT"
+      CASE COL_TYPE_INTEGER uptype = 
+             "INTEGER"
+      CASE COL_TYPE_SMALLINT, COL_TYPE_LOGICAL uptype = 
+             "SMALLINT"
+      CASE COL_TYPE_DATE uptype = 
+             "DATE"
+    END CASE
+
+    IF uptype <> "" THEN
+      CreateStr=CreateStr + sep + demoquotechar +
+         COLUMNINFO(TableName, "COL"+i, COL_INFO_NAME) + demoquotechar + " " + uptype
+      sep=","        
+    END IF 
+  Next
+
+  IF bUploadMICODE   THEN  
+    CreateStr = CreateStr + sep + 
+      demoquotechar + "MI_SQL_X" + demoquotechar + " FLOAT" + sep +
+      demoquotechar + "MI_SQL_Y" + demoquotechar + " FLOAT" + sep +
+      demoquotechar + "MI_SQL_MICODE" + demoquotechar + " CHAR(17)"
+  ELSEIF bUploadXY THEN
+    CreateStr = CreateStr + sep + 
+      demoquotechar + "MI_SQL_X" + demoquotechar + " FLOAT" + sep + 
+      demoquotechar + "MI_SQL_Y" + demoquotechar + " FLOAT"
+  END IF 
+
+  IF bUploadRecno THEN
+    CreateStr = CreateStr + sep +
+      demoquotechar + "MI_SQL_REC_NUM" + demoquotechar + " INTEGER"
+  END IF
+  IF bUploadSymbology THEN
+     CreateStr=CreateStr + sep + 
+	 demoquotechar + strSymbolCol + demoquotechar + " VARCHAR(254)" 
+  END IF
+
+  CreateStr=CreateStr + ")"
+
+  IF dbg THEN
+    PRINT   "Create String = " + CreateStr
+  END IF
+  BuildInformixCreateString=CreateStr
+END FUNCTION
+
+
+'*************************************************************************
+'Creates a table for Access
+'*************************************************************************
+FUNCTION BuildAccessCreateString(BYVAL TableName As STRING, BYVAL NewTableName As STRING) As STRING
+  Dim CreateStr, sep, uptype As STRING
+  Dim i As INTEGER
+  ONERROR GOTO NO_VALID_TABLES
+  ' Build a create string that creates the upload data
+  IF dbg THEN 
+	  print "create called"
+  END if
+
+  CreateStr="CREATE TABLE " + demoquotechar + NewTableName + demoquotechar + " ("
+  sep=""
+  FOR i=1 TO TABLEINFO(TableName, TAB_INFO_NCOLS)
+    ' Strings must be enclosed on single quotes
+    uptype=""  
+ 
+    DO CASE COLUMNINFO(TableName,"COL"+i, COL_INFO_TYPE)
+      CASE COL_TYPE_CHAR       uptype = 
+             "TEXT(" + COLUMNINFO(TableName, "COL"+i, COL_INFO_WIDTH) + ")"
+      CASE COL_TYPE_DECIMAL    uptype = 
+             "DOUBLE"
+      CASE COL_TYPE_FLOAT uptype = 
+             "DOUBLE"
+      CASE COL_TYPE_INTEGER uptype = 
+             "LONG"
+      CASE COL_TYPE_SMALLINT uptype =
+             "SHORT"
+      CASE COL_TYPE_LOGICAL uptype =
+             "BIT"
+      CASE COL_TYPE_DATE uptype =
+             "DATE"
+    END CASE
+
+    IF uptype <> "" THEN
+      CreateStr=CreateStr + sep + demoquotechar +
+         COLUMNINFO(TableName, "COL"+i, COL_INFO_NAME) + demoquotechar + " " + uptype
+      sep=","        
+    END IF 
+  Next
+
+  IF bUploadMICode   THEN  
+  	CreateStr = CreateStr + sep + 
+      demoquotechar + "MI_SQL_X" + demoquotechar + " DOUBLE" + sep + 
+      demoquotechar + "MI_SQL_Y" + demoquotechar + " DOUBLE" + sep + 
+      demoquotechar + "MI_SQL_MICODE" + demoquotechar + " CHAR(17)"
+  ELSEIF bUploadXY THEN
+    CreateStr= CreateStr + sep +
+      demoquotechar + "MI_SQL_X" + demoquotechar + " DOUBLE" + sep +
+      demoquotechar + "MI_SQL_Y" + demoquotechar + " DOUBLE"
+  END IF 
+
+  IF bUploadRecno THEN
+    CreateStr = CreateStr + sep + 
+      demoquotechar + "MI_SQL_RECNUM" + demoquotechar + " INTEGER" +
+      " CONSTRAINT MI_SQL_RECNUM_KEY PRIMARY KEY"
+  END IF
+  IF bUploadSymbology THEN
+     CreateStr=CreateStr + sep + 
+	 demoquotechar + strSymbolCol + demoquotechar + " TEXT(254)" 
+  END IF
+
+  CreateStr=CreateStr + ")"
+
+  IF dbg THEN
+    PRINT   "Create String = " + CreateStr
+  END IF
+  BuildAccessCreateString=CreateStr
+  GOTO ALL_DONE
+
+  NO_VALID_TABLES:
+    Note ERROR$()
+    Resume ALL_DONE
+
+  ALL_DONE:
+ 
+END FUNCTION
+
+
+'*************************************************************************
+'Creates a table for Oracle
+'*************************************************************************
+FUNCTION BuildOracleCreateString(BYVAL TableName As STRING, BYVAL NewTableName As STRING) As STRING
+  Dim CreateStr, sep, uptype As STRING
+  Dim i As INTEGER
+
+  ' Build a create string that creates the upload data! way cool! 
+  CreateStr="CREATE TABLE " + demoquotechar + NewTableName + demoquotechar + " ("
+  sep=""
+  'Enter hhcode column first 	
+
+  IF bUploadHHCODE THEN
+	CreateStr = CreateStr + "MI_SQL_HHCODE Raw(255), "
+  END IF
+
+	FOR i=1 TO TABLEINFO(TableName, TAB_INFO_NCOLS)
+    ' Strings must be enclosed on single quotes
+    uptype=""  
+ 
+    DO CASE COLUMNINFO(TableName,"COL"+i, COL_INFO_TYPE)
+
+      CASE COL_TYPE_CHAR       uptype = 
+             "VARCHAR(" + COLUMNINFO(TableName, "COL"+i, COL_INFO_WIDTH) + ")"
+      CASE COL_TYPE_DECIMAL    uptype = 
+             "NUMBER(" + COLUMNINFO(TableName,"COL"+i, COL_INFO_WIDTH) +
+              "," + COLUMNINFO(TableName, "COL"+i, COL_INFO_DECPLACES) + ")"
+      CASE COL_TYPE_FLOAT uptype = 
+             "NUMBER"
+      CASE COL_TYPE_INTEGER uptype = 
+             "NUMBER(11)"
+      CASE COL_TYPE_SMALLINT, COL_TYPE_LOGICAL uptype = 
+             "NUMBER(6)"
+      CASE COL_TYPE_DATE uptype = 
+             "DATE"
+    END CASE
+
+    IF uptype <> "" THEN
+      CreateStr=CreateStr + sep + demoquotechar +
+         COLUMNINFO(TableName, "COL"+i, COL_INFO_NAME) + demoquotechar + " " + uptype
+      sep=","        
+    END IF 
+  Next
+
+  ' Now append optional columns (Non attributes)
+  IF bUploadMICODE   THEN  
+    CreateStr = CreateStr + sep + 
+      demoquotechar + "MI_SQL_X" + demoquotechar + " NUMBER(20,8)" + sep +
+      demoquotechar + "MI_SQL_Y" + demoquotechar + " NUMBER(20,8)" + sep +
+      demoquotechar + "MI_SQL_MICODE" + demoquotechar + " CHAR(17)"
+  ELSEIF bUploadXY THEN
+    CreateStr= CreateStr + sep +
+      demoquotechar + "MI_SQL_X" + demoquotechar + " NUMBER(20,8)" + sep + 
+      demoquotechar + "MI_SQL_Y" + demoquotechar + " NUMBER(20,8)"
+  END IF
+   
+  IF bUploadRecno THEN
+    CreateStr=CreateStr + sep +  
+      demoquotechar + "MI_SQL_REC_NUM" + demoquotechar + " NUMBER(10) PRIMARY KEY"
+  END IF
+
+  IF bUploadSymbology THEN
+     CreateStr=CreateStr + sep + 
+	 demoquotechar + strSymbolCol + demoquotechar + " VARCHAR(254)" 
+  END IF
+  CreateStr=CreateStr + ")"
+
+  IF dbg THEN
+    PRINT   "Create String = " + CreateStr
+  END IF
+  BuildOracleCreateString=CreateStr
+END FUNCTION
+
+
+'*************************************************************************
+'Creates a table for DB2
+'*************************************************************************
+FUNCTION BuildDB2CreateString(BYVAL TableName As STRING, BYVAL NewTableName As STRING) As STRING
+  Dim CreateStr, sep, uptype As STRING
+  Dim i As INTEGER
+
+  ' Build a create string that creates the upload data! way cool! 
+  CreateStr="CREATE TABLE " + demoquotechar + NewTableName + demoquotechar + " ("
+  sep=""
+  FOR i=1 TO TABLEINFO(TableName, TAB_INFO_NCOLS)
+    ' Strings must be enclosed on singhle quotes
+    uptype=""  
+ 
+    DO CASE COLUMNINFO(TableName,"COL"+i, COL_INFO_TYPE)
+      CASE COL_TYPE_CHAR       uptype = 
+             "VARCHAR(" + COLUMNINFO(TableName, "COL"+i, COL_INFO_WIDTH) + ")"
+      CASE COL_TYPE_DECIMAL    uptype = 
+             "DECIMAL("+COLUMNINFO(TableName, "COL"+i, COL_INFO_WIDTH) +","+
+				COLUMNINFO(TableName, "COL"+i, COL_INFO_DECPLACES) + ")"
+      CASE COL_TYPE_FLOAT uptype = 
+             "FLOAT"
+      CASE COL_TYPE_INTEGER uptype = 
+             "INTEGER"
+      CASE COL_TYPE_SMALLINT, COL_TYPE_LOGICAL uptype = 
+
+             "SMALLINT"
+      CASE COL_TYPE_DATE uptype = 
+             "DATE"
+    END CASE
+
+     IF uptype <> "" THEN
+      CreateStr=CreateStr + sep + demoquotechar +
+         COLUMNINFO(TableName, "COL"+i, COL_INFO_NAME) + demoquotechar + " " + uptype
+      sep=","        
+    END IF 
+  Next
+
+  IF bUploadMICODE   THEN  
+    CreateStr= CreateStr + sep +
+      demoquotechar + "MI_SQL_X" + demoquotechar + " FLOAT" + sep +
+      demoquotechar + "MI_SQL_Y" + demoquotechar + " FLOAT" +	sep + 
+      demoquotechar + "MI_SQL_MICODE" + demoquotechar + " CHAR(17)"
+  ELSEIF bUploadXY THEN
+    CreateStr = CreateStr + sep + 
+      demoquotechar + "MI_SQL_X" + demoquotechar + " FLOAT" + sep +
+      demoquotechar + "MI_SQL_Y" + demoquotechar + " FLOAT"
+  END IF 
+  IF bUploadRecno THEN
+    CreateStr = CreateStr + sep +  
+      demoquotechar + "MI_SQL_REC_NUM" + demoquotechar + " INTEGER"
+  END IF
+  IF bUploadSymbology THEN
+     CreateStr=CreateStr + sep + 
+	 demoquotechar +strSymbolCol + demoquotechar + " VARCHAR(254)" 
+  END IF
+
+  CreateStr=CreateStr + ")"
+
+  IF dbg THEN
+    PRINT  "Create String = " + CreateStr
+  END IF
+  BuildDB2CreateString=CreateStr
+END FUNCTION
+
+
+'****************************************************************************************
+'SQLServer create table statement
+'****************************************************************************************
+FUNCTION BuildSQLServerCreateString(BYVAL TableName As STRING, BYVAL NewTableName As STRING) As STRING
+  Dim CreateStr, sep, uptype As STRING
+  Dim i As INTEGER
+  ' Build a create string that creates the upload data! way cool! 
+
+  CreateStr="CREATE TABLE " + demoquotechar + NewTableName + demoquotechar + " ("
+  sep=""
+  FOR i=1 TO TABLEINFO(TableName, TAB_INFO_NCOLS)
+    ' Strings must be enclosed on single quotes
+    uptype=""  
+ 
+    DO CASE COLUMNINFO(TableName,"COL"+i, COL_INFO_TYPE)
+      CASE COL_TYPE_CHAR       uptype = 
+             "varchar(" + COLUMNINFO(TableName, "COL"+i, COL_INFO_WIDTH) + ")"
+      CASE COL_TYPE_DECIMAL    uptype = 
+             "float"
+      CASE COL_TYPE_FLOAT uptype = 
+             "float"
+      CASE COL_TYPE_INTEGER uptype = 
+             "int"
+      CASE COL_TYPE_SMALLINT uptype = 
+             "smallint"
+      CASE COL_TYPE_LOGICAL uptype = 
+             "bit"
+      CASE COL_TYPE_DATE uptype = 
+             "datetime"
+    END CASE
+    
+    IF uptype <> "" THEN
+      CreateStr=CreateStr + sep + demoquotechar +
+         COLUMNINFO(TableName, "COL"+i, COL_INFO_NAME) + demoquotechar + " " + uptype
+      sep=","        
+    END IF 
+  Next
+
+  IF bUploadMICODE   THEN  
+    CreateStr = CreateStr + sep +
+      demoquotechar + "MI_SQL_X" + demoquotechar + " float" + sep +
+      demoquotechar + "MI_SQL_Y" + demoquotechar + " float" + sep +
+      demoquotechar + "MI_SQL_MICODE" + demoquotechar + " char(17)"
+  ELSEIF bUploadXY THEN
+    CreateStr = CreateStr + sep + 
+      demoquotechar + "MI_SQL_X" + demoquotechar + " float" + sep +
+      demoquotechar + "MI_SQL_Y" + demoquotechar + " float"
+  END IF 
+
+  IF bUploadRecno THEN
+    CreateStr = CreateStr + sep +  
+      demoquotechar + "MI_SQL_REC_NUM" + demoquotechar + " int"
+  END IF
+  IF bUploadSymbology THEN
+     CreateStr=CreateStr + sep + 
+	 demoquotechar +strSymbolCol + demoquotechar + " VARCHAR(254)" 
+  END IF
+
+  CreateStr=CreateStr + ")"
+
+  IF dbg THEN
+    PRINT   "Create String = " + CreateStr
+  END IF
+  BuildSQLServerCreateString=CreateStr
+END FUNCTION

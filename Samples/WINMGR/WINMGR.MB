@@ -1,0 +1,521 @@
+'*****************************************************************************
+'       Copyright (c) 2000, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: WINMGR.MB $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+' Program to set the window title, default view and window sizes.
+'
+' Revision History:
+'    Rev 1.3   01 October 2006       PROBERT
+'            - minor adjustments to the "Set default view for layer" dialog box
+'				- add new "Set Window Size" menu command
+'
+'    Rev 1.2   23 May 2003           GREENE
+'            - remove restriction to map windows
+'            - remove AutoScroll option
+'            - remove no-longer-functional AutoLoad button from About dialog
+'            - remove dependence on outdated auto_lib library
+'				  (only the one-line function 'set_tools_menu' was being called)
+'            - add dialog to allow user to pick a window if more than one is open
+'    Rev 1.1   17 Apr 2000           DRESSEL
+'            - verify there is a window open before checking its type
+'            - add error handling
+'            - add versioning
+'            - remove arbitrary limit on number of map windows
+'            - add menu option for already-coded auto scroll feature
+'            - add 'Auto Load' button to match about box text
+'    Rev 1.0   Unknown               Unknown
+'
+'*****************************************************************************
+Include "MENU.DEF"
+Include "MapBasic.def"
+Include "..\Inc\resstrng.DEF"
+Include "WINMGR.DEF" ' defines for localized strings
+
+Declare Sub Main
+Declare Sub GoodBye
+Declare Sub About
+Declare Sub SetWinTitle
+Declare Sub SetTableView
+Declare Sub SetDefViewChk
+Declare Sub SetWindowSize
+Declare Sub CheckWidthHeightValues
+Declare Sub Extract(ByVal StrIndex As Integer,
+                    ByVal StrToParse As String, retStr As String)
+Declare Function PickWindow(ByVal strTitle as String,
+                            ByVal bMapWindowsOnly as Logical) as Integer
+
+Declare Function MakeLayerList(ByVal WinID as Integer) as String
+
+Dim giLayNum As SmallInt
+Dim gbDouble As Logical
+
+Dim sWidthText        As String     'These variables added in v1.3
+Dim sHeightText       As String
+Dim fWinHeight        As Float
+Dim fWinWidth         As Float
+Dim siUnits           As Smallint
+Dim sUnitTypeArray(5) As String
+Dim iFrontWindowID    As Integer
+
+'************************************************************************
+Sub Main
+  OnError Goto HandleError
+
+  If LoadStrings((ApplicationDirectory$() + "WinMgr.str")) = FALSE Then
+    Note "Unable to access resource string file: " + ApplicationDirectory$() + "WinMgr.str"
+    Exit Sub
+  End If
+
+  Create Menu GetResString(IDS_APP_NAME) As
+   GetResString(IDS_MENU_SET_TITLE)
+	HelpMsg GetResString(IDS_MENU_SET_TITLE_HELP) Calling SetWinTitle,
+  GetResString(IDS_MENU_SET_VIEW)
+	HelpMsg GetResString(IDS_MENU_SET_VIEW_HELP) Calling SetTableView,
+  GetResString(IDS_MENU_SET_WIN_SIZE)
+  	HelpMsg GetResString(IDS_MENU_SET_WIN_SIZE_HELP) Calling SetWindowSize,
+
+	"(-",
+   GetResString(IDS_MENU_ABOUT) Calling About,
+   GetResString(IDS_MENU_EXIT) Calling GoodBye
+      
+    'Call set_tools_menu(IDS_MENU_PLAIN_NAME)
+	 Alter Menu ID 4 Add GetResString(IDS_MENU_PLAIN_NAME) as GetResString(IDS_MENU_PLAIN_NAME)
+
+  sUnitTypeArray(1) = "in"
+  sUnitTypeArray(2) = "cm"
+  sUnitTypeArray(3) = "mm"
+  sUnitTypeArray(4) = "pt"
+  sUnitTypeArray(5) = "pica"
+
+  Exit Sub
+
+HandleError:
+  Note "Main: " + Error$()
+  Resume Next
+
+End Sub
+
+'************************************************************************
+Sub GoodBye
+  OnError Goto HandleError
+
+  End Program
+
+  Exit Sub
+
+HandleError:
+  Note "GoodBye: " + Error$()
+  Resume Next
+End Sub
+
+'************************************************************************
+Sub About
+
+  OnError Goto HandleError
+
+  Dim sUser, sComp, sBuffer as String
+  Dim nRes, nhInstUser As Integer
+
+  Dialog Title GetResString(IDS_ABOUT_TITLE)
+
+  Width 220 Height 210
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_1) Position 10, 10 Width 195 
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_2) Position 10, 28 Width 195 Height 27
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_3) Position 10, 54 Width 195 Height 19
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_4) Position 17, 75 Width 195 Height 27
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_5) Position 10, 102 Width 195 Height 19
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_6) Position 17, 123 Width 195 Height 19
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_7) Position 17, 144 Width 195 Height 27
+  Control OKButton Title GetResString(IDS_OK) Position 90,185 Width 45
+
+  Exit Sub
+
+HandleError:
+  Note "About: " + Error$()
+  Resume Next
+End Sub
+
+'************************************************************************
+Sub SetWinTitle
+'************************************************************************
+
+  OnError Goto HandleError
+  Dim intWin as Integer, sTitle As String
+ 
+  If Not FrontWindow() Then
+    Note GetResString(IDS_ERROR_NO_WINDOW)
+  Else
+	 intWin=PickWindow(GetResString(IDS_PICKWIN_TITLE_1), FALSE) ' FALSE = all document types
+    If intWin=-1 Then
+		Exit Sub
+    End If
+	 sTitle = WindowInfo(intWin,WIN_INFO_NAME)
+    Dialog Title GetResString(IDS_WINMGR_TITLE)
+		 + GetResString(IDS_START_QUOTE_MARK) + sTitle
+		 + GetResString(IDS_END_QUOTE_MARK) Width 200
+      Control StaticText Position 8,12 Title GetResString(IDS_TITLE_LABEL)
+      Control EditText Position 8,24 Into sTitle Value sTitle Width 188
+      Control OKButton Title GetResString(IDS_OK)
+      Control CancelButton Title GetResString(IDS_CANCEL)
+    If CommandInfo(CMD_INFO_DLG_OK) Then
+      Set Window intWin Title sTitle
+    End If   
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "SetWinTitle: " + Error$()
+End Sub     
+
+'*******************************************************************
+Sub SetTableView
+'************************************************************************
+
+  OnError Goto HandleError
+  Dim sLayList, sLayName As String
+  Dim nMapChosen As Integer
+   
+  If Not FrontWindow() Then
+    Note GetResString(IDS_ERROR_NO_MAP_WINDOW)
+  Else
+    nMapChosen = PickWindow(GetResString(IDS_PICKWIN_TITLE_2), TRUE) ' TRUE = just map windows
+    If nMapChosen<0 Then ' user cancelled
+		Exit Sub
+    End If
+    If WindowInfo(nMapChosen,WIN_INFO_TYPE) <> WIN_MAPPER Then
+      Note GetResString(IDS_ERROR_WRONG_WIN_TYPE)
+    Else
+      sLayList = MakeLayerList(nMapChosen)
+      If sLayList = "" Then
+        Note GetResString(IDS_ERROR_NO_LAYERS)
+      Else
+        gbDouble = False
+        Dialog Title GetResString(IDS_CHOOSE_LAYER) Width 200 Height 130
+     	  Control StaticText Title GetResString(IDS_LAYER_LABEL) 
+            + GetResString(IDS_START_QUOTE_MARK) + WindowInfo(nMapChosen, WIN_INFO_NAME)
+            + GetResString(IDS_END_QUOTE_MARK) Position 8,12 Width 184 Height 20
+        Control ListBox Title sLayList Position 8,34 Width 188 Height 64
+			 ID 1 Value 1 Into giLayNum Calling SetDefViewChk
+        Control OKButton Title GetResString(IDS_OK) Position 40, 110
+        Control CancelButton Title GetResString(IDS_CANCEL) Position 120, 110
+
+        If CommandInfo(CMD_INFO_DLG_OK) Or gbDouble Then
+          Call Extract(giLayNum, sLayList, sLayName)
+          Set Map Window nMapChosen Layer sLayName Default Zoom
+          Note GetResString(IDS_MSG_SUCCESS) + sLayName
+        End If      'no dlg ok
+      End If        'no layers
+    End If          'front window not mapper
+  End If            'no front window
+  Exit Sub
+
+HandleError:
+  Note "SetTableView: " + Error$()
+End Sub
+
+'*******************************************************************
+Sub SetDefViewChk
+'************************************************************************
+
+  OnError Goto HandleError
+  If CommandInfo(CMD_INFO_DLG_DBL) Then
+	  gbDouble = True
+    giLayNum = ReadControlValue(1)
+    Dialog Remove
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "SetDefViewChk: " + Error$()
+  Resume Next
+End Sub
+
+'*************************************************************
+Sub SetWindowSize
+'This sub procedure presents the "Set Window Size" dialog box.
+'The OK button calls another sub procedure, CheckWidthHeightValues, to 
+'validate the user's input.  
+'************************************************************************
+
+OnError Goto HandleError
+
+If Not FrontWindow() Then
+    Note GetResString(IDS_ERROR_NO_WINDOW)
+  Else
+
+  iFrontWindowID = FrontWindow()  
+  
+  Dialog Title GetResString(IDS_SET_WIN_SIZE_TITLE)
+    Width 127 Height 122
+  Control GroupBox Title GetResString(IDS_SET_WIN_SIZE_BOX)
+    Width 112
+    Height 52
+  Control StaticText Title GetResString(IDS_SET_WIN_SIZE_WIDTH)
+    Position 13,22
+  Control EditText
+    Position 80,20
+    Width 30
+    Value sWidthText
+    Into sWidthText
+    ID 1
+  Control StaticText Title GetResString(IDS_SET_WIN_SIZE_HEIGHT)
+    Position 13,38
+   Control EditText
+    Position 80,36
+    Width 30
+    Value sHeightText
+    Into sHeightText 
+    ID 2
+  Control StaticText Title GetResString(IDS_SET_WIN_SIZE_UNITS	)
+    Position 13, 72
+  Control PopupMenu
+    Title GetResString(IDS_SET_WIN_SIZE_UNIT_LIST)
+    Position 43, 70
+    Width 76
+    Value siUnits
+    Into siUnits
+  Control OKButton
+    Position 38,100
+    Calling CheckWidthHeightValues
+  Control CancelButton  
+    Position 80,100
+
+  If CommandInfo(CMD_INFO_DLG_OK) then
+    fWinHeight = Val(sHeightText)
+    fWinWidth  = Val(sWidthText)
+    Set Window iFrontWindowID Width fWinWidth Units sUnitTypeArray(siUnits) Height fWinHeight Units sUnitTypeArray(siUnits)
+  End If
+
+
+End If
+
+  Exit Sub
+
+HandleError:
+  Note "SetWindowSize: " + Error$()
+  Resume Next
+
+End Sub
+
+Sub CheckWidthHeightValues
+
+'*************************************************************
+' This sub procedure checks the values that the user entered into the 
+' Width and Height EditText boxes of the "Set Window Size" dialog box.
+' It runs through a sequence of different checks. 
+'*************************************************************
+
+OnError Goto HandleError
+
+Dim sWidthControl, sHeightControl As String
+Dim fCheckWinHeight, fCheckWinWidth As Float
+
+  sWidthControl   = rtrim$(ltrim$(ReadControlValue(1)))  'removes spaces from beginning and end
+  sHeightControl  = rtrim$(ltrim$(ReadControlValue(2)))
+
+  fCheckWinWidth  = Val(sWidthControl)  'Used to compare the length of the value entered into the
+  fCheckWinHeight = Val(sHeightControl) ' dialog box to the length what is returned by the Val() 
+                                        ' function.  If different then non numeric characters were entered.
+
+'*** (1) Check to make sure both Width and Height edittext controls are not empty
+  If sWidthControl = "" Then         
+     Note GetResString(IDS_CHECK_VALUES_3)
+     Alter Control 1 Active
+     Dialog Preserve
+     Exit Sub  
+  End If
+
+  If sHeightControl = "" Then        
+     Note GetResString(IDS_CHECK_VALUES_4)
+     Alter Control 2 Active
+     Dialog Preserve
+     Exit Sub
+  End If
+
+'*** (2) Check both Width and Height for negative values.
+  If fCheckWinWidth < 0 Then           '*** Check for negative values
+     Note GetResString(IDS_CHECK_VALUES_1)
+     Alter Control 1 Active
+     Dialog Preserve
+     Exit Sub  
+  End If
+
+  If fCheckWinHeight < 0 Then          '*** Check for negative values
+     Note GetResString(IDS_CHECK_VALUES_2)
+     Alter Control 2 Active
+     Dialog Preserve
+     Exit Sub
+  End If
+
+'*** (3) Check both Width and Height for non-numeric characters.
+  If len(str$(fCheckWinWidth)) <> len(sWidthControl) Then 
+     Note GetResString(IDS_CHECK_VALUES_3)
+     Alter Control 1 Active
+     Dialog Preserve
+     Exit Sub
+  End If
+
+  If len(str$(fCheckWinHeight)) <> len(sHeightControl) Then 
+     Note GetResString(IDS_CHECK_VALUES_4)
+     Alter Control 2 Active
+     Dialog Preserve
+     Exit Sub
+  End If
+
+'*** (4) Check both Width and Height for zero values and also if first character is non-numeric.
+  If fCheckWinWidth = 0 Then 
+     If Asc(Left$(sWidthControl,1)) <> 48 Then ' Ascii code 48 is zero.
+       Note GetResString(IDS_CHECK_VALUES_3)
+     Else 
+       Note GetResString(IDS_CHECK_VALUES_1)
+     End If 
+     Alter Control 1 Active
+     Dialog Preserve
+     Exit Sub  
+  End If
+
+  If fCheckWinHeight = 0 Then 
+    If Asc(Left$(sHeightControl,1)) <> 48 Then 
+       Note GetResString(IDS_CHECK_VALUES_4)
+     Else 
+       Note GetResString(IDS_CHECK_VALUES_2)
+     End If
+     Alter Control 2 Active
+     Dialog Preserve
+     Exit Sub
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "SetWindowSize: " + Error$()
+  Resume Next
+
+End Sub
+
+'*************************************************************
+' PickWindow:  This function displays a list of available document windows,
+'  and returns the window ID of the chosen window, or -1 if user cancels --
+'  or -2 if no windows of the appropriate type are available to choose from
+'*************************************************************
+
+Function PickWindow(ByVal strTitle as String, ByVal bMapWindowsOnly as Logical) as Integer
+	dim strWindowNames() as String, intWindowIDs() as Integer
+	dim i, intChoice as Integer, iNumGoodWindows as SmallInt
+	OnError Goto HandleError
+
+	intChoice=0 ' pick first in list unless one is the front window
+	iNumGoodWindows=0
+	Redim strWindowNames(NumWindows())
+	Redim intWindowIDs(NumWindows()) 'may be overkill, but certainly sufficient
+	for i=1 to NumWindows()
+		if WindowInfo(WindowID(i), WIN_INFO_TYPE)=WIN_MAPPER
+		 or bMapWindowsOnly=FALSE then
+
+			iNumGoodWindows=iNumGoodWindows+1
+			strWindowNames(iNumGoodWindows)=WindowInfo(WindowID(i), WIN_INFO_NAME)
+			intWindowIDs(iNumGoodWindows)=WindowID(i)
+			if WindowID(i)=FrontWindow() then
+				intChoice=iNumGoodWindows
+			end if
+		end if	
+	next
+	Redim strWindowNames(iNumGoodWindows)
+   If iNumGoodWindows=0 then
+		PickWindow=-2
+		Exit Function
+	ElseIf iNumGoodWindows=1 Then
+		PickWindow=WindowID(intWindowIDs(1))
+		Exit Function
+	End If
+	Dialog Title strTitle Width 200 Height 100
+		Control ListBox Title From Variable strWindowNames Width 188 Height 64
+			Value intChoice into intChoice
+		Control OKButton Title GetResString(IDS_OK) Position 40, 80
+		Control CancelButton Title GetResString(IDS_CANCEL) Position 120, 80
+	if CommandInfo(CMD_INFO_DLG_OK) then
+		if intChoice>0 then
+			PickWindow=intWindowIDs(intChoice)
+			Exit Function
+		end if
+	end if
+	PickWindow=-1
+	Exit Function
+HandleError:
+	Note "PickWindow: " + Error$()
+	PickWindow=-1
+End Function
+
+'****************************************************************************
+' Given a window ID, returns a list of the layers in a map window.
+'  [moved from MISTDLIB.MB because modifications were necessary]
+'****************************************************************************
+Function MakeLayerList(ByVal WinID as Integer) as String
+	Dim i, iNumLayers as Integer, bHasDefaultView as Logical
+	Dim sLayName, sLayList, sSep as String
+
+	If WinID <> 0 Then
+		sSep = ""
+		OnError Goto ErrorHandler
+		iNumLayers = MapperInfo(WinID,MAPPER_INFO_LAYERS)  
+		for i = 1 to iNumLayers
+			' skip raster layers, which are "read-only" and default view can't be set
+			' seamless rasters are allowable, however, because they have a .MAP file:
+			sLayName = LayerInfo(WinID, i, LAYER_INFO_NAME)
+			if LayerInfo(WinID, i, LAYER_INFO_TYPE)=LAYER_INFO_TYPE_IMAGE then
+				bHasDefaultView=TableInfo(sLayName, TAB_INFO_SEAMLESS)=TRUE
+			else
+				bHasDefaultView=TRUE
+			end if
+			if bHasDefaultView and sLayName<>"" then
+				sLayList = sLayList + sSep + sLayName
+				sSep = ";"
+			end if
+		Next
+	End If
+	MakeLayerList = sLayList
+
+  Exit Function
+ErrorHandler:
+  Note "MakeLayerList: " & Error$()
+  MakeLayerList = ""
+End Function
+
+
+'****************************************************************************
+'
+' Sub procedure: Extract()
+'
+' From a ';' delimited list, extract specified element
+' Goal is number of item to return; s is string with list of 
+' items; rval is string that will contain selected item.
+' [copied from str_lib.MB to simplify the include structure, and modified
+'  to increase the allowable layer-list length and return "" for too-large indexes]
+'****************************************************************************
+
+Sub Extract(ByVal StrIndex As Integer, ByVal StrToParse As String, retStr As String)
+Dim iBeg, iEnd, r As Integer
+
+  iBeg=1
+  iEnd=InStr(iBeg, StrToParse & ";", ";") ' first semicolon, or end of string + 1
+
+  For r=2 To StrIndex
+    iBeg=iEnd+1
+    iEnd=InStr(iBeg, StrToParse, ";")
+    If iEnd=0 Then
+      iEnd=Len(StrToParse)+1 ' go to the last item in the list
+    End If
+  Next
+
+  retStr=Mid$(StrToParse, iBeg, iEnd - iBeg)
+
+End Sub 

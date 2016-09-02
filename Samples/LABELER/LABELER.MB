@@ -1,0 +1,798 @@
+'***************************************************************
+'*	
+	
+include "MapBasic.def"
+include "Menu.def"
+include "Icons.def"
+Include "..\Inc\AUTO_LIB.DEF"
+
+DEFINE isMAPPER TRUE
+DEFINE isLAYOUT FALSE
+
+Declare Sub Main
+
+Declare sub LabelSelection
+Declare sub LabelTool
+
+Declare Sub transferDialog
+Declare Sub GenControlLst(ByVal WinId as integer)
+Declare Sub TransferLabels(ByVal winId As Integer, ByVal layNum as Integer,
+			  ByVal Hidden As Logical, ByVal SaveLayerName As String,
+			  ByVal Choice as Integer)
+
+Declare Function GetLayerNumber(ByVal winId as Integer, ByVal name as String) As Integer
+Declare Function layerIsSelectable( ByVal layName As String ) As Logical
+Declare Function BuildSetString(ByVal winId As Integer, ByVal tabName As String) As String
+Declare Function selIsInMapper(ByVal winId As Integer, ByVal tabName As String) As Logical
+Declare Function ColumnExists(ByVal tabName As String, ByVal labelExpr As String) As Logical
+
+'Menu handlers
+Declare Sub EnableTransferDialog
+Declare Sub EnableLabelSelection
+
+'Handlers - used for changing menu option availability
+Declare Sub SelChangedHandler
+Declare Sub WinfocusChangedHandler
+Declare Sub WinClosedHandler
+
+' Dialog Handlers
+Declare Sub DialogSetup
+
+Declare Sub About_Box
+Declare Sub egsit
+
+
+'*  Global Variable Declarations
+Global LayerList(1) As String		'* Holds List of layers with labels
+Global SaveList(1) AS String		'* Holds list of layers to save labels to
+
+Global gsTestGlobal As String
+
+
+sub main
+print chr$(12)
+	Create Menu "&Label Functions" As
+	   "&Transfer Current Labels" Calling transferDialog,
+	   "&Label Selection" Calling labelSelection,
+	   "(-",
+	   "&About Labeler..." Calling About_Box,
+	   "E&xit Labeler" Calling egsit
+	
+	Call set_tools_menu("&Label Functions")
+
+  	gsTestGlobal = "Test Value"
+
+  	'''''''''''''''''''''''''''''''''''''
+  	' Auto-Load support global variables.
+  	gsAppDescription = "Labeler"
+  	gsAppFilename = "Labeler.mbx"
+
+	Alter ButtonPad "Tools"
+	   Add Toolbutton
+		   HelpMsg "Labeling Tool.\nText Label"
+		   Icon MI_ICON_MISC_12
+		   Cursor MI_CURSOR_CROSSHAIR
+		   DrawMode DM_CUSTOM_POINT
+		   calling LabelTool
+	   Show
+	Call EnableTransferDialog
+	Call EnableLabelSelection
+end sub
+
+'******************************************************************************
+'*	transferDialog - Transfer Labels Dialog Box
+'*
+'*	This SubRoutine is the Main SubRoutine for the Menu Choice Tansfer labels
+'*	under to Labels menu.  This will generate a UI Dialog box and then transfer
+'* 	labels based on the information input by the user
+'*
+'******************************************************************************
+
+Sub transferDialog
+
+	'Dialog Variables
+	   Dim Hidden As Logical
+	   Dim FromLayerVal, ToLayerVal As Integer
+	   Dim viewChoice As Integer
+	'Check for an active Mapper window.
+  If NumWindows() Then
+    If WindowInfo(FrontWindow(), WIN_INFO_TYPE) = WIN_MAPPER Then
+      'Build a list of valid layers in the map for labeling.
+      Call GenControlLst(FrontWindow())
+	If UBound(LayerList) = 0 Then 
+	   Note "None of the layers have labels"
+	   Exit Sub
+	End If 
+	'initialize
+	viewChoice = 1 
+
+      'Display the list the overlap and duplicate options for the user to select. 
+      Dialog Title "Transfer Labels" Calling DialogSetup
+      Control StaticText Title "From Layer:"                  Position 8,8
+      Control PopupMenu  Title From Variable LayerList   ID 1 Position 60,6   Width 80 Value 1 Into FromLayerVal 
+	Control StaticText Title "To Layer:"                    Position 8,28
+      Control PopupMenu  Title From Variable saveList         Position 60,26  Width 80 Value 1 Into ToLayerVal  
+	Control CheckBox   Title "Include Hidden Labels"        Position 8,48   Value FALSE Into Hidden
+	Control GroupBox	 Title  "Transfer labels from"        Position 5, 68 	Height 40    width 120
+	Control RadioGroup Title "&Map View;&Layout View"  ID 4 Position 12,80 Into ViewChoice 	
+	Control OKButton                                        Position 22,118 Width 50 
+      Control CancelButton                                    Position 78,118 Width 50
+
+	Dim Num as Integer
+      If CommandInfo(CMD_INFO_DLG_OK) Then
+	   Num = GetLayerNumber(FrontWindow(), LayerList(FromLayerVal))
+
+
+	   Call TransferLabels(FrontWindow(), Num, Hidden, saveList(ToLayerVal), viewChoice)
+      End If  
+
+    Else
+      Note "A Mapper Window must be active to use labeling functions."
+    End If
+  Else
+    Note "A Mapper Window must be open to use labeling functions."
+  End If 
+
+end sub
+
+'******************************************************************************
+'*	labelSelection - Label the current selection
+'*
+'*	This SubRoutine is used to label the current selection.  It will determine
+'*	the label attributes of the layer the selection comes from and then build
+'* 	a string and issue a run command that sets the selection layer to those 
+'*    attributes.  The labels for the selection will then be put into the cosmetic
+'*	layer.
+'*
+'******************************************************************************
+
+Sub labelSelection
+	Dim origTab, runString As String
+	Dim closeSelection As Logical
+
+  closeSelection = False	
+  If NumWindows() Then
+    If WindowInfo(FrontWindow(), WIN_INFO_TYPE) = WIN_MAPPER Then
+
+	origTab = SelectionInfo(SEL_INFO_TABLENAME)
+	If Not(selIsInMapper(FrontWindow(), SelectionInfo(SEL_INFO_SELNAME))) Then
+	   closeSelection = True
+	End If
+	If SelectionInfo(SEL_INFO_NROWS) > 0  And selIsInMapper(FrontWindow(), origTab) Then
+	   Add Map Layer selection
+	   runString = BuildSetString(FrontWindow(),origTab)
+	   Run Command runString
+	   Set Map Window FrontWindow()
+	   	Layer 1 Label Visibility On Auto On
+	   Update Window FrontWindow()
+	   Call TransferLabels(FrontWindow(), 1, TRUE, "Cosmetic Layer", 1)
+	   Remove Map Layer 1
+	   If SelectionInfo(SEL_INFO_TABLENAME) <> SelectionInfo(SEL_INFO_SELNAME) 
+		And closeSelection Then
+		Close Table SelectionInfo(SEL_INFO_SELNAME)
+         End If 
+	Else
+	   Note "There is no Selection for this Map window"
+	End If
+    Else
+      Note "A Mapper Window must be active to use labeling functions."
+    End If
+  Else
+    Note "A Mapper Window must be open to use labeling functions."
+  End If
+
+End Sub
+
+'******************************************************************************
+'*	labelSelection - Label the current selection
+'*
+'*	This SubRoutine Will transfer the labels from the layer chosen in the dialog
+'*	box to the layer chosen in the dialog box.
+'*
+'******************************************************************************
+
+Sub TransferLabels(ByVal winId As Integer, ByVal layNum as Integer,
+			  ByVal Hidden As Logical, ByVal SaveLayerName As String,
+			  ByVal choice As Integer)
+	
+	Dim lNum As Integer
+	Dim saveFile, tabName, intoTable As String
+	Dim Test As Logical
+	Dim theChoice As Logical
+	Dim tempFilNme As String
+	dim tempFileNamePath As String
+
+	If choice = 1 Then
+	   theChoice = isMAPPER
+	Else
+	   theChoice = isLAYOUT
+	End If 
+
+	Do Case SaveLayerName
+	  Case "Cosmetic Layer"
+		Set Map Window winId layer 0 Editable On
+		tempFilNme = TempFileName$("")
+		intoTable = PathToTableName$(tempFilNme)
+		tempFileNamePath = Left$(PathToDirectory$(tempFilNme), len(PathToDirectory$(tempFilNme))-1) 
+		Create Table intoTable (ID Integer)
+		   File tempFileNamePath
+		   Type NATIVE
+		Create Map For intoTable
+	  Case "<New>"
+		saveFile = FileSaveAsDlg("","Untitled","TAB","Transfer Labels To")
+		tabName = PathToTableName$(saveFile)
+		If tabName = "_" Then
+		   Exit Sub
+		End If
+		Create Table tabName (ID Integer) 
+		   File saveFile
+		   Type NATIVE
+		Open Table saveFile Interactive
+		Create Map For tabName
+		intoTable = tabName
+	   Case Else
+		lNum = GetLayerNumber(winID, SaveLayerName)
+		Set Map Window winId Layer lNum Editable On
+		intoTable = SaveLayerName
+	End Case
+
+	Do Case Hidden
+	   Case TRUE
+		If LabelFindFirst(winId, layNum, theChoice) Then
+		   Set ProgressBars Off
+		   Do 
+		      Insert Into intoTable(obj) Values(LabelInfo(winId, layNum, LABEL_INFO_OBJECT))
+	 	   Loop While LabelFindNext(winId, layNum)
+		   Set ProgressBars On
+		   Set Map Layer layNum Label Auto Off Visibility Off
+		End If
+	   Case Else
+		If LabelFindFirst(winId, layNum, theChoice) Then
+		   Set ProgressBars Off
+		   Do 
+		      If Not LabelInfo(winId, layNum, LABEL_INFO_EDIT_VISIBILITY) Then
+			   Insert Into intoTable(obj) Values(LabelInfo(winId, layNum, LABEL_INFO_OBJECT))
+		      End If
+		   Loop While LabelFindNext(winId, layNum)
+		   Set ProgressBars On
+		   Set Map Layer LayNum Label Auto Off Visibility Off
+		End If 	 
+	End Case
+
+	Do Case SaveLayerName
+	  Case "Cosmetic Layer"
+		Set ProgressBars Off
+		Insert Into WindowInfo(winID,WIN_INFO_TABLE)(obj) Select obj From intoTable
+		Drop Table intoTable
+		Set ProgressBars On
+	  Case "<New>" 
+		Commit Table intoTable
+	   	Add Map Window winId Layer intoTable
+	  Case Else
+	End Case	
+	   	   
+End Sub 
+
+'******************************************************************************
+'*	GenControlLst()  -  Generate Control PopUpmenu list
+'*
+'*	The following subroutine will take in a window id and then Fill a Global
+'*	array with a list of layers that have labels turned on for them.  If the
+'*	Number of layers with labels is 0, then the array will be redimensioned 
+'* 	to a UBound of zero
+'******************************************************************************
+
+Sub GenControlLst(ByVal WinId as integer)
+	Dim layerCount, finalLayerCount, i as smallInt
+	finalLayerCount = 0
+	layerCount = MapperInfo(WinId, MAPPER_INFO_LAYERS)
+	ReDim LayerList(layerCount)
+	For i = 1 to layerCount
+	   If LayerInfo(WinId, i, LAYER_INFO_TYPE) = LAYER_INFO_TYPE_NORMAL Then
+		If LabelFindFirst(WinId, i, isMAPPER) then	'* If label exist for Map View
+		   finalLayerCount=finalLayerCount + 1
+		   LayerList(finalLayerCount) = LayerInfo(WinId, i, LAYER_INFO_NAME)
+		End If
+	   End If
+	Next
+	If finalLayerCount > 0 then
+	   ReDim LayerList(finalLayerCount)
+	Else
+	   ReDim LayerList(0) 
+	   Exit Sub
+	End If
+
+	finalLayerCount = 1
+	ReDim SaveList(layerCount+2)   '1 for Cosmetic, 1 for New
+	SaveList(1) = "Cosmetic Layer"
+	For i = 1 to layerCount
+	   If LayerInfo(WinId, i, LAYER_INFO_TYPE) = LAYER_INFO_TYPE_NORMAL Then
+		If NOT TableInfo(LayerInfo(WinID, i, LAYER_INFO_NAME), TAB_INFO_READONLY) Then
+		   SaveList(finalLayerCount+1) = LayerInfo(WinId, i, LAYER_INFO_NAME)
+		   finalLayerCount = finalLayerCount + 1
+		End If
+	   End If
+	Next
+
+	SaveList(finalLayerCount+1) = "<New>"
+	ReDim SaveList(finalLayerCount+2)			
+end sub
+
+'******************************************************************************
+'*
+'*	Dialog Handler Used with to set RadioGroup Control
+'*	-  Used to check if layer view is in Layout window
+'*
+'******************************************************************************
+
+Sub DialogSetup
+	Dim lNum as SmallInt
+	
+	lNum = GetLayerNumber(Frontwindow(), LayerList(ReadControlValue(1)))
+	If Not LabelFindFirst(FrontWindow(), lNum, False) Then
+	   Alter Control 4 Disable
+	End If
+End Sub
+
+'******************************************************************************
+'*
+'*	Label Tool - Procedure handles the functionality of when a user clicks
+'*	on an object with the custom tool.  This will place a label in the cosmetic
+'*	layer for that object.
+'*
+'******************************************************************************
+
+Sub LabelTool
+	Dim numObjects, i, numLayers, hResult As Smallint
+	Dim rownum, mapId, layerNum As Integer
+	Dim x,y As Float
+	Dim layer_name As String
+	Dim layer_is_selectable, ValidMap As Logical
+
+' Determine x & y coordinates where user clicked
+	x = CommandInfo(CMD_INFO_X)
+	y = CommandInfo(CMD_INFO_Y)
+	mapId = FrontWindow()
+	ValidMap = FALSE
+
+	numlayers = MapperInfo(mapId, MAPPER_INFO_LAYERS)
+' Loop through the layer to make sure there is at least one selectable layer
+	For i = 1 To numlayers
+	   If LayerInfo(mapId, i, LAYER_INFO_SELECTABLE) Then
+		ValidMap = TRUE
+		Exit For
+	   End If
+	Next
+
+	If Not ValidMap Then
+	   Note "There are No Selectable layers in this map window"
+	   Exit Sub
+	End If
+	
+	numObjects = SearchPoint(mapId, x, y)
+	For i = 1 To numObjects
+	   layer_name = SearchInfo(i, SEARCH_INFO_TABLE)
+	   If layerIsSelectable(layer_name) Then
+		rownum = SearchInfo(i, SEARCH_INFO_ROW)
+		hResult = TableInfo(layer_name, TAB_INFO_TYPE)
+		If hResult = TAB_TYPE_BASE OR hResult = TAB_TYPE_RESULT
+		   OR hResult = TAB_TYPE_VIEW OR hResult = TAB_TYPE_LINKED Then
+		   LayerNum = GetLayerNumber(mapID, layer_name)
+		   Set Map Redraw Off
+		   Set Map Layer LayerNum
+			Label Object rownum Visibility On
+			Anchor (x,y) Callout (x,y)
+		   If LabelFindByID(mapID, LayerNum, rownum, "", TRUE) Then
+			Dim cosname as string
+			cosname = WindowInfo(mapID, WIN_INFO_TABLE)
+		   	Insert Into cosname(obj) Values(LabelInfo(mapID, layerNum, LABEL_INFO_OBJECT))
+		   End If
+		   Set Map Layer LayerNum Label Object rownum Visibility Off Redraw On
+		   Exit Sub    
+		Else
+		   Note "Map does not contain Normal or View layer"
+		   Exit Sub
+		End If
+	   End If
+	Next
+		
+End Sub
+
+'******************************************************************************
+'*	GetLayerNumber()  -  Get Layer Number
+
+'* 
+'*	Get layer number of table passed in
+'*
+'******************************************************************************
+
+Function GetLayerNumber(ByVal winId as Integer, ByVal name As String) As Integer
+	dim i as smallint
+
+'Get layer number of table passed in
+	For i = 1 to MapperInfo(winId, MAPPER_INFO_LAYERS)
+	   If LayerInfo(WinId, i, LAYER_INFO_NAME ) = name Then
+ 		GetLayerNumber = i
+		Exit Function
+	   End If
+	Next
+	
+End Function
+
+Function layerIsSelectable( ByVal layName As String ) As Logical
+'***************************************************************
+'*	This function is used to determine if the layer name passed
+'*	to it is a selectable layer, and thus can be labeled
+
+   Dim i, numlayers As SmallInt
+   Dim mapId As Integer
+   Dim testLayer As String
+
+   mapId = FrontWindow()
+   numlayers = MapperInfo(mapId, MAPPER_INFO_LAYERS)
+
+   For i = 1 To numlayers
+	testLayer = LayerInfo(mapId, i, LAYER_INFO_NAME)
+	If testlayer = layName Then
+	   If LayerInfo(mapId, i, LAYER_INFO_SELECTABLE) Then
+		layerIsSelectable = TRUE
+		Exit Function
+	   Else
+		layerIsSelectable = FALSE
+		Exit Function
+	   End If
+	End if
+   Next
+   layerIsSelectable = FALSE 
+   	 
+End Function
+
+'******************************************************************************
+'*
+'*	BuildSetString - This function is used to build a string that is a set map
+'*	statement that reflects what a current layers layerInfo settings are.
+'*
+'******************************************************************************
+
+
+Function BuildSetString(ByVal winId As Integer, ByVal tabName As String) As String
+
+	Dim  LineT, Pos, visi, offst As SmallInt
+	Dim maxLabel, layerNum As Integer
+	Dim  expr, zMin, zMax As String
+	Dim tempString As String
+
+	layerNum = GetLayerNumber(winID, tabName)
+	tempString = "Set Map Layer 1 Label "
+'Check layers Label Line Type
+	LineT = LayerInfo(winId, layerNum, LAYER_INFO_LBL_LT)
+	Do Case LineT
+	   Case LAYER_INFO_LBL_LT_SIMPLE
+		tempString = TempString + "Line None "
+	   Case LAYER_INFO_LBL_LT_SIMPLE
+		tempString = TempString + "Line Simple "
+	   Case LAYER_INFO_LBL_LT_ARROW
+		tempString = tempString + "Line Arrow "
+	   Case Else
+	End Case
+
+'Check Layers Position
+	Pos = LayerInfo(winId, layerNum, LAYER_INFO_LBL_POS)
+	Do Case Pos
+	   Case LAYER_INFO_LBL_POS_TL
+		tempString = TempString + "Position Above Left "
+	   Case LAYER_INFO_LBL_POS_TC
+		tempString = TempString + "Position Above "
+	   Case LAYER_INFO_LBL_POS_TR
+		tempString = TempString + "Position Above Right "
+	   Case LAYER_INFO_LBL_POS_CL
+		tempString = TempString + "Position Left "
+	   Case LAYER_INFO_LBL_POS_CC
+		tempString = TempString + "Position Center "
+	   Case LAYER_INFO_LBL_POS_CR
+		tempString = TempString + "Position Right "
+	   Case LAYER_INFO_LBL_POS_BL
+		tempString = TempString + "Position Below Left "
+	   Case LAYER_INFO_LBL_POS_BC
+		tempString = TempString + "Position Below "
+	   Case LAYER_INFO_LBL_POS_BR
+		tempString = TempString + "Position Below Right "
+
+	   Case Else
+	End Case
+'Set font sytle
+	Dim fStyle as Font
+	Dim fontString As String
+
+	fStyle = LayerInfo(winId, layerNum, LAYER_INFO_LBL_FONT)
+	If StyleAttr(fStyle, FONT_BACKCOLOR) <> -1 Then
+	   tempString = tempString + fStyle +  "Pen (1,2,0) "
+	Else
+	   fontString = "Font("
+	   fontString = fontString + """" + StyleAttr(fStyle, FONT_NAME) + """" + ","
+	   fontString = fontString + StyleAttr(fStyle, FONT_STYLE) + ","
+	   fontString = fontString + StyleAttr(fStyle, FONT_POINTSIZE) + ","
+	   fontString = fontString + StyleAttr(fStyle, FONT_FORECOLOR) + ")"
+	   tempString = tempString + fontString + "Pen (1,2,0)"
+	End If
+	   
+'Set Label Expression 
+	Dim lpBaseExpr, lpTempTab As String
+
+	lpBaseExpr = LayerInfo(winId, layerNum, LAYER_INFO_LBL_EXPR)
+	lpTempTab = LayerInfo(winId, 1, LAYER_INFO_NAME)
+
+	If ColumnExists(lpTempTab, lpBaseExpr) Then
+	   tempString = tempString + "With " + lpBaseExpr + " "
+	End If
+'Set whether parallel or not
+	If LayerInfo(winId, LayerNum, LAYER_INFO_LBL_PARALLEL) Then
+	   tempString = tempString + "Parallel On "
+	Else
+	   tempString = tempString + "Parallel Off "
+	End If
+'Set Whether Visible or Not
+	visi = LayerInfo(winId, layerNum, LAYER_INFO_LBL_VISIBILITY)
+	Do Case visi
+	   Case LAYER_INFO_LBL_VIS_ON
+		tempString = tempString + "Visibility On "
+	   Case LAYER_INFO_LBL_VIS_OFF
+		tempString = tempString + "Visibility Off "
+	   Case LAYER_INFO_LBL_VIS_ZOOM
+		zMin = LayerInfo(winId, layerNum, LAYER_INFO_LBL_ZOOM_MIN)
+		zMax = LayerInfo(winId, layerNum, LAYER_INFO_LBL_ZOOM_MAX)
+		tempString = tempString + "Visibility Zoom(" + zMin + "," + zMax + ") "
+	   Case Else
+	End Case
+'Set Whether Auto or not
+	If LayerInfo(winId, LayerNum, LAYER_INFO_LBL_AUTODISPLAY) Then
+	   tempString = tempString + "Auto On "
+	Else
+	   tempString = tempString + "Auto Off "
+	End If
+'Set whether Overlap or not
+	If LayerInfo(winId, LayerNum, LAYER_INFO_LBL_OVERLAP) Then
+	   tempString = tempString + "Overlap On "
+	Else
+	   tempString = tempString + "Overlap Off "
+	End If
+'Set wether Partial Segments or not
+	If LayerInfo(winId, LayerNum, LAYER_INFO_LBL_PARTIALSEGS) Then
+	   tempString = tempString + "PartialSegments On "
+	Else
+	   tempString = tempString + "PartialSegments Off "
+	End If
+'Set whether duplicate or not
+	If LayerInfo(winId, LayerNum, LAYER_INFO_LBL_DUPLICATES) Then
+	   tempString = tempString + "Duplicates On "
+	Else
+	   tempString = tempString + "Duplicates Off "
+	End If
+'Set label OffSet
+	offSt = LayerInfo(winId, LayerNum, LAYER_INFO_LBL_OFFSET)
+	tempString = tempString + "Offset " + offSt + " "
+'Set Max labels
+	maxLabel = LayerInfo(winId, LayerNum, LAYER_INFO_LBL_MAX)
+	tempString = tempString + "Max " + maxLabel
+BuildSetString = tempString
+
+
+End Function  'BuildSetString
+
+'******************************************************************************
+'*
+'*	This function will check for an existing column in a particular table.
+'*	Function will return a logical false if the table does not contain the 
+'*	the column passed in to the function
+'*
+'******************************************************************************
+
+
+Function ColumnExists(ByVal tabName As String, ByVal labelExpr As String) As Logical
+
+	Dim i, cols As SmallInt
+
+	ColumnExists = FALSE
+	cols = TableInfo(tabName, TAB_INFO_NCOLS)
+	For i = 1 to cols 
+	   If ColumnInfo(tabName, "COL" + str$(i), COL_INFO_NAME) = labelExpr Then
+		ColumnExists = TRUE
+		Exit Function
+	   End If
+	Next
+
+End Function
+
+
+'******************************************************************************
+'*
+'*	selIsInMapper - This function is used to check is the selection the user
+'*	has made is from a table in the front map window.
+'*
+'******************************************************************************
+
+
+Function selIsInMapper(ByVal winId As Integer, ByVal tabName As String) As Logical
+
+	Dim i, numLayers As SmallInt
+	
+
+	numLayers = MapperInfo(winId, MAPPER_INFO_LAYERS)
+	For i = 1 to numLayers
+	   If LayerInfo(winId, i, LAYER_INFO_NAME) = tabName Then
+		selIsInMapper = TRUE
+		Exit Function
+	   End If
+	Next
+	selIsInMapper = FALSE
+
+End Function   'selIsInMapper
+
+Sub EnableTransferDialog
+	Dim lFrontWin, lLayer As Integer 
+	Dim bEnable As Logical 
+	Dim sTable As String
+
+    OnError Goto ErrorTrap
+
+	If SystemInfo(SYS_INFO_MIVERSION) >= 410  Then
+		If NumWindows() Then
+			lFrontWin = FrontWindow() 
+			If lFrontWin Then
+				lFrontWin = WindowID(lFrontWin)
+				If WindowInfo(lFrontWin, WIN_INFO_TYPE) = WIN_MAPPER Then
+					bEnable = TRUE
+				End If 'WindowInfo
+			End If 'lFrontWin
+		End If 'NumWindows
+ 	End If 'SystemInfo
+
+	If bEnable Then
+		Alter Menu Item TransferDialog Enable
+	Else 	
+		Alter Menu Item TransferDialog Disable
+	End If 'bEnable
+	
+Done:
+	Exit Sub
+	
+ErrorTrap:
+	Note Error$()
+	Resume Done
+End Sub 'EnableTransFerDialog
+
+Sub EnableLabelSelection
+	Dim lFrontWin, lLayer As Integer 
+	Dim bEnable As Logical 
+	Dim sTable As String
+
+    OnError Goto ErrorTrap
+
+	If SystemInfo(SYS_INFO_MIVERSION) >= 410  Then
+		If NumWindows() Then
+			lFrontWin = FrontWindow() 
+			If lFrontWin Then
+				lFrontWin = WindowID(lFrontWin)
+				If WindowInfo(lFrontWin, WIN_INFO_TYPE) = WIN_MAPPER Then
+					If SelectionInfo(SEL_INFO_NROWS) > 0 Then
+						sTable = SelectionInfo(SEL_INFO_TABLENAME)                                       
+						If TableInfo(sTable, TAB_INFO_MAPPABLE) Then
+							If GetLayerNumber(lFrontWin, sTable) Then
+								bEnable = TRUE
+							End If 'iLayer
+						End If 'TableInfo
+					End If 'SelectionInfo
+				End If 'WindowInfo
+			End If 'lFrontWin
+		End If 'NumWindows
+ 	End If 'SystemInfo
+
+	If bEnable Then
+		Alter Menu Item LabelSelection Enable
+	Else 	
+		Alter Menu Item LabelSelection Disable
+	End If 'bEnable
+	
+Done:
+	Exit Sub
+	
+ErrorTrap:
+	Note Error$()
+	Resume Done
+End Sub 'EnableLabelSelection
+
+Sub WinFocusChangedHandler
+	Call EnableTransferDialog
+	Call EnableLabelSelection	
+End Sub 'WinFocusChangedHandler 
+
+Sub SelChangedHandler
+	Call EnableTransferDialog
+	Call EnableLabelSelection	
+End Sub 'SelChangedHandler
+
+Sub WinClosedHandler
+	Alter Menu Item TransferDialog Disable
+	Alter Menu Item LabelSelection Disable	
+End Sub 'WinClosedHandler
+
+	
+
+'******************************************************************************
+'*
+'*	About Box Definition
+'*
+'******************************************************************************
+
+Sub About_Box
+Dialog
+    Title "About 3.0 Label"
+    Width 280
+    Height 260
+
+  Control StaticText
+    Title "This program is a utility that will (1) transfer your layers labels into "
+    Position 10,10
+  Control StaticText
+    Title "permanent text objects, (2) allow you to label the current selection and "
+    Position 10, 20
+  Control StaticText
+    Title "(3) allow you to use a label tool and individually label objects into "
+    Position 10,30
+  Control StaticText
+    Title "permanent text objects."
+    Position 10,40
+  Control StaticText
+    Title "The program adds a Menu option under the Tools Menu and also adds a Button "
+    Position 10,60
+  Control StaticText
+    Title "to the Tools ButtonPad.  There are four Menu options under this, two are for " 
+    Position 10,70
+  Control StaticText
+    Title "transfering labels and labeling the selection.  The tool that is added is for "
+    Position 10,80
+  Control StaticText
+    Title "the individual Labeling."
+    Position 10,90
+  Control StaticText
+    Title "Choosing to Transfer Labels will bring up a Dialog box with a choice of which "
+    Position 10,110
+  Control StaticText
+    Title "layer to get the labels from and also which layer to save the labels to.  There " 
+    Position 10,120
+  Control StaticText
+    Title "is also a checkbox that allows you to include hidden labels(labels that have "
+    Position 10,130
+  Control StaticText
+    Title "been deleted by user).  Also there is a Radio group to select if you want the "
+    Position 10,140
+  Control StaticText
+    Title "labels to come from the Map view or the Layout view of the layer.  If there is "
+    Position 10,150
+  Control StaticText
+    Title "no layout open it will do the Map view by default."
+    Position 10,160
+  Control StaticText
+    Title "Choosing Label selection will transfer labels for the current selection "
+    Position 10,180
+  Control StaticText
+    Title "into the cosmetic layer."
+    Position 10,190
+  Control StaticText
+    Title "Using the tool will place a text object in the Cosmetic Layer for the object "
+    Position 10,210
+  Control StaticText
+    Title "the you click on with the crosshairs."
+    Position 10,220
+
+  Control OKButton   Position 121,240
+End Sub
+
+'******************************************************************************
+'*	egsit   -  Exits program
+'******************************************************************************
+
+sub egsit
+	End Program
+end sub
+

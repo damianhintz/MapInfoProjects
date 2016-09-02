@@ -1,0 +1,151 @@
+'*****************************************************************************
+'       Copyright (c) 2000-2001, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile:   HTMLImageMapWrite.DEF  $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+'  HTML Image Maps structures, defines, and declarations
+'*****************************************************************************
+Declare Sub HTMLImageMapDialog
+Declare Sub About
+Declare Sub GoodBye
+Declare Sub ChooseColumns
+Declare Sub ChooseAllColumns
+
+Include "HTMLImageMapWrite.def"
+
+Define AppVersion 3.0
+
+Define QUOTE chr$(34)
+Define COMMA chr$(44)
+
+Define DPI 96
+
+Type Coord
+  x As Float
+  y As Float
+End Type
+
+Type Pixel
+  x As SmallInt
+  y As SmallInt
+End Type
+
+Type Box
+  min As Coord
+  max As Coord
+End Type
+
+Global gsLayerNamesSource(0), gsLayerNamesTarget(0) As String
+Global gtLayerNamesTarget(0) As SelectedLayer
+Global giSelectedTargetLayer, giSelectedPaperUnits As SmallInt
+
+Global giHeightOrWidth, giValidLayers As Integer
+Global gfImageAspect As Float
+Global gsWebPageTitle, gsImageCopyright As String   'Title to appear at top of web page
+Global gsHTMLFileName, gsPaperUnits As String
+Global gsLayerName, gsColumnName, gsHotLinkMetaDataKeyValue As String
+Global glCreateLandingPages, glPopulateLandingPages As Logical
+Global giSelectedFormat, giSelectedLinkType As SmallInt
+Global giMapWindowID, giNumLayers, giClipResolution, giDelta As Integer
+Global gfImageHeight, gfImageWidth As Float
+Global glIncludeHotLink, glTreatAsLinks, glOnePage As Logical
+
+' Resource String Ids
+Define IDS_STR_RES_RANGE_ERR             1
+Define IDS_APP_DESCRIPTION               2
+Define IDS_MENU_NAME                     3
+Define IDS_MENU_ITEM_NAME                4
+Define IDS_ABOUT_MENU_ITEM_NAME          5
+Define IDS_EXIT_MENU_ITEM_NAME           6
+Define IDS_SELECT_MAP_WINDOW             7
+Define IDS_NORMALIZE_MAP_WINDOW          8
+Define IDS_SELECT_MAP_WINDOW_WITH_VECTOR 9
+Define IDS_VERSION                       10
+Define IDS_MAP_LAYER_TO_USE              11
+Define IDS_LAYER_NAME                    12
+Define IDS_COLUMN_NAME                   13
+Define IDS_WEB_PAGE_TITLE                14
+Define IDS_IMAGE                         15
+Define IDS_COPYRIGHT                     16
+Define IDS_COPYRIGHT_SYMBOL              17
+Define IDS_SIZE                          18
+Define IDS_HEIGHT                        19
+Define IDS_WIDTH                         20
+Define IDS_FORMAT                        21
+Define IDS_CLIP_RESOLUTION               22
+Define IDS_INSERT                        23
+Define IDS_NEW_NODES                     24
+Define IDS_ALONG_EDGES                   25
+Define IDS_RECTANGLE                     26
+Define IDS_HTML_FILE_NAME                27
+Define IDS_BROWSE                        28
+Define IDS_SET_UP_LINK                   29
+Define IDS_HOTLINK_OR_HTML               30
+Define IDS_CREATE_HTML_LANDING_PAGES     31
+Define IDS_POPULATE_HTML_LANDING_PAGES   32
+Define IDS_ALL_COLUMNS                   33
+Define IDS_COLUMNS                       34
+Define IDS_SIZE_OF_REGIONS               35
+Define IDS_OK                            36
+Define IDS_CANCEL                        37
+Define IDS_CHOOSE_COLUMNS                38
+Define IDS_COLUMNS_IN_TABLE              39
+Define IDS_ADD_ALL                       40
+Define IDS_ADD                           41
+Define IDS_REMOVE                        42
+Define IDS_REMOVE_ALL                    43
+Define IDS_COLUMNS_ON_PAGE               44
+Define IDS_COLUMN_NAME_ALIASES           45
+Define IDS_TREAT_AS_LINKS                46
+Define IDS_INCLUDE_HOTLINK               47
+Define IDS_COLUMN_NAME_ALIASES_EDITING   48
+Define IDS_LOAD_FROM_METADATA            49
+Define IDS_SAVE_TO_METADATA              50
+Define IDS_PROPER_CASE                   51
+Define IDS_UPPER_CASE                    52
+Define IDS_REMOVE_UNDERSCORES            53
+Define IDS_EDIT                          54
+Define IDS_EDIT_ALIAS                    55
+Define IDS_TREAT_ALL_AS_LINKS            56
+Define IDS_TREAT_NONE_AS_LINKS           57
+Define IDS_SELECTING_OBJECTS             58
+Define IDS_SELECT_LAYER_WITH_REGION      59
+Define IDS_CLIPPING_OBJECTS              60
+Define IDS_CREATING_IMAGE_FILE           61
+Define IDS_CREATING_IMAGE_MAP            62
+Define IDS_HTML_IMAGE_MAP_CREATED        63
+Define IDS_LAUNCH                        64
+Define IDS_SPECIFY_VALID_FILE_NAME       65
+Define IDS_IMAGE_DIMENSIONS_NOT_FOUND    66
+Define IDS_ABOUT_1                       67
+Define IDS_ABOUT_2                       68
+Define IDS_ABOUT_3                       69
+Define IDS_ABOUT_4                       70
+Define IDS_ABOUT_5                       71
+Define IDS_ABOUT_6                       72
+Define IDS_ABOUT_7                       73
+Define IDS_ABOUT_8                       74
+Define IDS_ABOUT_9                       75
+Define IDS_ABOUT_10                      76
+Define IDS_ABOUT_11                      77
+Define IDS_ABOUT_12                      78
+Define IDS_UNABLE_TO_LAUNCH              79
+Define IDS_BAD_PROJECTION_ZOOM           80
+Define IDS_POOR_PROJECTION_ZOOM          81
+Define IDS_RETURN_TO_MAP                 82
+Define IDS_ONE_HTML_FILE                 83
+Define IDS_EMPTY                         84
+Define IDS_YES                           85
+Define IDS_NO                            86
+Define IDS_OPERATION_CANCELED            87
+Define IDS_OPEN_TABLE                    88
+Define IDS_ALREADY_EXISTS                89
+Define IDS_OVERWRITE                     90
+Define IDS_CANNOT_WRITE_TO               91
+Define IDS_WARNING                       92

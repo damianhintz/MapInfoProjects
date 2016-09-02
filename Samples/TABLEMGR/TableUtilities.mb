@@ -1,0 +1,94 @@
+'/*****************************************************************************
+'*       Copyright © 2011 Pitney Bowes Software Inc.
+'*       All rights reserved.
+'*****************************************************************************/
+Include "TableManager.def"
+'****************************************************************************
+' Sub procedure: ReadTableInfo
+'****************************************************************************
+Sub ReadTableInfo(sTableName As String, iVersion As Integer, sType As String, sFile As String)
+
+  OnError Goto HandleError
+
+  Dim sFileName, sLine As String
+  Dim lContinue As Logical
+  Dim i As Integer
+
+  sFileName = TableInfo(sTableName, TAB_INFO_TABFILE)
+
+  If sFileName <> STR_EMPTY_STR Then
+
+    Open File sFileName For Input As #3
+
+'Print "Reading " + sFileName
+
+    iVersion = 0
+    sType = STR_EMPTY_STR
+    sFile = STR_EMPTY_STR
+
+    lContinue = TRUE
+    Line Input #3, sLine
+
+    While lContinue
+
+'Print "  Checking " + sLine
+
+      If iVersion = 0 Then
+        i = InStr(1, UCase$(sLine), STR_VERSION)
+        If i > 0 Then
+          iVersion = Val(Mid$(sLine, i+8, 80))
+'Print "    Found version = " + iVersion
+        End If
+      End If
+
+      If sType = STR_EMPTY_STR Then
+        i = InStr(1, UCase$(sLine), STR_TYPE)
+        If i > 0 Then
+          sType = Mid$(sLine, i+5, 80)
+          i = InStr(1, sType, STR_EMPTY_STR1)
+          If i > 0 Then
+            sType = Left$(sType, i-1)
+          End If
+          i = InStr(1, sType, STR_QUOTED_EMPTY_STR)
+          Do While i > 0
+            sType = Left$(sType, i-1) + Mid$(sType, i+1, 80)
+            i = InStr(1, sType, STR_QUOTED_EMPTY_STR)
+          Loop
+'Print "    Found type = " + sType
+        End If
+      End If
+
+      If sFile = STR_EMPTY_STR Then
+        i = InStr(1, UCase$(sLine), STR_FILE)
+        If i > 0 Then
+          sFile = Mid$(sLine, i+5, 80)
+          i = InStr(1, sFile, STR_EMPTY_STR1)
+          If i > 0 Then
+            sFile = Left$(sFile, i-1)
+          End If
+          If sFile = STR_QUOTED_EMPTY_STR Then
+            sFile = STR_EMPTY_STR
+          End If
+'Print "    Found file = " + sFile
+        End If
+      End If
+
+      Line Input #3, sLine
+
+      If EOF(3) Then
+        lContinue = FALSE
+      End If
+
+    Wend
+
+    Close File #3
+
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_READ_TABLE_INFO + Error$()
+  Resume Next
+
+End Sub

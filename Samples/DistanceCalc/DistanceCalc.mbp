@@ -1,0 +1,8 @@
+[link]
+Application = DistanceCalc.mbx
+module=DistanceCalc.mbo
+Module=..\Lib\auto_lib.mbo
+module=ArrayModule.mbo
+Module=ProcessDistance.mbo
+Module=DialogFunctions.mbo
+Module=..\Lib\ResStrng.mbo

@@ -1,0 +1,5 @@
+[Link] 
+Application=RotateSymbols.mbx 
+Module=RotateSymbols.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\Lib\resstrng.mbo

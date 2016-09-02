@@ -1,0 +1,5 @@
+[Link] 
+Application=Legends.mbx 
+Module=Legends.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\Lib\resstrng.mbo

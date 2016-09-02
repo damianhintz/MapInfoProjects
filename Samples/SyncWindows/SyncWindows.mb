@@ -1,0 +1,910 @@
+'*****************************************************************************
+'       Copyright (c) 2004, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: SyncWindows.mb $
+' $Revision: 68198 $
+' $Author: RA011BA $
+' $Date: 2010-04-30 09:48:28 -0400 (Fri, 30 Apr 2010) $
+'
+' Module Description:
+'
+'The Synchronize Windows tool provides Ten toolbar buttons that facilitate
+' map window changes across all open mappers and helps automate repetitive
+' MapInfo Professional tasks.
+'
+' Revision History:
+'
+'    Rev 1.0   17 June 2004               Crane
+'                Initial version.
+'        1.1   16 July 2004               Johnson
+'                Fix for Bug T11554
+'        1.2   23 July 2004               Johnson
+'                Change for CMR - Add embedded legend functionality
+'        1.3   5 August 2004              Johnson
+'                Fix for Bug T11909
+'        1.4   29 March 2010              Rajan Batra
+'              Error handling, Docking support, Other changes from Richard 
+'              Lohier.
+'*****************************************************************************
+Include "SyncWindows.def"
+
+Sub Main
+
+  OnError Goto HandleError
+  If LoadStrings((ApplicationDirectory$() + STR_RES_STR_FILE)) = FALSE Then
+    Note STR_FILE_NOT_ACCESSIBLE + ApplicationDirectory$() + STR_RES_STR_FILE
+    Exit Sub
+  End If
+
+  gsAppDescription = GetResString(IDS_Title)    '** Globals for Auto_lib.def
+  gsAppFilename = GetResString(IDS_App_Title)    '** and set_tools_menu
+
+  Create Menu GetResString(IDS_Title) As   
+    GetResString(IDS_Menu_Load) Calling Start,
+    STR_MENU_ITEM_SEPARATOR,               
+    GetResString(IDS_Menu_About)  Calling About,
+    GetResString(IDS_Menu_Exit) Calling Exit_Program
+
+  Call set_tools_menu(GetResString(IDS_Title))        '** Calls sub from Auto_lib.def
+
+  Call Start '** Loads the toolbar
+
+  Exit Sub
+  HandleError:
+    Note STR_FN_MAIN  + Error$()
+    Resume Next
+End Sub
+
+Sub Start
+  OnError Goto HandleError
+  l_Center = true
+  l_Zoom = true
+
+  Call MapperId
+
+  Create ButtonPad GetResString(IDS_Title) as
+
+  PushButton 
+    Icon 37
+    HelpMsg GetResString(IDS_Clone) 
+    Calling clone_map
+
+  PushButton
+    Icon MI_ICON_MISC_7
+    HelpMsg GetResString(IDS_Rename)
+    Calling Rename
+
+  PushButton 
+    Icon 191
+    HelpMsg GetResString(IDS_Tile) 
+    Calling tile_window
+ 
+  PushButton 
+    Icon 214
+    HelpMsg GetResString(IDS_Sync_All) 
+    Calling map_sync
+
+' This Toggle button allow to enable/disable the synchronisation in one click
+  ToggleButton  
+	Icon 204
+	HelpMsg GetResString(IDS_SYNC_DYNAMIC)
+	Calling mapSyncDynamic
+	Id IDS_SYNC_DYNAMIC
+	uncheck
+
+  ToolButton
+    Icon 16
+    HelpMsg GetResString(IDS_Symbol)
+    Cursor 128
+    DrawMode DM_Custom_Point
+    Calling Redline_Symbol
+
+  ToolButton
+    Icon 18
+    HelpMsg GetResString(IDS_PolyLine)
+    Cursor 128
+    DrawMode DM_Custom_Polyline
+    Calling Redline_Polyline
+
+  ToolButton
+    Icon 22
+    HelpMsg GetResString(IDS_Rectangle)
+    Cursor 128
+    DrawMode DM_Custom_RECT
+    Calling Redline_Polygon
+
+  ToolButton
+    Icon 21
+    HelpMsg GetResString(IDS_Ellipse)
+    Cursor 128
+    DrawMode DM_Custom_Ellipse
+    Calling Redline_Ellipse
+
+  PushButton
+    Icon 181
+    HelpMsg GetResString(IDS_Clear_All)
+    Calling ClearCosmetic
+
+  Title GetResString(IDS_Sync_Mapper)
+  Width 3
+  Show 
+  Call setToolBarPosition( gsAppDescription, gsAppDescription) 
+  
+  Exit Sub
+  HandleError:
+    Note STR_FN_START  + Error$()
+    Resume Next
+End Sub
+
+Sub tile_window
+  OnError Goto HandleError
+  Run Menu Command M_WINDOW_TILE
+  
+  Exit Sub
+  HandleError:
+  Note STR_FN_TILE_WINDOW   + Error$()
+End Sub
+
+Sub clone_map
+  OnError Goto HandleError
+  Set Handler WinChangedHandler Off
+  Run Menu Command M_MAP_CLONE_MAPPER
+  Call MapperId
+  Set Handler WinChangedHandler On
+  
+  Exit Sub
+  HandleError:
+    Note  STR_FN_CLONE_MAP+ Error$()
+    Resume Next  
+End Sub
+
+Sub map_sync
+  OnError Goto HandleError
+  Call MapperId
+
+  Dialog 
+    Title GetResString(IDS_Synchronize) 
+    Calling InitializeSynchronizeDialogHandler
+    Control CheckBox
+      ID 4201
+      Title GetResString(IDS_Sync1)
+      Into tag_map_sync 
+      Value tag_map_sync
+      Position 6, 6
+    Control Button
+      ID 4202
+      Title GetResString(IDS_Sync_All_Now)
+      Disable
+      Calling Do_Sync
+      Position 18, 20
+    Control GroupBox
+      Title GetResString(IDS_Sync_Options)
+      Position 18, 38
+      Height 54
+    Control CheckBox
+      ID 4204
+      Title GetResString(IDS_Map_Center)
+      Into l_center 
+      Value l_Center
+      Position 30, 50
+    Control CheckBox
+      ID 4205
+      Title GetResString(IDS_Map_Zoom)
+      Into l_Zoom 
+      Value l_Zoom
+      Position 30, 64
+    Control CheckBox
+      ID 4206
+      Title GetResString(IDS_USE_FRONT_WIN_PROJ_FOR_SYNC)
+      Into glUseFrontWinProjForSync 
+      Value glUseFrontWinProjForSync
+      Position 30, 78
+      
+   Control CheckBox
+      ID 4208
+      Title GetResString(IDS_Sync2)
+      Calling AlwaysEmbedLegendCheckBoxChangedHandler
+      Into tag_embed_legend 
+      Value tag_embed_legend
+      Position 6, 96
+      
+    Control Button
+      ID 4211
+      Title GetResString(IDS_Embed_All_Now)
+      Calling EmbedAllLegendButtonHandler
+      Disable
+      Position 18, 110
+    Control Button
+      ID 4212
+      Title GetResString(IDS_Embed_Current_Now)
+      Calling EmbedCurrentLegendButtonHandler
+      Disable
+      Position 18, 130
+    Control Button
+      ID 4210
+      Title GetResString(IDS_Remove_All_Now)
+      Calling RemoveAllLegendButtonHandler
+      Disable
+      Position 18, 150
+    Control Button
+      ID 4209
+      Title GetResString(IDS_Remove_Current_Now)
+      Calling RemoveCurrentLegendButtonHandler
+      Disable
+      Position 18, 170
+    Control OkButton
+      Position 176, 190
+    If tag_map_sync Then 
+      Alter Button Id IDS_SYNC_DYNAMIC Check 
+    Else 
+      Alter Button Id IDS_SYNC_DYNAMIC UnCheck 
+    End If 
+    Exit Sub
+    HandleError:
+      Note STR_FN_MAP_SYNC + Error$()
+      Resume Next 
+End Sub
+
+Sub RemoveCurrentLegendButtonHandler
+  OnError Goto HandleError
+  Call RemoveEmbeddedLegend(FrontWindow())
+  Exit Sub
+  HandleError:
+    Note STR_FN_REMOVE_CURRENT_LEGEND_BUTTON_HANDLER + Error$()
+End Sub
+
+Sub EmbedCurrentLegendButtonHandler
+  OnError Goto HandleError
+  Call Create_Legend(FrontWindow())
+ Exit Sub
+ HandleError:
+  Note STR_FN_EMBED_CURRENT_LEGEND_BUTTON_HANDLER + Error$()
+  Resume Next  
+End Sub
+
+Sub RemoveAllLegendButtonHandler
+  OnError Goto HandleError
+  Dim lcv as SmallInt
+  For lcv = 1 to NumWindows()
+    Call RemoveEmbeddedLegend(WindowInfo(lcv, WIN_INFO_WINDOWID))
+  Next
+ Exit Sub
+ HandleError:
+  Note STR_FN_REMOVE_ALL_LEGEND_BUTTON_HANDLER + Error$()
+  Resume Next  
+End Sub
+
+Sub EmbedAllLegendButtonHandler
+  OnError Goto HandleError
+  Dim lcv as SmallInt
+  For lcv = 1 to NumWindows()
+    Call Create_Legend(WindowInfo(lcv, WIN_INFO_WINDOWID))
+  Next
+ Exit Sub
+ HandleError:
+  Note STR_FN_EMBED_ALL_LEGEND_BUTTON_HANDLER + Error$()
+  Resume Next    
+End Sub
+
+Sub EnableDisableRemoveLegendControls(ByVal enabled as Logical)
+  OnError Goto HandleError
+  If enabled or NumWindows() = 0 then
+    Alter Control 4209 disable
+    Alter Control 4210 disable
+  Else
+    If WindowInfo(FrontWindow() ,WIN_INFO_TYPE) = WIN_MAPPER Then
+      Alter Control 4209 enable
+    End If
+    Alter Control 4210 enable
+  End If
+ Exit Sub
+ HandleError:
+   Note STR_FN_ENABLE_DISABLE_REMOVE_LEGEND_CONTROLS + Error$()
+   Resume Next  
+End Sub
+
+Sub InitializeSynchronizeDialogHandler
+  OnError Goto HandleError
+  Call DisableWindowButtons()
+  Call EnableDisableRemoveLegendControls(tag_embed_legend)
+  Exit Sub
+  HandleError:
+    Note STR_FN_INITIALIZE_SYNCHRONIZE_DIALOG_HANDLER + Error$()
+    Resume Next  
+End Sub
+
+Sub DisableWindowButtons()
+  OnError Goto HandleError
+  Dim bFrontWindowIsMap as Logical
+  Dim bHasMapWindows as Logical
+  Dim x as smallint
+  
+  bFrontWindowIsMap = FALSE
+  bHasMapWindows = FALSE
+  
+  If NumWindows() > 0 Then
+  	If WindowInfo(FrontWindow() ,WIN_INFO_TYPE) = WIN_MAPPER Then
+  		bFrontWindowIsMap = TRUE
+  	Else
+  	  For x = 1 to NumWindows()
+  	    If WindowInfo(x ,WIN_INFO_TYPE) = WIN_MAPPER Then
+  	      bHasMapWindows = TRUE
+  	      Exit For
+  	    End If
+  	  Next
+  	End If
+  End If
+  If bFrontWindowIsMap Then
+    Alter Control 4209 enable
+    Alter Control 4212 enable
+  End If
+  If bFrontWindowIsMap or bHasMapWindows Then
+  	Alter Control 4202 enable
+  	Alter Control 4210 enable
+  	Alter Control 4211 enable
+  End If
+ Exit Sub
+ HandleError:
+   Note STR_FN_DISABLE_WINDOW_BUTTONS + Error$()
+   Resume Next 
+End Sub
+
+Sub AlwaysEmbedLegendCheckBoxChangedHandler
+  OnError Goto HandleError
+  Call EnableDisableRemoveLegendControls(ReadControlValue(4208))
+  Exit Sub
+  HandleError:
+    Note STR_FN_ALWAYS_EMBED_LEGEND_CHKBOX_HANDLER + Error$()
+    Resume Next 
+End Sub
+
+Sub Do_Sync
+  OnError Goto HandleError
+  Dim intWins as integer
+  Dim fltX as float
+  Dim fltY as float
+  Dim fltZoom as float
+  Dim sFrontMapWindowProjection, sOtherMapWindowProjection , sCmd  as string 
+
+  If NumWindows() > 0 then
+
+    If WindowInfo(FrontWindow(),WIN_INFO_TYPE) <> WIN_MAPPER then
+      Note GetResString(IDS_Only)
+      Exit Sub
+    End If
+
+    l_Center = readControlValue(4204)
+    l_Zoom = readControlValue(4205)
+
+    fltX = MapperInfo(FrontWindow(),MAPPER_INFO_CENTERX)
+    fltY = MapperInfo(FrontWindow(),MAPPER_INFO_CENTERY)
+    fltZoom = MapperInfo(FrontWindow(),MAPPER_INFO_ZOOM)
+	
+    'The Other windows should use same Projection as the front window while synchronizing
+    sFrontMapWindowProjection = MapperInfo(FrontWindow(), MAPPER_INFO_COORDSYS_CLAUSE)
+    
+    If WindowInfo(FrontWindow(), WIN_INFO_NAME) <> all(STR_AREA_OF_DETAIL, STR_OVERVIEW, GetResString(IDS_OVERVIEW),GetResString(IDS_AREA_OF_DETAIL)) then
+      For intWins = 1 to ubound(g_int_mapperId)
+        If WindowInfo(g_int_mapperId(intWins), WIN_INFO_NAME) <> all(STR_AREA_OF_DETAIL, STR_OVERVIEW, GetResString(IDS_OVERVIEW),GetResString(IDS_AREA_OF_DETAIL)) then
+          sOtherMapWindowProjection = MapperInfo(g_int_mapperId(intWins), MAPPER_INFO_COORDSYS_CLAUSE) 
+
+          If glUseFrontWinProjForSync and sOtherMapWindowProjection <> sFrontMapWindowProjection Then 
+            ' change the projection to be same as front window
+            sCmd = STR_SET_MAP_WINDOW + g_int_mapperId(intWins) + STR_EMPTY_SPACE + sFrontMapWindowProjection
+            Run Command sCmd 
+          End if 
+          If l_Center and l_Zoom then          
+            Set Map Window g_int_mapperId(intWins) Center (fltX, fltY) Zoom fltZoom
+          Else
+            If L_Center then
+              Set Map Window g_int_mapperId(intWins) Center (fltX, fltY)
+            End If
+            If L_Zoom then
+              Set Map Window g_int_mapperId(intWins) Zoom fltZoom
+            End If
+          End If
+          'change the projection back
+          If glUseFrontWinProjForSync and sOtherMapWindowProjection <> sFrontMapWindowProjection Then 
+            sCmd = STR_SET_MAP_WINDOW & g_int_mapperId(intWins) + STR_EMPTY_SPACE + sOtherMapWindowProjection  
+            Run Command sCmd 
+          End if
+        End if 
+      Next
+    End if 
+
+  Else
+
+    Note GetResString(IDS_No_Open)
+
+  End if
+  Exit Sub
+
+  HandleError:
+    Note STR_FN_DO_SYNC  + Error$()
+    Resume Next
+End Sub
+
+Sub WinChangedHandler
+  OnError Goto HandleError
+  If tag_map_sync = True Then
+
+    'VIS: Without this statement we now enter an infinite loop, very messy...
+    Set Handler WinChangedHandler Off
+
+    'handle...
+
+    Dim intWins as integer
+    Dim fltX as float
+    Dim fltY as float
+    Dim fltZoom as float
+    Dim sFrontMapWindowProjection, sOtherMapWindowProjection , sCmd  as string 
+
+    
+    If NumWindows() > 0 then
+	  'The checks are for a specific reqt from Richard Lohier. According to him. 
+	  'We propose in France an administrative map library with a specific map window named Légende  
+      If Left$(WindowInfo(FrontWindow(), WIN_INFO_NAME), Len(GetResString(IDS_LEGEND))) <> GetResString(IDS_LEGEND) and
+        Left$(WindowInfo(FrontWindow(), WIN_INFO_NAME), Len(STR_LEGEND)) <> STR_LEGEND and
+        WindowInfo(FrontWindow(), WIN_INFO_NAME) <> all(STR_AREA_OF_DETAIL, STR_OVERVIEW, GetResString(IDS_OVERVIEW),GetResString(IDS_AREA_OF_DETAIL)) Then
+
+        If WindowInfo(FrontWindow(),WIN_INFO_TYPE) <> WIN_MAPPER then
+          Set Handler WinChangedHandler On
+          Exit Sub
+        End If
+	
+        Call MapperID
+	
+        fltX = MapperInfo(FrontWindow(),MAPPER_INFO_CENTERX)
+        fltY = MapperInfo(FrontWindow(),MAPPER_INFO_CENTERY)
+        fltZoom = MapperInfo(FrontWindow(),MAPPER_INFO_ZOOM)
+        sFrontMapWindowProjection = MapperInfo(FrontWindow(), MAPPER_INFO_COORDSYS_CLAUSE)
+	
+        For intWins = 1 to ubound(g_int_mapperId)
+          If WindowInfo(g_int_mapperId(intWins), WIN_INFO_NAME) <> all(STR_AREA_OF_DETAIL, STR_OVERVIEW, GetResString(IDS_OVERVIEW),GetResString(IDS_AREA_OF_DETAIL)) Then
+				
+            sOtherMapWindowProjection = MapperInfo(g_int_mapperId(intWins), MAPPER_INFO_COORDSYS_CLAUSE) 
+		
+            If glUseFrontWinProjForSync and sOtherMapWindowProjection <> sFrontMapWindowProjection Then 
+              ' change the projection to be same as front window
+              sCmd = STR_SET_MAP_WINDOW + g_int_mapperId(intWins) + STR_EMPTY_SPACE + sFrontMapWindowProjection 
+              Run Command sCmd 
+            End If
+            If l_Center and l_Zoom then          
+              Set Map Window g_int_mapperId(intWins) Center (fltX, fltY) Zoom fltZoom
+            Else
+              If L_Center then
+                Set Map Window g_int_mapperId(intWins) Center (fltX, fltY) 	
+              End If
+		       If L_Zoom then
+                Set Map Window g_int_mapperId(intWins) Zoom fltZoom
+              End If
+            End If
+            If glUseFrontWinProjForSync and sOtherMapWindowProjection <> sFrontMapWindowProjection Then 
+              sCmd = STR_SET_MAP_WINDOW & g_int_mapperId(intWins) + STR_EMPTY_SPACE + sOtherMapWindowProjection  
+              Run Command sCmd 
+            End if 
+          End If
+        Next
+      End If
+    End If
+    Set Handler WinChangedHandler On
+
+  End If
+
+  If tag_embed_legend = True Then
+    'first check what is happening
+    If NumWindows() > 0 then
+      If WindowInfo(FrontWindow(),WIN_INFO_TYPE) <> WIN_MAPPER then
+        Exit Sub
+      End If
+      If MapperInfo(FrontWindow(), MAPPER_INFO_NUM_THEMATIC) > 0 then
+        'OK the front window has a thematic map we need to act...
+        call create_legend(frontwindow())
+      End If		
+      'lastly... cycle thru all windows & close any legend windows...
+      Dim intCount as integer
+      For intCount = 1 to NumWindows()
+        If WindowInfo(intCount, WIN_INFO_TYPE) = WIN_LEGEND then 
+          'remove any cartographic legends add "or WindowInfo(intCount, WIN_INFO_TYPE) = WIN_CART_LEGEND"
+          Close Window WindowID(intCount)
+        End If
+      Next
+    End if
+  End If
+
+  Exit Sub
+
+  HandleError:
+    Note STR_FN_WIN_CHANGED_HANDLER  + Error$()
+    Resume Next
+End Sub
+
+Sub RemoveEmbeddedLegend(ByVal windowId as Integer)
+  OnError Goto HandleError
+  Dim win, legend_win as Integer
+
+  If WindowInfo(windowID, WIN_INFO_TYPE)<> WIN_MAPPER then
+    Exit Sub
+  End If
+  legend_win = WindowHasLegend(windowId, TRUE)
+  If  legend_win > 0 then
+    'has an embedded legend, close it
+    Close Window legend_win
+  End If
+  Exit Sub
+
+  HandleError:
+    Note STR_FN_REMOVE_EMBEDDED_LEGEND + Error$()
+    Resume Next
+End Sub
+
+Sub create_legend(ByVal windowID as Integer)
+
+  Dim win, legend_win as Integer
+
+  OnError Goto HandleError
+  If WindowInfo(windowID,WIN_INFO_TYPE) <> WIN_MAPPER then
+    Exit Sub
+  End If
+  If WindowHasLegend(windowID, TRUE) > 0 then
+    'already an existing one ---> exit!
+    Exit sub
+  End If
+  Set Next Document Parent WindowInfo(windowID, WIN_INFO_WND) Style 1
+  Create Legend From Window windowID
+  Exit Sub
+
+HandleError:
+  Note STR_FN_CREATE_LEGEND + Error$()
+  Resume Next
+
+End Sub
+
+Function WindowHasLegend(ByVal win as Integer, ByVal bEmbedded as Logical) As Integer
+
+  Dim  legend_win as Integer
+  Dim i as Integer
+
+  OnError Goto HandleError
+  legend_win = 0
+  For i = -1 to -NumAllWindows() step -1
+    'do we have right kind of window?
+    If WindowInfo(i, WIN_INFO_TYPE) = WIN_LEGEND Then
+      'do we have a nonstandard legend attached to this window?
+      If WindowInfo(i, WIN_INFO_TABLE) = win Then
+        If bEmbedded and WindowParented(WindowInfo(i, WIN_INFO_WND), WindowInfo(win, WIN_INFO_WND)) Then
+          legend_win = WindowID(i)
+          Exit For
+        ElseIf NOT bEmbedded and NOT WindowParented(WindowInfo(i, WIN_INFO_WND), WindowInfo(win, WIN_INFO_WND)) Then
+          legend_win = WindowID(i)
+          Exit For
+        End If
+      End If
+    End If
+  Next
+  WindowHasLegend = legend_win
+  Exit Function
+
+HandleError:
+  Note STR_FN_WINDOW_HAS_LEGEND + Error$()
+  Resume Next
+
+End Function
+
+Function WindowParented(ByVal hwndChild as Integer, ByVal hwndParent as Integer) As Logical
+
+  OnError Goto HandleError
+  WindowParented = GetParent(hwndChild) = hwndParent
+  Exit Function
+
+HandleError:
+  Note STR_FN_WINDOW_PARENTED + Error$()
+  Resume Next
+
+End Function
+
+Sub Redline_Symbol
+  OnError Goto HandleError
+  Dim fltX as float
+  Dim fltY as float
+  Dim objPt as object
+  Dim intWins as integer
+  Dim intCycle as integer
+  Dim strCosmetic as string
+  Dim intWinID as integer
+
+   'Assign the object drawn to objPt
+  fltX = CommandInfo(CMD_INFO_X)
+  fltY = CommandInfo(CMD_INFO_Y)
+
+  Create Point into Variable objPt (fltX, fltY)
+
+  'now cycle thru and insert this obj into any cosmetic window
+  intWins = NumWindows()
+
+  If intWins > 0 then
+
+    For intCycle = 1 to intWins
+
+      if WindowInfo(intCycle, WIN_INFO_TYPE) = WIN_MAPPER then
+        intWinID = WindowID(intCycle)
+        strCosmetic = LayerInfo(intWinID,0,LAYER_INFO_NAME)
+        insert into strCosmetic (obj) values (objPt)
+      end if
+
+    Next
+
+  end if
+  Exit Sub
+
+  HandleError:
+    Note STR_FN_REDLINE_SYMBOL + Error$()
+    Resume Next
+End Sub
+
+Sub Redline_Polyline
+  OnError Goto HandleError
+  Dim objPLine as object
+  Dim intWins as integer
+  Dim intCycle as integer
+  Dim strCosmetic as string
+  Dim intWinID as integer
+
+  'Assign the object drawn to objPline
+  objPLine = CommandInfo(CMD_INFO_CUSTOM_OBJ)
+
+  'now cycle thru and insert this obj into any cosmetic window
+  intWins = NumWindows()
+
+  If intWins > 0 then
+
+    For intCycle = 1 to intWins
+
+      if WindowInfo(intCycle, WIN_INFO_TYPE) = WIN_MAPPER then
+        intWinID = WindowID(intCycle)
+        strCosmetic = LayerInfo(intWinID,0,LAYER_INFO_NAME)
+        insert into strCosmetic (obj) values (objPLine)
+      end if
+
+    Next
+
+  end if
+  Exit Sub
+
+  HandleError:
+    Note STR_FN_REDLINE_POLYLINE + Error$()
+    Resume Next
+End Sub
+
+sub Redline_Polygon
+  OnError Goto HandleError
+  Dim objPLine as object
+  Dim intWins as integer
+  Dim intCycle as integer
+  Dim strCosmetic as string
+  Dim intWinID as integer
+  Dim fltX as float
+  Dim fltY as float
+  Dim fltX1 as float
+  Dim fltY1 as float
+
+   'Assign the object drawn to objPline
+  fltX = CommandInfo(CMD_INFO_X)
+  fltY = CommandInfo(CMD_INFO_Y)
+  fltX1 = CommandInfo(CMD_INFO_X2)
+  fltY1 = CommandInfo(CMD_INFO_Y2)
+
+  Create Rect into Variable objPLine (fltX, fltY) (fltX1, fltY1)
+
+  'now cycle thru and insert this obj into any cosmetic window
+  intWins = NumWindows()
+
+  If intWins > 0 then
+
+    For intCycle = 1 to intWins
+
+      if WindowInfo(intCycle, WIN_INFO_TYPE) = WIN_MAPPER then
+        intWinID = WindowID(intCycle)
+        strCosmetic = LayerInfo(intWinID,0,LAYER_INFO_NAME)
+        insert into strCosmetic (obj) values (objPLine)
+      end if
+
+    Next
+
+  end if
+  Exit Sub
+
+  HandleError:
+    Note STR_FN_REDLINE_POLYGON + Error$()
+    Resume Next
+End Sub
+
+Sub Redline_Ellipse
+  OnError Goto HandleError
+  Dim objPLine as object
+  Dim intWins as integer
+  Dim intCycle as integer
+  Dim strCosmetic as string
+  Dim intWinID as integer
+  Dim fltX as float
+  Dim fltY as float
+  Dim fltX1 as float
+  Dim fltY1 as float
+
+   'Assign the object drawn to objPline
+  fltX = CommandInfo(CMD_INFO_X)
+  fltY = CommandInfo(CMD_INFO_Y)
+  fltX1 = CommandInfo(CMD_INFO_X2)
+  fltY1 = CommandInfo(CMD_INFO_Y2)
+
+  Create Ellipse into Variable objPLine (fltX, fltY) (fltX1, fltY1)
+
+  'now cycle thru and insert this obj into any cosmetic window
+  intWins = NumWindows()
+
+  If intWins > 0 then
+
+    For intCycle = 1 to intWins
+
+      if WindowInfo(intCycle, WIN_INFO_TYPE) = WIN_MAPPER then
+        intWinID = WindowID(intCycle)
+        strCosmetic = LayerInfo(intWinID,0,LAYER_INFO_NAME)
+        insert into strCosmetic (obj) values (objPLine)
+      end if
+
+    Next
+
+  end if
+  Exit Sub
+
+  HandleError:
+  Note STR_FN_REDLINE_ELLIPSE  + Error$()
+  Resume Next
+End Sub
+
+Sub Rename
+OnError Goto HandleError
+  Dim strMapName as string
+
+  If NumWindows() > 0 then
+    Dialog
+      Title GetResString(IDS_Rename_Title)
+      Control StaticText
+        Title GetResString(IDS_Enter_Name)
+        Position 10,10
+      Control EditText
+        into strMapName
+        position 10,20
+        width 130
+      Control OKButton
+      Control CancelButton
+        
+    If CommandInfo(CMD_Info_DLG_OK) then
+      If ltrim$(rtrim$(strMapName)) <> STR_EMPTY_STR then
+        set window frontWindow() title strMapName
+      Else
+        Note GetResString(IDS_No_Rename)
+      End If
+    End If
+  Else
+    Note GetResString(IDS_Open_Window)
+  End If
+  Exit Sub
+
+  HandleError:
+    Note STR_FN_RENAME + Error$()
+    Resume Next
+End Sub
+
+Sub ClearCosmetic
+  OnError Goto HandleError
+  Call MapperId
+
+  Dim I as integer
+
+  For I = 1 to ubound(g_int_MapperId)
+    Set Window g_int_MapperId(i) front
+    Run Menu Command 810
+  Next
+  Exit Sub
+
+  HandleError:
+    Note STR_FN_CLEAR_COSMETIC + Error$()
+    Resume Next
+End Sub
+  
+Sub MapperId
+  OnError Goto HandleError
+  Dim intWindows, intCounter, intMappers as integer
+
+  intWindows = numWindows()
+  intMappers = 1
+
+  redim g_int_MapperId(intWindows)
+
+  For intCounter = 1 to intWindows
+    If WindowInfo(intCounter,WIN_INFO_TYPE) = 1 and
+      'The checks are for a specific reqt from Richard Lohier. According to him. 
+	  'We propose in France an administrative map library with a specific map window named Légende  
+      Left$(WindowInfo(FrontWindow(), WIN_INFO_NAME), Len(GetResString(IDS_LEGEND))) <> GetResString(IDS_LEGEND) and
+      Left$(WindowInfo(FrontWindow(), WIN_INFO_NAME), Len(STR_LEGEND)) <> STR_LEGEND then
+      
+      g_int_MapperId(intMappers) = WindowID(intCounter)
+      intMappers = intMappers + 1
+    End If
+  Next
+
+  redim g_int_MapperId(intMappers - 1)
+  Exit Sub
+
+  HandleError:
+    Note STR_FN_MAPPER_ID + Error$()
+    Resume Next
+End Sub
+
+Sub Exit_Program
+
+  OnError goto NoButtonPad
+
+  Call saveToolbarPositionInfo(gsAppDescription, gsAppDescription) 
+
+  Alter ButtonPad GetResString(IDS_Title) destroy
+  End Program
+
+NoButtonPad:
+  resume next
+
+End Sub
+
+Sub About
+  OnError Goto HandleError
+  Dialog Title GetResString(IDS_ABOUT)
+  Width 200 
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_1) Position 10, 10
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_2) Position 10, 19
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_3) Position 10, 28
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_4) Position 10, 37
+  Control OKButton Position 78, 48 Width 45
+  Exit Sub
+
+  HandleError:
+    Note STR_FN_ABOUT + Error$()
+End Sub
+  
+
+Sub MapSyncDynamic
+  OnError Goto HandleError
+    Call saveToolbarPositionInfo(gsAppDescription, gsAppDescription ) 
+    tag_map_sync  = NOT(tag_map_sync) ' RLO
+    Exit Sub
+	
+  HandleError:
+  Note STR_FN_MAP_SYNC_DYNAMIC + Error$()
+  Resume Next
+
+End Sub 
+
+
+Sub endHandler 
+  OnError Goto HandleError
+    Call saveToolbarPositionInfo(gsAppDescription, gsAppDescription ) 
+    Exit Sub
+  HandleError:
+    Note STR_FN_END_HANDLER + Error$()
+    Resume Next
+End Sub 
+
+Sub winClosedHandler
+  OnError Goto HandleError
+  Call saveToolbarPositionInfo(gsAppDescription, gsAppDescription ) 
+    If NumWindows() = 1 and tag_map_sync then
+      tag_map_sync = False
+      Alter Button Id IDS_SYNC_DYNAMIC uncheck 
+    End If
+  Exit Sub
+
+  HandleError:
+  Note STR_FN_WIN_CLOSED_HANDLER + Error$()
+  Resume Next
+End Sub

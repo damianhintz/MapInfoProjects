@@ -1,0 +1,16 @@
+'*****************************************************************************
+'       Copyright © 2009 Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 66276 $
+'
+' Module Description:
+'
+' A MapBasic sample program to demonstate the usage of MapInfo HTTP/FTP
+' library API to receive/send/search files from/to FTP server.
+'
+'*****************************************************************************
+[Link]
+Application=FTPtest.mbx
+Module=FTPtest.mbo
+Module=FilesManager.mbo

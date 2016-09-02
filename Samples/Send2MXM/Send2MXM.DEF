@@ -1,0 +1,145 @@
+
+'Define AppVersion 2.5 [from MapX Geoset Utility]
+
+Global gsGeoSetVersion As String
+Define GEOSET_VERSION_100 "100"
+Define GEOSET_VERSION_400 "400"
+Define GEOSET_VERSION_450 "450"
+
+Global gnPath As SmallInt
+Define PATH_FULL 1
+Define PATH_NONE 2
+
+Declare Function GetGeosetPath() As String
+Declare Function InitGeoset(ByVal lMapWin As Integer, ByVal sGeosetName As String, ByVal sGeosetFile As String) As Logical
+Declare Function CloseGeoset() As Logical
+Declare Function WriteGeosetOK As Logical
+Declare Function WriteGeosetMetadata(ByVal sKey As String, ByVal sValue As String) As Logical
+Declare Function WriteGeosetMetadataBrush(ByVal sKey As String, ByVal styleBrush As Brush) As Logical
+Declare Function WriteGeosetMetadataLinePen(ByVal sKey As String, ByVal stylePen As Pen) As Logical
+Declare Function WriteGeosetMetadataPen(ByVal sKey As String, ByVal stylePen As Pen) As Logical
+Declare Function WriteGeosetMetadataFont(ByVal sKey As String, ByVal styleFont As Font) As Logical
+Declare Function WriteGeosetMetadataSymbol(ByVal sKey As String, ByVal styleSymbol As Symbol) As Logical
+Declare Function GeosetLayerInfo(ByVal lMapWin As Integer, ByVal lLayer As Integer) As Logical
+Declare Function NumListItems(ByVal sList As String, ByVal sDelimiter As String) As SmallInt
+Declare Function GetListString$(ByVal sList As String, ByVal nItem As Smallint, ByVal sDelimiter As String) As String
+Declare Function ReplaceListString$(ByVal sList As String, ByVal nItem As Smallint, ByVal sDelimiter As String, ByVal sReplacement As String) As String
+
+' Resource String Ids
+Define IDS_STR_RES_RANGE_ERR             1
+Define IDS_APP_DESCRIPTION               2
+Define IDS_MENU_NAME                     3
+'Define IDS_OPEN_MENU_ITEM_NAME           4
+'Define IDS_SAVE_MENU_ITEM_NAME           5
+Define IDS_ABOUT_MENU_ITEM_NAME          6
+Define IDS_EXIT_MENU_ITEM_NAME           7
+Define IDS_FINISHED_READING_GEOSET       8
+Define IDS_FINISHED_WRITING_GEOSET       9
+Define IDS_ABOUT                         10
+Define IDS_VERSION                       11
+Define IDS_ABOUT_1                       12
+Define IDS_ABOUT_2                       13
+Define IDS_ABOUT_3                       14
+Define IDS_ABOUT_4                       15
+Define IDS_OK                            16
+Define IDS_CANCEL                        17
+Define IDS_SAVE_GEOSET_AS                18
+Define IDS_SELECT_GEOSET_VERSION         19
+Define IDS_PRE_40                        20
+Define IDS_40                            21
+Define IDS_45                            22
+Define IDS_OPEN_GEOSET                   23
+Define IDS_UNKNOWN_KEY                   24
+Define IDS_OPENING_TABLE                 25
+Define IDS_AS                            26
+Define IDS_SKIPPING_TABLE                27
+Define IDS_PERHAPS_A_DRILL_DOWN_TABLE    28
+Define IDS_WRITING_LAYER                 29
+Define IDS_LAYER_NOT_SUPPORTED           30
+Define IDS_DUPLICATE_LAYER               31
+Define IDS_WRITING_GEOSET                32
+Define IDS_WHILE_LOOKING_FOR             33
+Define IDS_IN                            34
+Define IDS_READING_GEOSET                35
+Define IDS_UNKNOWN_VERSION               36
+Define IDS_ERR_MSG_SEVERITY_WRN          37
+Define IDS_ERR_MSG_SEVERITY_ERR          38
+Define IDS_ERR_MSG_STR_NUM               39
+Define IDS_ERR_MSG_AREA_READING          40
+Define IDS_ERR_MSG_AREA_PARSING          41
+Define IDS_ERR_MSG_AREA_OPENING          42
+Define IDS_ERR_MSG_AREA_STYLE            43
+Define IDS_ERR_MSG_BAD_HEADER            44
+Define IDS_ERR_MSG_CONST_IDNT            45
+Define IDS_ERR_MSG_CONST_DLMT            46
+Define IDS_ERR_MSG_MISS_QUOTE            47
+Define IDS_ERR_MSG_UNKNOWN_GEOSET        48
+Define IDS_ERR_MSG_UNKNOWN_TABLE         49
+Define IDS_ERR_MSG_MISS_FILENAME1        50
+Define IDS_ERR_MSG_MISS_FILENAME2        51
+Define IDS_ERR_MSG_CREATE_STYLE          52
+Define IDS_ERR_MSG_CANT_OPEN_TABLE1      53
+Define IDS_ERR_MSG_CANT_OPEN_TABLE2      54
+Define IDS_ERR_MSG_CANT_OPEN_TABLE3      55
+'
+' new Defines for Send To MapXMobile
+'
+Define AppVersion 1.4
+
+Define IDS_MB_MENU_SEND_MAP_TO	 	56
+define IDS_MB_MENU_PPC	 			57
+define IDS_STEP_1_TITLE				58
+define IDS_STEP_1_RADIO_GROUP_1		59
+define IDS_STEP_1_RADIO_GROUP_2		60
+define IDS_STEP_1_OPTION_1_DESC		61
+define IDS_STEP_1_OPTION_2_DESC		62
+define IDS_STEP_1_NEXT_BTN			63
+define IDS_STEP_2_TITLE				64
+define IDS_STEP_2_INSTR				65
+define IDS_STEP_2_DEFAULT_GST_NAME		66
+define IDS_STEP_2_BROWSE_BTN			67
+define IDS_STEP_1_EXPORT_EMPTY		68
+define IDS_STEP_2_FINISH_BTN			69
+define IDS_STEP_2_BACK_BTN			70
+define IDS_STEP_2_BROWSE_DLG_TITLE		71
+define IDS_PREPROCESS_ERROR			72
+define IDS_EXPORT_MSG_PART_1			73
+define IDS_EXPORT_OBJECT_SING			74
+define IDS_EXPORT_OBJECTS_PLURAL		75
+define IDS_EXPORT_MSG_PART_2			76
+define IDS_EXPORT_MAP_ERROR_2			77
+define IDS_ERROR					78
+define IDS_COSMETIC_LAYER_NAME		79
+define IDS_MODIFYING_GEOSET			80
+define IDS_STEP_1_HELP_BTN			81
+define IDS_HELP_MSG				82
+define IDS_STEP_1_ORIG_WINDOW			83
+define IDS_STEP_1_RESHAPED_WINDOW		84
+define IDS_ERROR_MOVING_TABLE			85
+define IDS_USED_ALTERNATE_NAME		86
+define IDS_FAILED_TEN_TRIES			87
+define IDS_WRITE_FAILURE_WARNING		88
+define IDS_STEP_2_OPEN_GEOSET			89
+define IDS_COMPLETED_EXPORT			90
+define IDS_KB					91
+define IDS_STEP_2_TOTAL_FILE_SIZE		92
+define IDS_STEP_1_EXPORT_GROUP		93
+define IDS_STEP_1_SUBSET_GROUP		94
+define IDS_EXPORTING_MSG			95
+define IDS_STEP_2_ACTIVESYNC_NOTE		96
+define IDS_STEP_2_EXPORT_SIZE_GROUP		97
+define IDS_STEP_2_OVERWRITE_FILES		98
+define IDS_STEP_2_SETTINGS_GROUP		99
+define IDS_STEP_2_INVALID_PATH		100
+define IDS_CANT_OVERWRITE_PART_1		101
+define IDS_CANT_OVERWRITE_PART_2		102
+define IDS_CANT_OVERWRITE_PART_3		103
+define IDS_CANT_WRITE_PRF			104
+define IDS_DUPLICATE_LAYER_MSG		105
+
+define MENU_SEND_MAP_TO				1432
+define MENU_SEND_MAP_TO_PPC 			1443
+define DPI_STANDARD				96
+define DPI_LAPTOP					120
+define PPC_GEOSET_MGR_PIXWIDTH		240
+define PPC_GEOSET_MGR_PIXHEIGHT		191

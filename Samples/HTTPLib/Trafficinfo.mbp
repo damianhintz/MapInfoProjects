@@ -1,0 +1,19 @@
+'*****************************************************************************
+'       Copyright © 2009 Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 66276 $
+'
+' Module Description:
+'
+' The project file to demonstate the usage of MapInfo HTTP/XML
+' library API to get traffic information from Yahoo.
+'
+'*****************************************************************************
+[Link]
+Application=TrafficInfo.mbx
+Module=TrafficInfo.mbo
+Module=YahooTrafficRSS.mbo
+Module=MapUtils.MBO
+Module=HTTPUtil.mbo
+Module=XMLUtil.mbo

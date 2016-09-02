@@ -1,0 +1,212 @@
+'****************************************************************************
+'
+' Program: GET_TAB 
+'
+' This file is intended to be used as an Include file...
+' If your program includes this file, by issuing the statement: 
+'          Include  "GET_TAB.MB" 
+' then your program will be able to call the GetTableName() Function 
+' defined below. 
+'
+' GetTableName() shows the user a list of currently-open tables, 
+' and lets user pick one table from the list. The user can either select 
+' from the list and click OK, or they can double-click an item from the list.    
+'
+' Implemented as a FUNCTION, which returns a string (the table name
+' chosen).  To use this function, you say something like 
+' 
+'    str_var_name = GetTableName("Pick a table to Browse", TRUE, TRUE)
+'
+' The first parameter is a string prompt. 
+' 
+' The second parameter is logical: specify TRUE if you ONLY want the dialog
+' to list mappable table names, or FALSE if it's okay for the dialog 
+' to list ALL table names. 
+'
+' The third parameter is logical: specify TRUE if you want the dialog to 
+' include the item "Other..." in the list of tables. The user can click   
+' "Other..." to OPEN another table instead of choosing one of the ones 
+' already open.
+'
+'****************************************************************************
+
+'****************************************************************************
+'
+' Declare global variables
+'
+'****************************************************************************
+Global gtn_name_chosen As String 
+Global gtn_Table_names(0) As String 
+Global gtn_num_usable As SmallInt 
+
+'****************************************************************************
+'
+' Declare sub procedures and functions
+'
+'****************************************************************************
+Declare Sub GTN_OK_Handler()              
+Declare Function GetTableName(ByVal msg            As String,  
+                              ByVal map_required   As Logical, 
+                              ByVal other_included As Logical) As String 
+
+'****************************************************************************
+'
+' Function: GetTableName
+'
+'****************************************************************************
+Function GetTableName(ByVal msg            As String, 
+                      ByVal map_required   As Logical, 
+                      ByVal other_included As Logical) As String 
+
+  ' Declare local variables.
+  Dim i, num_open, chosen, shift_ok, shift_cancel As SmallInt
+  Dim Table_list As String 
+
+  ' Calculate some dialog push-button offsets, so that if we're
+  ' running on Windows, the OK button will be to the left of cancel,
+  ' but on Macintosh, the OK button will be to the right. 
+  shift_ok = 0
+  shift_cancel = 50
+  If SystemInfo(SYS_INFO_PLATFORM) = PLATFORM_MAC  Then 
+    shift_cancel = 0
+    shift_ok = 50 
+  End If 
+
+  gtn_name_chosen = ""
+  gtn_num_usable = 0 
+  num_open = NumTables()
+  ReDim gtn_Table_names( num_open )
+  If num_open > 0 Then 
+    For i = 1 To num_open 
+      '
+      ' If either the caller didn't require that tables be mappable,
+      ' or this particular table IS mappable, then include 
+      ' this table in the "usable" list. 
+      ' 
+      If Not map_required Or TableInfo(i, TAB_INFO_MAPPABLE) Then 
+        gtn_num_usable = gtn_num_usable + 1 
+        gtn_Table_names(gtn_num_usable) = TableInfo(i, TAB_INFO_NAME) 
+        Table_list = Table_list + TableInfo(i, TAB_INFO_NAME)  + ";"
+      End If 
+      If i = num_open And other_included Then 
+        Table_list = Table_list + "Other..."
+      End If 
+    Next 
+  End If 
+
+  If gtn_num_usable > 0 Then 
+    '
+    ' If there are any tables which are "usable" for our purposes,
+    ' display a dialog to let the user choose a table. 
+    ' 
+    Dialog 
+      Title "Select a Table" 
+      Control StaticText 
+        Title msg 
+      Control ListBox 
+        Title Table_list 
+        Position 10, 25
+        Width 124   Height 40
+        Value 1 
+        ID 1 
+        Into chosen
+        Calling GTN_OK_Handler
+      Control CancelButton 
+        Title "Cancel"
+        Position 50 + shift_cancel, 85
+      Control OKButton
+        Title "OK"
+        Position 50 + shift_ok, 85 
+        ID 2 
+        Calling GTN_OK_Handler
+     
+    If CommandInfo(CMD_INFO_DLG_OK) Then  ' ... If clicked OK... 
+      If chosen <= gtn_num_usable Then    ' ... If chose regular table
+        gtn_name_chosen = gtn_Table_names(chosen)  
+      End If 
+    End If  
+  Else  
+    ' 
+    ' If no usable tables are open, call sub to prompt to open a table.
+    ' (BUT, if the "Other" parameter was false, don't let the choose
+    ' a new file).  
+    ' 
+    If other_included Then 
+      Call GTN_OK_Handler
+    End If 
+  End If 
+  GetTableName = LTrim$(gtn_name_chosen) 
+End Function 
+
+'****************************************************************************
+'
+' Sub procedure: GTN_OK_Handler
+'
+' Called if the user clicked OK or if the user double-clicked 
+' a list item in dialog above.  
+' 
+' If user selected one of the "regular" list items, we can just return.  
+' That's fine.  (But in case we were called because the user 
+' double-clicked the ListBox, let's issue a Dialog Remove statement). 
+' 
+' If the user selected "Other..."  we'll use FileOpenDlg( ) to present 
+' another prompt. 
+'**************************************************************************** 
+Sub GTN_OK_Handler                    
+ 
+  Dim num As SmallInt 
+
+  'Just return if the user single-clicked the list.
+  If Not CommandInfo(CMD_INFO_DLG_DBL)  And  TriggerControl() = 1  Then 
+    Exit Sub 
+  End If 
+
+  ' ... handle case where we were called from Dialog, and user 
+  ' simply chose one of the conventional table names 
+  ' (i.e. user didn't choose "Other..." )  
+  If gtn_num_usable > 0 Then        ' If there's a Dialog up... 
+    num = ReadControlValue(1)       ' see which list item selected...
+    If num <= gtn_num_usable Then   ' If they chose a regular table...
+      gtn_name_chosen = gtn_Table_names(num)  
+      Dialog Remove
+      Exit Sub 
+    End If 
+  End If 
+
+  '
+  ' Here, either there are no open tables for the user to choose from
+  ' (in which case there isn't a Dialog on the screen right now), 
+  ' or the user chose the "Other..." item from the list. 
+  ' In either case, present an Open File Dialog. 
+  ' 
+  gtn_name_chosen = FileOpenDlg("", "", "TAB", "Select a table to open")
+
+  If gtn_name_chosen = "" Then 
+    ' 
+    ' the user cancelled from the Open File Dialog.
+    ' If our caller put up a Dialog, preserve it  (but if there
+    ' are no usable open files, the Dialog won't be there). 
+    '
+    If gtn_num_usable > 0 Then 
+       Dialog Preserve
+    End If 
+  Else
+    ' 
+    ' the user selected from the Open Table Dialog. 
+    ' perform a Dialog Remove if we have to... 
+    '
+    OnError Goto ignore  
+    Open Table gtn_name_chosen  
+    gtn_name_chosen = TableInfo(0, TAB_INFO_NAME) 
+    If gtn_num_usable > 0 Then 
+      Dialog Remove
+    End If 
+  End If 
+  Exit Sub 
+
+ignore: 
+
+  Resume Next 
+
+End Sub 
+   

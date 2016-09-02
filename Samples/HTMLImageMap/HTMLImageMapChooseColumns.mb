@@ -1,0 +1,672 @@
+'*****************************************************************************
+'       Copyright (c) 2000-2001, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: HTMLImageMapChooseColumns.mb $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+' Handle column selection for landing page
+'
+'*****************************************************************************
+Include "mapbasic.def"
+Include "HTMLImageMap.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+Declare Sub ColumnAdd
+Declare Sub ColumnAddAll
+Declare Sub ColumnRemoveAll
+Declare Sub ColumnRemove
+Declare Sub ColumnNameAliasesHandler
+Declare Sub TreatAsLinksHandler
+Declare Sub ColumnNameAliasEdit
+Declare Sub LoadAliasesFromMetaData
+Declare Sub SaveAliasesToMetaData
+Declare Sub ColumnNameAliasProperCase
+Declare Sub ColumnNameAliasUpperCase
+Declare Sub ColumnNameAliasRemove
+Declare Sub TreatAllAsLinks
+Declare Sub TreatNoneAsLinks
+Declare Sub ChooseColumnsDialogHandler
+
+Define IDColumnNamesSource 612
+Define IDAdd 613
+Define IDAddAll 614
+Define IDRemoveAll 615
+Define IDRemove 616
+Define IDColumnNamesTarget 617
+Define IDColumnNameAliases 618
+Define IDTreatAsLinks 619
+Define IDColumnNameAliaseEdit 620
+Define IDLoadAliasesToMetaData 621
+Define IDSaveAliasesToMetaData 622
+
+
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub ChooseColumns
+  OnError Goto HandleError
+
+  If Ubound(gtLayerNamesTarget) = 0 Or
+     Ubound(gtLayerNamesTarget) < giSelectedTargetLayer Or
+     giSelectedTargetLayer = 0 Then
+    Exit Sub
+  End If
+  
+
+  Dialog
+    Title GetResString(IDS_CHOOSE_COLUMNS)
+    Calling ChooseColumnsDialogHandler
+    Control StaticText
+      Title GetResString(IDS_COLUMNS_IN_TABLE)
+      Position 10, 10
+    Control MultiListBox
+      Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource
+      Position 10, 20
+      ID IDColumnNamesSource
+    Control Button
+      Title GetResString(IDS_ADD_ALL)
+      Position 95, 20
+      Width 60
+      ID IDAddAll
+      Calling ColumnAddAll
+    Control Button
+      Title GetResString(IDS_ADD)
+      Position 95, 40
+      Width 60
+      ID IDAdd
+      Calling ColumnAdd
+    Control Button
+      Title GetResString(IDS_REMOVE)
+      Position 95, 60
+      Width 60
+      ID IDRemove
+      Calling ColumnRemove
+    Control Button
+      Title GetResString(IDS_REMOVE_ALL)
+      Position 95, 80
+      Width 60
+      ID IDRemoveAll
+      Calling ColumnRemoveAll
+    Control StaticText
+      Title GetResString(IDS_COLUMNS_ON_PAGE)
+      Position 160, 10
+    Control MultiListBox
+      Position 160, 20
+      ID IDColumnNamesTarget
+      Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget
+    Control StaticText
+      Title GetResString(IDS_COLUMN_NAME_ALIASES)
+      Position 250, 10
+    Control ListBox
+      Position 250, 20
+      ID IDColumnNameAliases
+      Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases
+      Calling ColumnNameAliasesHandler
+    Control StaticText
+      Title GetResString(IDS_TREAT_AS_LINKS)
+      Position 330, 10
+    Control ListBox
+      Position 340, 20
+      ID IDTreatAsLinks
+      Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks
+      Calling TreatAsLinksHandler
+      Width 30
+    Control CheckBox
+      Title GetResString(IDS_INCLUDE_HOTLINK)
+      Position 160, 92
+      Value glIncludeHotLink
+      Into glIncludeHotLink
+    Control GroupBox
+      Title GetResString(IDS_COLUMN_NAME_ALIASES_EDITING)
+      Position 10, 100
+      Width 300
+      Height 50
+    Control Button
+      Title GetResString(IDS_LOAD_FROM_METADATA)
+      Calling LoadAliasesFromMetaData
+      ID IDLoadAliasesToMetaData
+      Position 15, 110
+      Width 80
+    Control Button
+      Title GetResString(IDS_SAVE_TO_METADATA)
+      Calling SaveAliasesToMetaData
+      ID IDSaveAliasesToMetaData
+      Position 15, 130
+      Width 80
+    Control Button
+      Title GetResString(IDS_PROPER_CASE)
+      Calling ColumnNameAliasProperCase
+      Position 100, 110
+      Width 55
+    Control Button
+      Title GetResString(IDS_UPPER_CASE)
+      Calling ColumnNameAliasUpperCase
+      Position 100, 130
+      Width 55
+    Control Button
+      Title GetResString(IDS_REMOVE_UNDERSCORES)
+      Calling ColumnNameAliasRemove
+      Position 160, 110
+      Width 55
+    Control Button
+      Title GetResString(IDS_EDIT)
+      ID IDColumnNameAliaseEdit
+      Calling ColumnNameAliasEdit
+      Position 160, 130
+      Width 55
+      Disable
+    Control Button
+      Title GetResString(IDS_TREAT_ALL_AS_LINKS)
+      Position 220, 110
+      Calling TreatAllAsLinks
+    Control Button
+      Title GetResString(IDS_TREAT_NONE_AS_LINKS)
+      Position 220, 130
+      Calling TreatNoneAsLinks
+    Control OKButton
+      Title GetResString(IDS_OK)
+      Position 330, 115
+    Control CancelButton
+      Title GetResString(IDS_CANCEL)
+      Position 330, 135
+
+  Exit Sub
+
+HandleError:
+  Note "ChooseColumns: " + Error$()
+  Resume Next
+End Sub 'ChooseColumns
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub ColumnAdd
+  OnError Goto HandleError
+
+  Dim i, j, iItem, iItems, iFirst As Integer
+  Dim s As String
+
+  iItems = 0
+
+  iFirst = ReadControlValue(IDColumnNamesSource)
+  iItem = iFirst
+  Do
+    If iItem <> 0 Then
+      ReDim gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget(UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget) + 1)
+      ReDim gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases) + 1)
+      ReDim gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks(UBound(gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks) + 1)
+      s = gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource(iItem-iItems) 
+      j = UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget)
+      gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget(j) = s
+      gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(j) = s
+      gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks(j) = GetResString(IDS_NO)
+      For i = iItem-iItems + 1 To UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource)
+        gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource(i - 1) = gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource(i)
+      Next
+      ReDim gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource(UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource) - 1)
+      iItems = iItems + 1
+    End If
+    iItem = ReadControlValue(IDColumnNamesSource)
+  Loop Until iItem = 0
+
+  Alter Control IDColumnNamesSource Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource
+  Alter Control IDColumnNamesTarget Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget
+  Alter Control IDColumnNameAliases Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases
+  Alter Control IDTreatAsLinks Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks
+
+  If iFirst <> 0 Then
+    If UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource) <> 0 Then
+      If iFirst > UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource) Then
+        iFirst = UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource)
+      End If
+      Alter Control IDColumnNamesSource Value iFirst
+      Alter Control IDColumnNamesSource Active
+    End If
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "ColumnAdd: " + Error$()
+  Resume Next
+End Sub 'ColumnAdd
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub ColumnAddAll
+  OnError Goto HandleError
+
+  Dim i, j As Integer
+  Dim s As String
+
+  j = UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget)
+  ReDim gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget(UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget) + UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource))
+  ReDim gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases) + UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource))
+  ReDim gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks(UBound(gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks) + UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource))
+  For i = 1 To UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource)
+    s = gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource(i)
+    j = j + 1
+    gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget(j) = s
+    gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(j) = s
+    gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks(j) = GetResString(IDS_NO)
+  Next
+  ReDim gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource(0)
+
+  Alter Control IDColumnNamesSource Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource
+  Alter Control IDColumnNamesTarget Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget
+  Alter Control IDColumnNameAliases Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases
+  Alter Control IDTreatAsLinks Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks
+
+  Exit Sub
+
+HandleError:
+  Note "ColumnAddAll: " + Error$()
+  Resume Next
+End Sub 'ColumnAddAll
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub ColumnRemoveAll
+  OnError Goto HandleError
+
+  Dim i, j As Integer
+  Dim s As String
+
+  j = UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource)
+  ReDim gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource(UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource) + UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget))
+  For i = 1 To UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget)
+    s = gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget(i)
+    j = j + 1
+    gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource(j) = s
+  Next
+  ReDim gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget(0)
+  ReDim gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(0)
+  ReDim gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks(0)
+
+  Alter Control IDColumnNamesSource Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource
+  Alter Control IDColumnNamesTarget Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget
+  Alter Control IDColumnNameAliases Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases
+  Alter Control IDTreatAsLinks Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks
+
+  Exit Sub
+
+HandleError:
+  Note "ColumnRemoveAll: " + Error$()
+  Resume Next
+End Sub 'ColumnRemoveAll
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub ColumnRemove
+  OnError Goto HandleError
+
+  Dim i, j, iItem, iItems, iFirst As Integer
+  Dim s As String
+
+  iItems = 0
+
+  iFirst = ReadControlValue(IDColumnNamesTarget)
+  iItem = iFirst
+  Do
+    If iItem <> 0 Then
+      ReDim gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource(UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource) + 1)
+      s = gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget(iItem-iItems) 
+      j = UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource)
+      gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource(j) = s
+      For i = iItem-iItems + 1 To UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget)
+        gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget(i - 1) = gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget(i)
+        gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(i - 1) = gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(i)
+        gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks(i - 1) = gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks(i)
+      Next
+      ReDim gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget(UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget) - 1)
+      ReDim gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases) - 1)
+      ReDim gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks(UBound(gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks) - 1)
+      iItems = iItems + 1
+    End If
+    iItem = ReadControlValue(IDColumnNamesTarget)
+  Loop Until iItem = 0
+
+  Alter Control IDColumnNamesSource Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesSource
+  Alter Control IDColumnNamesTarget Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget
+  Alter Control IDColumnNameAliases Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases
+  Alter Control IDTreatAsLinks Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks
+
+  If iFirst <> 0 Then
+    If UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget) <> 0 Then
+      If iFirst > UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget) Then
+        iFirst = UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget)
+      End If
+      Alter Control IDColumnNamesTarget Value iFirst
+      Alter Control IDColumnNamesTarget Active
+    End If
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "ColumnRemove: " + Error$()
+  Resume Next
+End Sub 'ColumnRemove
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub ColumnNameAliasesHandler
+  OnError Goto HandleError
+
+  Dim iItem As Integer
+
+  If CommandInfo(CMD_INFO_DLG_DBL) = TRUE Then 
+    Call ColumnNameAliasEdit
+  End If
+  iItem = ReadControlValue(IDColumnNameAliases)
+  If iItem <> 0 Then
+    Alter Control IDColumnNameAliaseEdit Enable
+    Alter Control IDColumnNameAliases Value iItem
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "ColumnNameAliasesHandler: " + Error$()
+  Resume Next
+End Sub 'ColumnNameAliasesHandler
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub TreatAsLinksHandler
+  OnError Goto HandleError
+
+  Dim iItem As Integer
+
+  iItem = ReadControlValue(IDTreatAsLinks)
+  If iItem <> 0 Then
+    If gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks(iItem) = GetResString(IDS_YES) Then
+      gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks(iItem) = GetResString(IDS_NO)
+    Else
+      gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks(iItem) = GetResString(IDS_YES)
+    End If
+  End If
+  Alter Control IDTreatAsLinks Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks
+  Alter Control IDTreatAsLinks Value iItem
+
+  Exit Sub
+
+HandleError:
+  Note "TreatAsLinksHandler: " + Error$()
+  Resume Next
+End Sub TreatAsLinksHandler
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub ColumnNameAliasEdit
+  OnError Goto HandleError
+
+  Dim iItem As Integer
+  Dim s As String
+
+  iItem = ReadControlValue(IDColumnNameAliases)
+  If iItem <> 0 Then
+    Dialog
+      Title GetResString(IDS_EDIT_ALIAS)
+      Control EditText
+        Value gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(iItem)
+        Into s
+      Control OKButton
+        Title GetResString(IDS_OK)
+      Control CancelButton
+        Title GetResString(IDS_CANCEL)
+    If CommandInfo(CMD_INFO_DLG_OK) Then 
+      gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(iItem) = s
+      Alter Control IDColumnNameAliases Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases
+      Alter Control IDColumnNameAliases Value iItem
+      Alter Control IDColumnNameAliases Active
+    End If
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "ColumnNameAliasEdit: " + Error$()
+  Resume Next
+End Sub 'ColumnNameAliasEdit
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub ColumnNameAliasProperCase
+  OnError Goto HandleError
+
+  Dim i As Integer
+
+  For i = 1 To UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases)
+    gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(i) = Proper$(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(i))
+  Next
+
+  Alter Control IDColumnNameAliases Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases
+
+  Exit Sub
+
+HandleError:
+  Note "ColumnNameAliasProperCase: " + Error$()
+  Resume Next
+End Sub 'ColumnNameAliasProperCase
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub ColumnNameAliasUpperCase
+  OnError Goto HandleError
+
+  Dim i As Integer
+
+  For i = 1 To UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases)
+    gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(i) = UCase$(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(i))
+  Next
+
+  Alter Control IDColumnNameAliases Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases
+
+  Exit Sub
+
+HandleError:
+  Note "ColumnNameAliasUpperCase: " + Error$()
+  Resume Next
+End Sub 'ColumnNameAliasUpperCase
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub ColumnNameAliasRemove
+  OnError Goto HandleError
+
+  Dim i, j As Integer
+
+  For i = 1 To UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases)
+    j = Instr(1, gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(i), "_")
+    Do While j <> 0 
+      gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(i) = Left$(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(i), j-1) + " " + Mid$(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(i), j+1, 255)
+      j = Instr(1, gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(i), "_")
+    Loop
+  Next
+
+  Alter Control IDColumnNameAliases Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases
+
+  Exit Sub
+
+HandleError:
+  Note "ColumnNameAliasProperCase: " + Error$()
+  Resume Next
+End Sub 'ColumnNameAliasProperCase
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub LoadAliasesFromMetaData
+  OnError Goto HandleError
+
+  Dim i, j, iTraversal As Integer 
+  Dim sKeyName, sKeyValue As String 
+
+  If gtLayerNamesTarget(giSelectedTargetLayer).sRealLayerName = "" Or
+     gtLayerNamesTarget(giSelectedTargetLayer).sRealLayerName = "_" Then
+    Exit Sub
+  End If
+
+  ' Initialize the traversal: 
+  Metadata Table gtLayerNamesTarget(giSelectedTargetLayer).sRealLayerName
+    SetTraverse "\ColumnNameAlias" Hierarchical Into ID iTraversal 
+
+  ' Attempt to fetch the first key: 
+  Metadata Traverse iTraversal  
+    Next Into Key sKeyName Into Value sKeyValue 
+
+  ' Now loop for as long as there are key values;  
+  ' with each iteration of the loop, retrieve one key. 
+  Do While sKeyName <> "" 
+    sKeyName = Mid$(sKeyName, Len("\ColumnNameAlias\")+1, 255)
+    For i = 1 To UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases)
+      If gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget(i) = sKeyName Then
+        j = InStr(1, sKeyValue, "|")
+        If j = 0 Then
+          gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(i) = sKeyValue
+          gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks(i) = GetResString(IDS_NO)
+        Else
+          gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(i) = Left$(sKeyValue, j-1)
+          gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks(i) = Mid$(sKeyValue, j+1, Len(sKeyValue)-j)
+        End If
+      End If
+    Next
+    Metadata Traverse iTraversal  
+      Next Into Key sKeyName Into Value sKeyValue 
+  Loop 
+
+
+  ' Release this traversal to free memory: 
+  MetaData Traverse iTraversal Destroy 
+
+  Alter Control IDColumnNameAliases Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases
+  Alter Control IDTreatAsLinks Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks
+
+  Exit Sub
+
+HandleError:
+  Note "LoadAliasesFromMetaData: " + Error$()
+  Resume Next
+End Sub 'LoadAliasesFromMetaData
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub SaveAliasesToMetaData
+  OnError Goto HandleError
+
+  Dim i As Integer
+
+  If gtLayerNamesTarget(giSelectedTargetLayer).sRealLayerName = "" Or
+     gtLayerNamesTarget(giSelectedTargetLayer).sRealLayerName = "_" Then
+    Exit Sub
+  End If
+
+  For i = 1 To UBound(gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases)
+    MetaData Table gtLayerNamesTarget(giSelectedTargetLayer).sRealLayerName SetKey "\ColumnNameAlias\" + gtLayerNamesTarget(giSelectedTargetLayer).sColumnNamesTarget(i) To gtLayerNamesTarget(giSelectedTargetLayer).sColumnNameAliases(i) + "|" + gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks(i)
+  Next
+
+  Exit Sub
+
+HandleError:
+  Note "SaveAliasesToMetaData: " + Error$()
+  Resume Next
+End Sub 'SaveAliasesToMetaData
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub TreatAllAsLinks
+  OnError Goto HandleError
+
+  Dim i As Integer
+
+  For i = 1 To UBound(gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks)
+    gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks(i) = GetResString(IDS_YES)
+  Next
+
+  Alter Control IDTreatAsLinks Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks
+
+  Exit Sub
+
+HandleError:
+  Note "TreatAllAsLinks: " + Error$()
+  Resume Next
+End Sub 'TreatAllAsLinks
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub TreatNoneAsLinks
+  OnError Goto HandleError
+
+  Dim i As Integer
+
+  For i = 1 To UBound(gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks)
+    gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks(i) = GetResString(IDS_NO)
+  Next
+
+  Alter Control IDTreatAsLinks Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sTreatAsLinks
+
+  Exit Sub
+
+HandleError:
+  Note "TreatNoneAsLinks: " + Error$()
+  Resume Next
+End Sub TreatNoneAsLinks
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub ChooseColumnsDialogHandler
+  OnError Goto HandleError
+
+  If gtLayerNamesTarget(giSelectedTargetLayer).sRealLayerName = "" Or
+     gtLayerNamesTarget(giSelectedTargetLayer).sRealLayerName = "_" Then
+    Alter Control IDSaveAliasesToMetaData Disable
+  Else
+    If TableInfo(gtLayerNamesTarget(giSelectedTargetLayer).sRealLayerName, TAB_INFO_READONLY) Then
+      Alter Control IDSaveAliasesToMetaData Disable
+    Else
+      Alter Control IDSaveAliasesToMetaData Enable
+    End If
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "ChooseColumnsDialogHandler: " + Error$()
+  Resume Next
+End Sub 'ChooseColumnsDialogHandler
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub ChooseAllColumns
+  OnError Goto HandleError
+  Dim i, j, k As Integer
+  Dim s As String
+
+  For k = 1 To UBound(gtLayerNamesTarget)
+    j = UBound(gtLayerNamesTarget(k).sColumnNamesTarget)
+    ReDim gtLayerNamesTarget(k).sColumnNamesTarget(UBound(gtLayerNamesTarget(k).sColumnNamesTarget) + UBound(gtLayerNamesTarget(k).sColumnNamesSource))
+    ReDim gtLayerNamesTarget(k).sColumnNameAliases(UBound(gtLayerNamesTarget(k).sColumnNameAliases) + UBound(gtLayerNamesTarget(k).sColumnNamesSource))
+    ReDim gtLayerNamesTarget(k).sTreatAsLinks(UBound(gtLayerNamesTarget(k).sColumnNameAliases) + UBound(gtLayerNamesTarget(k).sTreatAsLinks))
+    For i = 1 To UBound(gtLayerNamesTarget(k).sColumnNamesSource)
+      s = gtLayerNamesTarget(k).sColumnNamesSource(i)
+      j = j + 1
+      gtLayerNamesTarget(k).sColumnNamesTarget(j) = s
+      gtLayerNamesTarget(k).sColumnNameAliases(j) = s
+      gtLayerNamesTarget(k).sTreatAsLinks(j) = GetResString(IDS_NO)
+    Next
+    ReDim gtLayerNamesTarget(k).sColumnNamesSource(0)
+  Next
+
+  Exit Sub
+
+HandleError:
+  Note "ChooseAllColumns: " + Error$()
+  Resume Next
+End Sub 'ChooseAllColumns
+
+' End of File

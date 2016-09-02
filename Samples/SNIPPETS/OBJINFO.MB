@@ -1,0 +1,301 @@
+'******************************************************************************
+'*
+'*         objinfo.mb                                   
+'*
+'*
+'*         Description:    This MapBasic application will detect when an Object 
+'*                         has been chosen in a MapInfo Mapper, and then will 
+'*                         print out all of the important descriptive information
+'*                         about that Object in a simple message window (making  
+'*                         it easier to analyze the Object).
+'*                         
+'*         Note: This program utilizes functions that are ONLY
+'*               available in MapInfo and MapBasic 2.1 
+'*               Therefore, for this application to function
+'*               correctly, MapInfo and MapBasic Version 2.1
+'*               or better must be used.
+'* 
+'*
+'******************************************************************************
+
+Include "mapbasic.def"
+
+Declare Sub Main
+Declare Sub ToolHandler
+Declare Sub PenInfo
+Declare Sub BrushInfo
+Declare Sub EndProgram
+
+Global NEW_LINE As String
+Global ACCEL_CHAR As String
+Global DIR_SEP_CHAR As String
+
+'**************************************************************
+'*                          MAIN LOGIC                        *
+'**************************************************************
+Sub Main
+
+'*** create menu option to end the program ***
+Create Menu "EndProgram" As
+    "Quit MapBasic Tool" Calling EndProgram
+Alter Menu Bar Add "EndProgram"
+
+Do Case SystemInfo(SYS_INFO_PLATFORM)
+    Case PLATFORM_MAC
+        NEW_LINE = Chr$(13)
+        ACCEL_CHAR = ""
+        DIR_SEP_CHAR = ":"
+
+    Case PLATFORM_X11, PLATFORM_MOTIF, PLATFORM_XOL
+        NEW_LINE = Chr$(10)
+        ACCEL_CHAR = ""
+        DIR_SEP_CHAR = "/"
+
+    Case PLATFORM_WIN
+        NEW_LINE = Chr$(10) + Chr$(13)
+        ACCEL_CHAR = "&"
+        DIR_SEP_CHAR = "\"
+
+    Case Else
+        NEW_LINE = Chr$(10) + Chr$(13)
+        ACCEL_CHAR = ""
+        DIR_SEP_CHAR = "/"
+End Case
+
+End Sub
+
+'******************************************************************************
+'*
+'*    Procedure: ToolHandler
+'*
+'*    This procedure will be called only when the user clicks on
+'*    the mapinfo tool (+) on the tool pallette.  It will display
+'*    all of the available information about an object (which
+'*    the user clicked on) in a mapper.   
+'*
+'******************************************************************************
+
+Sub ToolHandler
+
+Dim winid As Integer
+Dim wintype As SmallInt
+Dim objtype As SmallInt
+Dim mousexy As Object
+Dim winname As String
+Dim objnpnts As Integer
+Dim objsmooth As Logical
+Dim objnpoly As SmallInt
+Dim objfont As Font
+Dim objsym As Symbol 
+Dim selnum As Integer
+Dim objvar As Object
+Dim objfwin As Integer
+Dim objftitle As String
+Dim objtxtstr As String
+Dim objtxtspac As Float
+Dim objtxtjust As SmallInt
+Dim objtxtarr As SmallInt
+Dim zoom As Float
+Dim rad As Float
+Dim numlayer As SmallInt
+Dim layernum as Integer
+Dim ffound As Logical
+
+ffound = FALSE
+
+winid = FrontWindow()
+
+wintype = WindowInfo(winid,WIN_INFO_TYPE)
+
+'*** We are only looking at mappers for info ***
+If (wintype = WIN_MAPPER) Then
+
+'*** Get zoom of mapper window and Compute a "Reasonable" ***
+'*** radius to represent a tolerance factor               ***
+
+    zoom = MapperInfo(winid,MAPPER_INFO_ZOOM)
+    rad = zoom / 100
+
+    numlayer = MapperInfo(winid,MAPPER_INFO_LAYERS)
+               
+'*** Create a circle around where the user clicked and ***
+'*** select the object which is where the user clicked ***
+ 
+    mousexy = CreateCircle(CommandInfo(CMD_INFO_X),CommandInfo(CMD_INFO_Y),rad)
+
+'*** We have to take care of every layer ***    
+    For layernum = 1 to numlayer
+        If (NOT ffound) Then
+            '*** look at one layer at a time ***  
+            winname = LayerInfo(winid,layernum,LAYER_INFO_NAME)
+    
+            Select * From winname where obj Partly Within mousexy          
+    
+            selnum = SelectionInfo(SEL_INFO_NROWS)
+        End If
+
+        '*** If an object exists in the selection then continue ***
+        If (selnum > 0) AND (NOT ffound) Then
+
+            '*** Make a window to print our results ***          
+            ffound = TRUE
+ 
+            Open Window Message
+            Set Window Message
+                Position(2,1.5)
+                Width 3
+                Height 1.5
+
+            Print Chr$(12) 
+    
+            Fetch First From Selection 
+
+            '*** Print Additional info if it is available      
+            If (ColumnInfo(winname,"COL1",COL_INFO_TYPE) = COL_TYPE_CHAR) Then
+                Print "Object Name:  " + Selection.col1 
+            End If      
+
+            objtype = ObjectInfo(Selection.obj,OBJ_INFO_TYPE)
+ 
+            '*** Find out what type of object we have ***
+            Do Case objtype
+                Case OBJ_ARC
+                    Print "Object Type:  Arc Object"
+                    Call PenInfo
+
+                Case OBJ_ELLIPSE
+                    Print "Object Type:  Ellipse / Circle Window"
+                    Call PenInfo
+                    Call BrushInfo
+
+                Case OBJ_LINE
+                    Print "Object Type:  Line Object"
+                    Call PenInfo
+
+                Case OBJ_PLINE
+                    Print "Object Type:  Polyline Object"
+                    objsmooth = ObjectInfo(Selection.obj,OBJ_INFO_SMOOTH)
+                    If (objsmooth) Then
+                        Print "       Smooth:  Yes"
+                      Else
+                        Print "       Smooth:  No"
+                    End If
+                    Call PenInfo
+    
+                Case OBJ_POINT
+                    Print "Object Type:  Point Object"
+                    objsym = ObjectInfo(Selection.obj,OBJ_INFO_SYMBOL)
+                    Print "       " + Str$(objsym)
+ 
+                Case OBJ_FRAME
+                    Print "Object Type:  Layout Window Frame Object"
+                    objfwin = ObjectInfo(Selection.obj,OBJ_INFO_FRAMEWIN)
+                    Print "       Frame Object Window ID:  " + Str$(objfwin)
+                    objftitle = ObjectInfo(Selection.obj,OBJ_INFO_FRAMETITLE)
+                    Print "       Frame Object Title:  " + objftitle
+                    Call PenInfo
+                    Call BrushInfo
+
+                Case OBJ_REGION
+                    Print "Object Type:  Region Object"
+                    objnpoly = ObjectInfo(Selection.obj,OBJ_INFO_NPOLYGONS)
+                    Print "       Number of Polygons:  " + Str$(objnpoly)
+                    Call PenInfo
+                    Call BrushInfo
+
+                Case OBJ_RECT
+                    Print "Object Type:  Rectangle Object"
+                    Call PenInfo
+                    Call BrushInfo
+
+                Case OBJ_ROUNDRECT
+                    Print "Object Type:  Rounded Rectangle Object"
+                    Call PenInfo
+                    Call BrushInfo
+ 
+                Case OBJ_TEXT
+                    Print "Object Type:  Text Object"
+                    objfont = ObjectInfo(Selection.obj,OBJ_INFO_TEXTFONT)
+                    Print "       " + Str$(objfont)            
+                    objtxtstr = ObjectInfo(Selection.obj,OBJ_INFO_TEXTSTRING)
+                    Print "       Text Object String:  " + objtxtstr
+                    objtxtspac = ObjectInfo(Selection.obj,OBJ_INFO_TEXTSPACING)
+                    Print "       Text Object Spacing:  " + Str$(objtxtspac)
+                    objtxtjust = ObjectInfo(Selection.obj,OBJ_INFO_TEXTJUSTIFY)
+                    Print "       Text Object Justification:  " + Str$(objtxtjust)
+                    objtxtarr = ObjectInfo(Selection.obj,OBJ_INFO_TEXTARROW)
+                    Print "       Text Object Line Style:  " + Str$(objtxtarr)
+
+            End Case
+
+          Else
+            If (numlayer = 1) Then
+                Print Chr$(12)
+                Print "No Object Located"
+            End If
+
+        End If
+    Next
+
+    If (numlayer > 1) AND (NOT ffound) Then
+        Print Chr$(12)
+        Print "No Object Located"
+    End If
+      
+End If
+
+End Sub
+
+'**********************************************************************
+'*
+'*     Procedure: PenInfo
+'*
+'*     This procedure will print the Pen Information of an object 
+'*     out.  Note: Not all objects have Pen Information  
+'*
+'**********************************************************************
+
+Sub PenInfo
+
+Dim objpen As Pen
+
+'*** get the pen info which is available ***
+objpen = ObjectInfo(Selection.obj,OBJ_INFO_PEN)
+Print "       " + Str$(objpen)
+
+End Sub
+
+'**********************************************************************
+'*
+'*     Procedure: BrushInfo
+'*
+'*     This procedure will print the Brush information of an object
+'*     out.  Note: Not all objects have Brush Information.
+'*
+'**********************************************************************
+
+Sub BrushInfo
+
+Dim objbrush As Brush
+
+'*** get the brush info which is available ***
+objbrush = ObjectInfo(Selection.obj,OBJ_INFO_BRUSH)
+Print "       " + Str$(objbrush)
+
+End Sub   
+
+'**********************************************************************
+'*
+'*     Procedure: EndProgram
+'*
+'*     This procedure will simply end this mapbasic application 
+'*     when the user clicks on the EndProgram option.
+'*
+'**********************************************************************
+
+Sub EndProgram
+ 
+Create Menu Bar as Default
+End Program
+
+End Sub

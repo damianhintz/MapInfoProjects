@@ -1,0 +1,68 @@
+Include "Mapbasic.def"
+Include "menu.def"
+Include "Icons.def"
+include "..\Inc\auto_lib.def"
+Include "DistanceStrings.def"
+Include "..\Inc\ResStrng.def"
+
+
+Declare Sub Main
+Declare Sub Start
+Declare Sub DialogHandler
+Declare Sub MapTables_mod
+Declare Sub MapWindows_Mod
+Declare Sub ColumnList(strTableName as string, strColumnList() as string)
+Declare Sub ChangeOriginTable
+Declare Sub ChangeDestinationTable
+Declare Sub ChangeBrowserDoc
+Declare Sub ChangeMapperDoc
+Declare Sub SelChangedHandler
+Declare Sub StartProcess
+Declare Function SetCriteria(strOriginTab as string, strDestTab as string, intCrit as integer, strCritArg1 as string, strCritArg2 as string) as logical
+Declare Sub setOperators
+Declare Sub MoreAnal
+Declare Sub SetUnits
+Declare Sub EnableCriteria
+
+Declare Function Is_Mappable(ByVal g_ig_TableId as integer) as logical
+Declare Function RemoveQuotes(byVal strCrit as string) as string
+
+Declare Sub TableSplit(strOriginSplit as string, strDestSplit as string, intPieces as integer, intSize as integer)
+Declare Sub SelectSplit(strOriginSplit as string, intSize as integer, intInitSize as integer)
+Declare Function Calculate_Distance(strOriginTab as string, strDestTab as string, strOriginCol as string, strDestCol as string, intCrit as integer, strCritArg1 as string, strCritArg2 as string) as logical
+Declare Sub RemoveZeros(intRows as integer)
+Declare Sub CreateTable
+Declare Sub DeleteTable
+Declare Sub SaveTable
+Declare sub About
+Declare Sub Exit_Program
+Declare Sub Finished
+Declare Sub CleanUp
+
+Declare Sub ZoomIn
+Declare Sub ZoomOut
+Declare Sub Snap
+Declare Sub Pan
+Declare Sub Select
+Declare Sub Marquee
+Declare Sub Polygon
+Declare Sub Boundary
+Declare sub unselect
+Declare Sub LayerControl
+
+
+Global strTableList() as string
+Global strDisplayList() as string
+Global iWin_ID1 as integer
+Global iWin_ID2 as integer
+Global strColumnListOrigin() as String
+Global strColumnListDest() as string
+'Global strSelection as string
+Global Operators() as string
+Global strMappables() as string
+Global intMapID() as integer
+Global strUnits() as string
+Global strTempPath as string
+
+Define Criteria1 15
+Define Criteria2 16

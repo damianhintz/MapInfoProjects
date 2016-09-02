@@ -1,0 +1,143 @@
+'*****************************************************************************
+'       Copyright (c) 2000-2001, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: HTMLImageMap.mb $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+' Handle user interface
+' Revision History:
+'
+'    Rev 1.0   January 19 2000 16:14:56   DRESSEL
+'    Rev 1.1   February 10 2000 (respond to SWAT feedback:
+'               - rearrange dialog #11971
+'               - handle projections better #11973
+'               - document issues in about/help box 
+'               - handle seamless tables #11957
+'               - handle maximized windows
+'    Rev 1.2   March 1 2000 (prepare for localization
+'               - support non-earth maps (_WITH_BOUNDS) #12227
+'               - support big objects (>32k nodes) #12223
+'               - support join tables (non-base tables) #12187
+'               - make sure that HTML file name is valid #12175
+'               - display more progress bars
+'    Rev 1.3   March 9 2000 (respond to beta feedback
+'               - allow setting of height or width, but not both
+'               - consolidate math steps outside of loops to boost speed
+'               - check for and avoid extreme math due to projections (Div by zero, etc.)
+'               - clip objects one by one to avoid problems when a single clip fails
+'               - increase maximum clipping resolution from 25 to 1000
+'    Rev 1.4   April 10 2000 (respond to beta feedback
+'               - add option to populate landing pages with record content
+'               - make copyright symbol localizable
+'               - don't reinitialize layer number to 1 if not greater than valid layers
+'    Rev 1.5   April 10 2000 (respond to beta feedback
+'               - add control over which columns to write on landing pages
+'    Rev 1.6   April 11 2000 (respond to beta feedback
+'               - add ability to save and restore column name aliases in metadata
+'               - add a few simple bulk formating options
+'               - fix support for international character sets #13023
+'               - add hot keys for all controls
+'               - support query tables #12981
+'               - support tables same name as objects (India.TAB, China.TAB, etc.) #12340
+'               - oh, and don't allow saving metadata if table is readonly
+'    Rev 1.7   June 28 2000
+'               - separate processing from UI to create API for MBO
+'    Rev 1.8   September 19, 2000
+'               - add option to use hot link
+'    Rev 1.9   October 4, 2000
+'               - add option to treat all record contents as links
+'    Rev 2.0   October 6, 2000
+'               - add support for point objects
+'    Rev 2.1   October 9, 2000
+'               - add support for line objects
+'    Rev 2.2   October 9, 2000
+'               - add support for multiple layers
+'    Rev 2.3   November 14, 2000
+'               - add support for "+" as delimeter in HotLink expression
+'    Rev 2.4   November 28, 2000
+'               - remove 'Autoload' button from about box.
+'               - fix bugs with multilist boxes (several controls should not be multi)
+'    Rev 2.5   January 9, 2001
+'               - fix problems with query creating HTML Image maps on query tables
+'               - make good attempt to avoid doughnut and island problem by sorting
+'                 regions by size order (won't be perfect, but works better than before.)
+'    Rev 2.6   February 1, 2001
+'               - offer option to combine all landing pages into single page
+'               - serialize write API because of parameter changes
+'               - improve formating of numbers
+'               - extract more strings for localization: "empty", and "yes"
+'    Rev 2.7   February 8, 2001
+'               - fix bugs with lines that stick out of map window
+'               - fix bugs with records that contain no objects
+'               - add support for arcs, ellipses, rectangles, and rounded rectangles
+'               - extract one last forgotten string for localization
+'               - fix linkage between raster image and image map in Netscape
+'               - fix hot keys in main dialog
+'    Rev 2.8   February 9, 2001
+'               - fix bugs with query tables that can have more than one column with the same name! #13605
+'               - trap and ignore apparently benign rc = 2 when trying to launch URL
+'    Rev 2.9   February 27, 2001
+'               - fix bugs user canceling during progress bar #16387
+'               - display better default name if no layer selected yet #16386
+'               - keep image height and width in sync
+'               - display different message if no tables open #16610
+'    Rev 3.0   April 3, 2001
+'               - fix weirdness with output file name after cancel, more carefully close work in progress #16661
+'*****************************************************************************
+Include "mapbasic.def"
+Include "HTMLImageMap.def"
+' Include a file that lets us use the "auto-load" library                 
+Include "..\Inc\auto_lib.def"                                             
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+Declare Sub Main
+
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub Main
+
+  OnError Goto HandleError
+
+  If LoadStrings((ApplicationDirectory$() + "HTMLImageMap.str")) = FALSE Then
+    Note "Unable to access resource string file: " + ApplicationDirectory$() + "HTMLImageMap.str"
+    Exit Sub
+  End If
+
+  gsAppDescription = GetResString(IDS_APP_DESCRIPTION)
+  gsAppFilename = "HTMLImageMap.mbx"
+
+  Create Menu GetResString(IDS_MENU_NAME) As                                                
+    GetResString(IDS_MENU_ITEM_NAME) Calling HTMLImageMapDialog,
+    "(-",                                      
+    GetResString(IDS_ABOUT_MENU_ITEM_NAME) Calling About,        
+    GetResString(IDS_EXIT_MENU_ITEM_NAME) Calling Goodbye             
+
+  Call set_tools_menu(GetResString(IDS_MENU_NAME))
+
+  giSelectedFormat = FormatJPEG
+  giClipResolution = 24
+  giSelectedPaperUnits = 2
+  glCreateLandingPages = FALSE
+  glPopulateLandingPages = FALSE
+  giHeightOrWidth = 1
+  giSelectedLinkType = LinkTypeHotLink
+  giDelta = 5
+  giValidLayers = 0
+  ReDim gsLayerNamesSource(0)
+  ReDim gtLayerNamesTarget(0)
+  giMapWindowID = 0
+
+  Exit Sub
+
+HandleError:
+  Note "Main: " + Error$()
+  Resume Next
+
+End Sub                                                                   

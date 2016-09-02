@@ -1,0 +1,126 @@
+'****************************************************************************
+' Symbol.Def
+'****************************************************************************
+
+Define AppVersion 1.3
+
+Define  MAXNODES  200
+
+'****************************************************************************
+'
+' Declare sub procedures and functions
+'
+'****************************************************************************
+Declare Sub main
+Declare Sub about
+Declare Function copy() As Logical
+Declare Sub create_symbol
+Declare Sub create_table
+Declare Sub save_symbol
+Declare Sub save_new
+Declare Sub save_old
+Declare Sub write_symbol (ByVal filenum As Smallint)
+Declare Function limits_ok (minx As Float, miny As Float, maxx As Float, maxy As Float) As Logical
+Declare Function too_many (ByVal nodes As Smallint) As Logical
+Declare Sub colors_handler
+Declare Function pen_brush_checked () As Logical
+Declare Function pen_checked () As Logical
+Declare Function brush_checked () As Logical
+Declare Function basic_color (ByVal color As Integer) As Smallint
+Declare Sub put_xy (ByVal x As Float, ByVal y As Float, ByVal filenum As Smallint)
+Declare Sub edit_del_handler
+Declare Function cancel () As Logical
+Declare Sub edit_handler
+Declare Sub del_handler
+Declare Sub edit_symbol
+Declare Function full_color (ByVal color As Smallint) As Integer
+Declare Sub del_symbol
+Declare Sub cancel_handler
+Declare Sub reset_app
+Declare Sub xit
+Declare Sub discard_handler
+Declare Sub clean_up (ByVal make_note As Logical)
+Declare Sub UpdateFntFile
+Declare Sub WinChangedHandler 
+
+Global   pen_check, brush_check,
+         new_symbol, saved, changed,
+         new_symbol_added             As Logical,
+         cntrx, cntry, conv           As Float,
+         code, giWindowID             As Integer,
+         _1, SYS, FNT, TMP            As String,
+         nsyms, total_nodes           As Smallint
+
+' Resource String Ids
+Define IDS_STR_RES_RANGE_ERR             1
+Define IDS_APP_DESCRIPTION               2
+Define IDS_UNABLE_TO_SETUP               3
+Define IDS_MENU_NAME                     4
+Define IDS_CREATE_NEW_MENU_ITEM_NAME     5
+Define IDS_SAVE_MENU_ITEM_NAME           6
+Define IDS_EDIT_DELETE_MENU_ITEM_NAME    7
+Define IDS_COLORS_MENU_ITEM_NAME         8
+Define IDS_CANCEL_MENU_ITEM_NAME         9
+Define IDS_ABOUT_MENU_ITEM_NAME          10
+Define IDS_EXIT_MENU_ITEM_NAME           11
+Define IDS_CANCEL_EDIT                   12
+Define IDS_DELETE_SYMBOL                 13
+Define IDS_DELETE                        14
+Define IDS_CANCEL                        15
+Define IDS_SYMBOL_EDITOR                 16
+Define IDS_CANNOT_DELETE_SYMBOL          17
+Define IDS_SYMBOL_DELETED                18
+Define IDS_DISCARD_CHANGES               19
+Define IDS_DISCARD                       20
+Define IDS_UNABLE_TO_FIND_FILE           21
+Define IDS_TERMINATED                    22
+Define IDS_POINT_OBJECTS_CANNOT          23
+Define IDS_TEXT_OBJECTS_CANNOT           24
+Define IDS_ARC_OBJECTS_CANNOT            25
+Define IDS_CANNOT_PROCESS_MAXNODES       26
+Define IDS_NO_SELECTED_OBJECTS           27
+Define IDS_NEITHER_PEN_NOR_BRUSH_FOUND   28
+Define IDS_COLOR_INTERPRETATION          29
+Define IDS_LINE                          30
+Define IDS_FILL                          31
+Define IDS_OK                            32
+Define IDS_LINE_COLOR_INTERPRETATION     33
+Define IDS_FILL_COLOR_INTERPRETATION     34
+Define IDS_SYMBOL_PICKER                 35
+Define IDS_EDIT                          36
+Define IDS_CANCEL_CREATE                 37
+Define IDS_NO_OBJECTS_FOUND              38
+Define IDS_NO_ACCEPTABLE_OBJECTS_FOUND   39
+Define IDS_NEW_SYMBOL_ADDED              40
+Define IDS_SYMBOL_EDIT_COMPLETE          41
+Define IDS_ABOUT                         42
+Define IDS_VERSION                       43
+Define IDS_ABOUT_1                       44
+Define IDS_ABOUT_2                       45
+Define IDS_ABOUT_3                       46
+Define IDS_ABOUT_4                       47
+Define IDS_ABOUT_5                       48
+Define IDS_ABOUT_6                       49
+Define IDS_ABOUT_7                       50
+Define IDS_ABOUT_8                       51
+Define IDS_ABOUT_9                       52
+Define IDS_ABOUT_10                      53
+Define IDS_ABOUT_11                      54
+Define IDS_ABOUT_12                      55
+Define IDS_ABOUT_13                      56
+Define IDS_ABOUT_14                      57
+Define IDS_ABOUT_15                      58
+Define IDS_ABOUT_16                      59
+Define IDS_ABOUT_17                      60
+Define IDS_ABOUT_18                      61
+Define IDS_ABOUT_19                      62
+Define IDS_ABOUT_20                      63
+Define IDS_ABOUT_21                      64
+Define IDS_ABOUT_22                      65
+Define IDS_ABOUT_23                      66
+Define IDS_EXIT                          67
+Define IDS_SAVE_CHANGES                  68
+Define IDS_SAVE                          69
+Define IDS_LINE_COLOR_CHANGEABLE         70
+Define IDS_FILL_COLOR_CHANGEABLE         71
+

@@ -1,0 +1,38 @@
+Include "Mapbasic.def"
+Include "menu.def"
+Include "Icons.def"
+include "..\Inc\auto_lib.def"
+include "SpiderStrings.def"
+include "..\Inc\Resstrng.def"
+
+Declare Sub Main
+Declare Sub verify                 '**Verifies which tables are usable and populates the dialog box
+Declare Sub Create_Lines(col_ida as integer, col_idb as integer,clr_options as logical, add_distance as logical, file_location as string, unitAbbr as string)     '**Calculates the distance between the two tables and updates the origin
+Declare Sub Save_As(file_location as string)
+Declare Sub change_pen
+Declare Sub ColorArray
+Declare Sub About
+Declare Sub HelpText
+Declare Sub Exit_Program
+Declare Sub CleanUp
+
+Declare Sub MapTables_mod
+Declare Sub ColumnList(strTableName as string, strColumnList() as string)
+Declare Sub OriginColumns
+Declare Sub DestinationColumns
+Declare Sub ColumnPicker
+Declare Sub InitialColumnPicker
+Declare Sub ChosenColumns
+
+Declare Function Is_Mappable(byval g_iTableID as integer) as Logical
+
+Global g_strTable as String		  '** Holds the origin tablename
+Global g_strTable2 as String       '** Holds the destination tablename
+Global intColors() as integer
+Global strTableList() as string
+Global strColumnListA() as string
+Global strColumnListB() as string
+Global strColumnPicker() as string
+Global strColumnSQL() as string
+Global strColumnSql2() as string
+Global strChosenColumns as string

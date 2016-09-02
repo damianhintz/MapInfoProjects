@@ -1,0 +1,271 @@
+' PACKAGER.DEF
+'Include "MENU.DEF"
+Include "MapBasic.def"
+' Include a file that contains the standard string localization library
+Include "..\Inc\resstrng.def"
+
+' from PACKAGER.MB
+Declare Sub Main
+Declare Sub GoodBye
+Declare Sub About
+Declare Sub PackageCurrent
+Declare Sub SelectAndPackage
+Declare Sub AddHandler
+Declare Sub RemoveHandler
+Declare Sub RemoveAllHandler
+Declare Sub WorListHandler
+Declare Sub LoadListHandler
+Declare Sub SaveListHandler
+Declare Sub PackageWorkspaces(strWorkspacePaths() as String)
+Declare Sub SetGlobalCopyDefaults
+Declare Sub DlgSetUpHandler
+Declare Sub EnableAdvancedHandler
+Declare Sub ChangeExportFolder
+Declare Sub OKButtonHandler
+Declare Sub SetDefaultTableOutputPath(ByVal i as SmallInt,
+											 ByVal bFixFileNames as Logical)
+Declare Sub CheckTable(ByVal sTable As String, nType As SmallInt)
+
+Declare Sub AdvancedHandler
+Declare Sub ClearTableList
+Declare Sub DisplayHelp
+Declare Sub ShowAdvancedDialog
+Declare Sub AdvancedDlgSetUpHandler
+Declare Sub DismissButtonHandler
+
+Declare Sub AdvancedListHandler
+Declare Sub AdvancedNewFNameHandler
+Declare Sub AdvancedPopupHandler
+
+Declare Function strChooseWorkspace(ByVal strPrompt as String) as String
+Declare Function bPackageWorkspace(ByVal strWorkspacePath as String,
+									 ByVal strOutputPath as String, ByVal bTempWorkspace as Logical) as Logical
+Declare Function bPackagerDialog() as Logical
+Declare Function bChooseWorkspaces() as Logical
+Declare Function strGetNewFilename(ByVal strExtension as String) as String
+Declare Function strGetActualAlias(ByVal strTablePath as String) as String
+Declare Function bAskBeforeClosingEverything() as Logical
+Declare Function bParseWorkspace(ByVal strWorPath as String) as Logical
+Declare Function bParseWorkspaces(strFNames() as String) as Logical
+Declare Function CheckDescription(ByVal sTable As String, nType As SmallInt) As Logical
+Declare Function CheckSeamlessForRaster(ByVal sTable As String) As SmallInt
+
+' from WORLAYER.MB:
+Declare Function  bPackagerDirWritable() as Logical
+Declare Sub PackageOneWorkspace(ByVal strWorName as String, ByVal bTempWorkspace as Logical)
+Declare Function bWritable(ByVal strPath as String, ByVal strFName as String) as Logical
+Declare Function bCopyTables() as Logical
+Declare Function bFixTABReference(ByVal strTablePath as String, ByVal strOldFName as String,
+										 ByVal strNewFName as String) as Logical
+Declare Function bFixFirstTABRef(ByVal strTablePath as String, ByVal strNewFName as String) as Logical
+Declare Function bCopyReferencedFile(ByVal strOldFName as String, ByVal strNewFName as String) as Logical
+Declare Function bCreateDir(ByVal strPath as String) as Logical
+Declare Function strGetPath(ByVal strBasePath as String, ByVal strRelPath as String) as String
+Declare Function RevInstr(ByVal intStart as Integer, ByVal strBase as String,
+						ByVal strSearch as String) as Integer
+Declare Function intCheckTableIndex(ByVal strTable as String) as Integer
+Declare Function strCreateUniqueAlias() as String
+Declare Function strCreateUniqueWorkspace() as String
+Declare Function strFindReplacement(ByVal strQuoted as String) as String
+Declare Function intPixelWidth(byVal s as String) as Integer
+Declare Function strGetLocalType(ByVal strType as String) as String
+Declare Function GetTableVersion(ByVal strTableName As String) as Integer
+Declare Function GetTableVersionFromAlias(ByVal strTableName As String) as Integer
+Declare Function GetTableSourceType(strTableName As String) As String
+Declare Function strGetTableType(strFName As String) As String
+Declare Function bGetTableFileList(ByVal intPointer as SmallInt) as Logical
+Declare Function ValidTableSourceType(ByVal sType As String) As Logical
+Declare Function bSaveTableCopy(ByVal strTableName As String,
+							ByVal strDestTableFilePath as String,
+							ByVal bShowProgressBars as Logical) As Logical
+Declare Function bOpenTable(ByVal strFileName as String, strAlias as String, bOpenedTable as Logical) as Logical
+
+' code from Utility.MB in Discovery Packager
+Declare Function StripChars(ByVal strData As string, ByVal strChar as String) As String
+Declare Function bAddTableToList(ByVal intCopyType as Integer,
+							ByVal strSource as String, ByVal intSourceType as Integer,
+							ByVal strFName as String, ByVal strAlias as String,
+							ByVal strNewFName as String, intPointer as SmallInt) as Logical
+Declare Function strGetTableReference(ByVal intPointer as SmallInt) as String
+Declare Function strGetRefName(ByVal intPointer as SmallInt) as String
+Declare Function strGetNewRefName(ByVal intPointer as SmallInt) as String
+Declare Function strCleanFilename(ByVal strFName as String) as String
+Declare Function strGetRelativeRef(ByVal strPath as String, ByVal strFName as String) as String
+Declare Function strGetRelativePath(ByVal strPath as String, ByVal strFName as String) as String
+
+' Windows API declares:  from VB --
+'Public Declare Function CreateDirectoryA Lib "kernel32" (ByVal lpPathName As Long, lpSecurityAttributes As Any) As Long 
+
+Type SEC_ATTR
+  iLen as Integer
+  iDescriptor as Integer
+  iHandle as Integer
+End Type
+
+Declare Function CreateDirectoryA Lib "kernel32" (ByVal lpPathName As String, lpSecAttr As SEC_ATTR) As Integer
+
+Type RefTable
+	strTableType as String
+	strSource as String
+	strFName as String
+	strReference as String
+	strNewPath as String
+	strNewFName as String
+	strAlias as String
+	intSourceType as SmallInt
+	intCopyType as SmallInt
+End Type
+
+Global g_strPackagerPath as String
+' these globals hold preferences for the Packager dialog --
+'  currently these preferences are only remembered until the utility is closed.
+Global g_strOutputPath as String
+Global g_strOutputFName as String
+Global g_bLocalTables as Logical
+Global g_bUNCTables as Logical
+Global g_bRemoteTables as Logical
+Global g_strWorkspaceList as String
+Global g_bUserPicksWorkspaceName as Logical
+Global g_strOldFName as String
+Global g_bCloseEverything as Logical
+Global g_strPermissionToOverwrite as String
+
+' globals for Advanced dialog
+Global g_MultiListChoices() as SmallInt
+Global g_refs() as RefTable
+
+Define COPYTYPE_DONT           1
+Define COPYTYPE_EXACT          4 ' remove from lists for version 1.12
+Define COPYTYPE_NATIVE         2
+Define COPYTYPE_MIXED          3
+
+Define SOURCE_WORKSPACE        1
+Define SOURCE_SEAMLESS         2
+Define SOURCE_VIEW             3
+Define SOURCE_QUERY            4
+Define SOURCE_MIXED            -1
+
+Define ADVANCED_DLG_MINWIDTH 240
+Define ADVANCED_DLG_MAXWIDTH 660 ' about 1000 pixels
+
+
+Define IDS_MENU_NAME                     1
+Define IDS_SAVE_WKSP_MENU_ITEM_NAME      2
+Define IDS_SAVE_WKSP_MENU_ITEM_HELP      3
+Define IDS_CHOOSE_WKSP_MENU_ITEM_NAME    4
+Define IDS_CHOOSE_WKSP_MENU_ITEM_HELP    5
+Define IDS_ABOUT_MENU_ITEM_NAME          6
+Define IDS_EXIT_MENU_ITEM_NAME           7
+Define IDS_TOOL_MENU_NAME                8
+Define IDS_PACKAGER_TOOL_NAME            9
+Define IDS_ABOUT                         10
+Define IDS_WORKDIR_NAME                  11
+Define IDS_STARTUP_ERROR_MSG             12
+Define IDS_ABOUT_TEXT_1                  13
+Define IDS_ABOUT_TEXT_2                  14
+Define IDS_ABOUT_TEXT_3                  15
+Define IDS_ABOUT_TEXT_4                  16
+Define IDS_ABOUT_TEXT_5                  17
+Define IDS_ABOUT_TEXT_6                  18
+Define IDS_ABOUT_TEXT_7                  19
+Define IDS_ABOUT_TEXT_8                  20
+Define IDS_ABOUT_TEXT_9                  21
+Define IDS_ABOUT_TEXT_10                 22
+Define IDS_ABOUT_TEXT_11                 23
+Define IDS_ABOUT_TEXT_12                 24
+Define IDS_OK                            25
+Define IDS_CANCEL                        26
+Define IDS_HELP                          27
+Define IDS_EXPORT_TO_FOLDER              28
+Define IDS_BROWSE                        29
+Define IDS_ADVANCED_OPTIONS              30
+Define IDS_LOCAL_TABLES                  31
+Define IDS_UNC_PATH_TABLES               32
+Define IDS_REMOTE_LINKED                 33
+Define IDS_UPDATE_CUSTOM_LABELS          34
+Define IDS_DONTCOPY_EXACT_OR_NATIVE      35
+Define IDS_EXACT_OR_NATIVE_COPY          36
+Define IDS_DONTCOPY_OR_EXACTCOPY         37
+Define IDS_ENABLE_ADVANCED               38
+Define IDS_COPY_OPTIONS                  39
+Define IDS_DIR_STRUCTURE                 40
+Define IDS_CHOOSE_WOR_LOCATION           41
+Define IDS_MIXED                         42
+Define IDS_TABLE_TYPE                    43
+Define IDS_SELECTION_PROPERTIES          44
+Define IDS_SOURCE                        45
+Define IDS_CANT_SEND_MULTIPLE            46
+Define IDS_ADVANCED_OPTIONS_TITLE        47
+Define IDS_TABLE_REFERENCES              48
+Define IDS_NEW_LOCATION                  49
+Define IDS_COPY_TYPE                     50
+Define IDS_NEW_FNAME_UPDATE              51
+Define IDS_CANT_CHANGE_ORIGINAL          52
+Define IDS_FAILED_PARSING_WORKSPACE      53
+Define IDS_WORKSPACE                     54
+Define IDS_SEAMLESS                      55
+Define IDS_VIEW                          56
+Define IDS_QUERY                         57
+Define IDS_WORKSPACE_WRITTEN             58
+Define IDS_PIXEL_LOOKUP_STRING           59
+Define IDS_PIXELS_IN_WIDEST_CHAR         60
+Define IDS_ASK_BEFORE_CLOSING_1          61
+Define IDS_ASK_BEFORE_CLOSING_2          62
+Define IDS_ASK_BEFORE_CLOSING_3          63
+Define IDS_ASK_BEFORE_CLOSING_4          64
+Define IDS_ASK_BEFORE_CLOSING_5          65
+Define IDS_ASK_BEFORE_CLOSING_6          66
+Define IDS_YES                           67
+Define IDS_NO                            68
+Define IDS_CHOOSE_WORKSPACES             69
+Define IDS_WOR_LIST_TITLE                70
+Define IDS_WOR_ADD                       71
+Define IDS_WOR_REMOVE                    72
+Define IDS_WOR_REMOVE_ALL                73
+Define IDS_WORKSPACE_TO_ADD              74
+Define IDS_NO_TABLE_REFERENCES           75
+Define IDS_WOR_LIST_LENGTH_EXCEEDED      76
+Define IDS_DEFAULT_WORKSPACE_NAME        77
+Define IDS_MULTIPLE_WORKSPACE_NAME       78
+Define IDS_ERROR_PARSING_WORKSPACES      79
+Define IDS_EXPORT_MULTIPLE_TO_FOLDER     80
+Define IDS_INVALID_OUTPUT_FILENAME       81
+Define IDS_PACKAGED_ALL_WORKSPACES       82
+Define IDS_TABLETYPE_NATIVE              83
+Define IDS_TABLETYPE_RASTER              84
+Define IDS_TABLETYPE_GRID                85
+Define IDS_TABLETYPE_DBF                 86
+Define IDS_TABLETYPE_XLS                 87
+Define IDS_TABLETYPE_WKS                 88
+Define IDS_TABLETYPE_ACCESS              89
+Define IDS_TABLETYPE_ASCII               90
+Define IDS_TABLETYPE_ODBC                91
+Define IDS_TABLETYPE_LINKED              92
+Define IDS_TABLETYPE_SEAMLESS            93
+Define IDS_TABLETYPE_SHAPEFILE           94
+Define IDS_TABLETYPE_WMS                 95
+Define IDS_UNKNOWN_TYPE                  96
+Define IDS_WORKSPACE_NOT_WRITTEN         97
+Define IDS_ERROR_PROCESSING_WORKSPACE    98
+Define IDS_UNABLE_TO_SAVE                99
+Define IDS_PACKAGER_DIRECTORY_OVERFLOW  100
+Define IDS_ASK_WARNING_TITLE            101
+Define IDS_UNABLE_TO_OPEN               102
+Define IDS_UNABLE_TO_FIX_REF            103
+Define IDS_UNABLE_TO_COPY_REF           104
+Define IDS_DEFAULT_CURRENT_WOR_NAME     105
+Define IDS_WOR_LOAD_LIST                106
+Define IDS_WOR_SAVE_LIST                107
+Define IDS_WOR_LIST_TYPE                108
+Define IDS_WOR_LIST_LOAD_PROMPT         109
+Define IDS_WOR_LIST_SAVE_PROMPT         110
+Define IDS_DONT_SHOW_AGAIN              111
+Define IDS_DONT_SHOW_FLAG_FNAME         112
+Define IDS_COULD_NOT_WRITE_WORKSPACE    113
+Define IDS_OK_TO_OVERWRITE_WOR          114
+Define IDS_OK_TO_OVERWRITE_WORS         115
+Define IDS_RELATIVE_PATHS_NOT_ALLOWED   116
+Define IDS_NO_WOR_NAME                  117
+Define IDS_UNABLE_TO_REPAIR_SEAMLESS    118
+Define IDS_NEED_DIFFERENT_OUTPUT_DIR    119
+Define IDS_TABLE_OVERWRITE_ERR          120

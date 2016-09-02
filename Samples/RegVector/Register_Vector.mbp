@@ -1,0 +1,9 @@
+[link]
+Application = Register_Vector.mbx
+module=Register_Vector.mbo
+Module = ..\lib\auto_lib.mbo
+module=MapFunctions.mbo
+module=Mif_Functions.mbo
+module=Common_Arrays.mbo
+module=help.mbo
+Module=..\Lib\resstrng.mbo

@@ -1,0 +1,386 @@
+'*****************************************************************************
+'       Copyright © 2010, Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 67995 $
+'
+' Module Description:
+'
+'*****************************************************************************
+
+Include "MapBasic.def"
+Include "Geoset.def"
+Include "Service.def"  ' BP 09.06.98
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+'---------------------------------------
+' Returns the string equivalent of a logical value
+'---------------------------------------
+Declare Function LogicalToString$(ByVal bValue As Logical) As String
+Function LogicalToString$(ByVal bValue As Logical) As String
+  If bValue Then
+    LogicalToString$ = "TRUE"
+  Else
+    LogicalToString$ = "FALSE"
+  End If 'bValue
+End Function 'LogicalToString$
+
+'---------------------------------------
+' Checks component of seamless table which may already be open to see if it's raster
+'---------------------------------------
+Declare Function CheckDescription(ByVal sTable As String, nType As SmallInt) As Logical
+Function CheckDescription(ByVal sTable As String, nType As SmallInt) As Logical
+  Dim aDescription As Alias
+
+  OnError Goto ErrorTrap
+
+  aDescription = sTable + ".Table"
+  If TableInfo(PathToTableName$(aDescription), TAB_INFO_TYPE) = TAB_TYPE_IMAGE Then
+    nType = LAYER_INFO_TYPE_IMAGE
+  End If 'TableInfo(aDescription, TAB_INFO_TYPE) = TAB_TYPE_IMAGE
+
+  CheckDescription = TRUE
+
+Done:
+  Exit Function
+
+ErrorTrap:
+' ignore error here; we'll assume the table is not open and return FALSE
+'  Print "CheckDescription: " + Error$()
+  Resume Done
+End Function 'CheckDescription
+
+'---------------------------------------
+' Opens component of seamless table to see if it's raster
+'---------------------------------------
+Declare Sub CheckTable(ByVal sTable As String, nType As SmallInt)
+Sub CheckTable(ByVal sTable As String, nType As SmallInt)
+  Dim aTable As Alias
+
+  OnError Goto ErrorTrap
+
+  aTable = sTable + ".Table"
+  Open Table PathToDirectory$(TableInfo(sTable, TAB_INFO_TABFILE)) + aTable As __TEMP__ Hide
+  If TableInfo(__TEMP__, TAB_INFO_TYPE) = TAB_TYPE_IMAGE Then
+    nType = LAYER_INFO_TYPE_IMAGE
+  End If 'TableInfo(__TEMP__, TAB_INFO_TYPE) = TAB_TYPE_IMAGE
+  Close Table __TEMP__
+
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "CheckTable: " + Error$()
+  Resume Done
+End Sub 'CheckTable
+
+'---------------------------------------
+' Checks if a seamless table is actually composed of raster tables
+'---------------------------------------
+Declare Function CheckSeamlessForRaster(ByVal sTable As String) As SmallInt
+Function CheckSeamlessForRaster(ByVal sTable As String) As SmallInt
+  Dim nType As SmallInt
+
+  OnError Goto ErrorTrap
+
+  nType = LAYER_INFO_TYPE_NORMAL
+  Fetch First From sTable
+  While Not EOT(sTable) And nType = LAYER_INFO_TYPE_NORMAL
+    If Not CheckDescription(sTable, nType) Then
+      Call CheckTable(sTable, nType)
+    End If 'Not CheckDescription(sTable, nType)
+    Fetch Next From sTable
+  Wend 'Not EOT(sTable)
+  CheckSeamlessForRaster = nType
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "CheckSeamlessForRaster: " + Error$()
+  Resume Done
+End Function 'CheckSeamlessForRaster
+
+'---------------------------------------
+Declare Function DuplicateLayer(ByVal lMapWin As Integer, ByVal lLayer As Integer) As Logical
+Function DuplicateLayer(ByVal lMapWin As Integer, ByVal lLayer As Integer) As Logical
+  Dim bDuplicate As Logical
+  Dim i As Integer
+  Dim sLayerName As String
+
+  OnError Goto ErrorTrap
+
+  If lLayer > 1 Then
+    sLayerName = LayerInfo(lMapWin, lLayer, LAYER_INFO_NAME)
+    lLayer = lLayer - 1
+    For i = 1 To lLayer
+      If sLayerName = LayerInfo(lMapWin, i, LAYER_INFO_NAME) Then
+        bDuplicate = TRUE
+        Exit For
+      End If 'layer names match
+    Next 'i
+  End If 'lLayer > 1
+
+Done:
+  DuplicateLayer = bDuplicate
+  Exit Function
+
+ErrorTrap:
+  Print "DuplicateLayer: " + Error$()
+  Resume Done
+End Function 'DuplicateLayer
+
+'---------------------------------------
+' Gets source file type of table
+'---------------------------------------
+Declare Function GetTableSourceType(sTableName As String) As String
+Function GetTableSourceType(sTableName As String) As String
+  Dim sLine, sTableSourceType As String
+  Dim iPos, jPos As Integer
+  Dim lBMP, lWMF As Logical
+
+  OnError Goto ErrorTrap
+
+  Open File TableInfo(sTableName, TAB_INFO_TABFILE) For INPUT As #2
+  iPos = 0
+  lBMP = FALSE
+  lWMF = FALSE
+  sTableSourceType = ""
+  Do While Not EOF(2) And Not iPos
+    Line Input #2, sLine
+    If Not EOF(2) Then
+      iPos = InStr(1, UCase$(sLine), "TYPE")
+      If iPos Then
+        jPos = InStr(iPos + 5, sLine, " ")
+        If jPos Then
+          sTableSourceType = Mid$(sLine, iPos + 5, jPos - iPos - 5)
+        Else
+          sTableSourceType = Right$(sLine, Len(sLine) - iPos - 5 + 1)
+        End If
+      End If
+      If InStr(1, UCase$(sLine), ".BMP") Then
+        lBMP = TRUE
+      End If
+      If InStr(1, UCase$(sLine), ".WMF") Then
+        lWMF = TRUE
+      End If
+    End If
+  Loop
+  If InStr(1, UCase$(sTableSourceType), "RASTER") Then
+    If lBMP Then
+      sTableSourceType = "BMP"
+    ElseIf lWMF Then
+      sTableSourceType = "WMF"
+    Else
+      iPos = 0
+      Do While Not EOF(2) And Not iPos
+        If Not EOF(2) Then
+          Line Input #2, sLine
+          iPos = InStr(1, UCase$(sLine), "RASTERSTYLE 6 1")
+          If iPos Then
+            sTableSourceType = "GRID"
+          End If
+        End If
+      Loop
+    End If
+  End If
+
+Done:
+  Close File #2
+  GetTableSourceType = sTableSourceType
+  Exit Function
+
+ErrorTrap:
+  Print "GetTableSourceType: " + Error$()
+  Resume Done
+End Function
+
+'---------------------------------------
+' Tests source file type for validity
+'---------------------------------------
+Declare Function ValidTableSourceType(sTableName As String) As Logical
+Function ValidTableSourceType(sTableName As String) As Logical
+  Dim sType As String
+
+  OnError Goto ErrorTrap
+
+  ValidTableSourceType = FALSE
+  sType = GetTableSourceType(sTableName)
+  If InStr(1, UCase$(sType), "NATIVE") Then
+    ValidTableSourceType = TRUE
+  ElseIf InStr(1, UCase$(sType), "RASTER") Then
+    ValidTableSourceType = TRUE
+  ElseIf InStr(1, UCase$(sType), "DBF") Then
+    ValidTableSourceType = TRUE
+  ElseIf InStr(1, UCase$(sType), "ACCESS") Then
+    ValidTableSourceType = TRUE
+  ElseIf InStr(1, UCase$(sType), "ASCII") Then
+    ValidTableSourceType = TRUE
+  'ElseIf InStr(1, UCase$(sType), "VIEW") Then
+  '  ValidTableSourceType = TRUE
+  'ElseIf InStr(1, UCase$(sType), "ODBC") Then
+  '  ValidTableSourceType = TRUE
+  'ElseIf InStr(1, UCase$(sType), "LINKED") Then
+  '  ValidTableSourceType = TRUE
+  'ElseIf InStr(1, UCase$(sType), "SEAMLESS") Then
+  '  ValidTableSourceType = TRUE
+  'ElseIf InStr(1, UCase$(sType), "SHAPEFILE") Then
+  '  ValidTableSourceType = TRUE
+  ElseIf InStr(1, UCase$(sType), "GRID") And gsGeoSetVersion = GEOSET_VERSION_500 Then
+    ValidTableSourceType = TRUE
+  End If
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "ValidTableSourceType: " + Error$()
+  Resume Done
+End Function
+
+'---------------------------------------
+' Writes the layer-specific geoset keys
+'---------------------------------------
+Function GeosetLayerInfo(ByVal lMapWin As Integer, ByVal lLayer As Integer) As Logical
+  Dim sTable As String
+  Dim sFile As String
+  Dim sKey As String
+  Dim sValue As String
+  Dim bOK As Logical
+  Dim nLayerType As SmallInt
+  Dim nTableType As SmallInt
+  Dim sGeoSetDirName As String  ' BP 09.06.98
+  Dim sLayerNum As String
+
+  OnError Goto ErrorTrap
+
+  ' only write info for normal or raster layers
+  nLayerType = LayerInfo(lMapWin, lLayer, LAYER_INFO_TYPE)
+  If nLayerType = LAYER_INFO_TYPE_NORMAL Or nLayerType = LAYER_INFO_TYPE_IMAGE Or nLayerType = LAYER_INFO_TYPE_GRID  Or nLayerType = LAYER_INFO_TYPE_WMS Or nLayerType = LAYER_INFO_TYPE_TILESERVER Then
+
+    sGeoSetDirName = GetGeosetPath()  ' BP 09.06.98
+    sFile = LayerInfo(lMapWin, lLayer, LAYER_INFO_PATH)
+    sFile = MakeRelativePath(sGeoSetDirName, sFile) ' BP 09.06.98
+    If gnPath = PATH_NONE Then
+      sFile = PathToFileName$(sFile)
+    End If 'gnPath = PATH_NONE
+
+    ' we'll use the table name rather than the file name, but either is okay
+'   sTable = PathToFileName$(sFile)
+    sTable = LayerInfo(lMapWin, lLayer, LAYER_INFO_NAME)
+    nTableType = TableInfo(sTable, TAB_INFO_TYPE)
+
+    ' convert the layer number into a string to use when writing metadata
+    sLayerNum = Str$(lLayer)
+
+    ' don't write result sets
+    If nTableType <> TAB_TYPE_RESULT Then
+      'If Not DuplicateLayer(lMapWin, lLayer) Then    ' DMG112001 No longer necessary: MapX 4.5.1 supports duplicate layers (again)! VI #14660.
+      If ValidTableSourceType(sTable) Then
+        ' write out the basic layer information
+        Print "  " + GetResString(IDS_WRITING_LAYER) + " " + sTable
+        bOK = WriteGeosetMetadata("TABLE\" + sLayerNum + "\FILE", sFile) ' use the full file path
+          And WriteGeosetMetadata("TABLE\" + sLayerNum + "\ISVISIBLE", LogicalToString$(LayerInfo(lMapWin, lLayer, LAYER_INFO_DISPLAY) <> LAYER_INFO_DISPLAY_OFF))
+
+        ' if the layer is zoom layered, write settings
+        If LayerInfo(lMapWin, lLayer, LAYER_INFO_ZOOM_LAYERED) Then
+          If gsGeoSetVersion = GEOSET_VERSION_500 Then
+            bOK = WriteGeosetMetadata("TABLE\" + sLayerNum + "\ZOOM\MIN", LayerInfo(lMapWin, lLayer, LAYER_INFO_ZOOM_MIN))
+              And WriteGeosetMetadata("TABLE\" + sLayerNum + "\ZOOM\MAX", LayerInfo(lMapWin, lLayer, LAYER_INFO_ZOOM_MAX))
+              And WriteGeosetMetadata("TABLE\" + sLayerNum + "\ZOOM\UNIT", UnitAbbrToUnitNumber(MapperInfo(lMapWin, MAPPER_INFO_DISTUNITS)))
+          Else
+            bOK = WriteGeosetMetadata("TABLE\" + sLayerNum + "\ZOOM\MIN", LayerInfo(lMapWin, lLayer, LAYER_INFO_ZOOM_MIN))
+              And WriteGeosetMetadata("TABLE\" + sLayerNum + "\ZOOM\MAX", LayerInfo(lMapWin, lLayer, LAYER_INFO_ZOOM_MAX))
+          End If
+        End If 'zoom layered
+
+        ' if a seamless table contains raster tables, we want to treat the layer as raster rather than normal
+        If TableInfo(sTable, TAB_INFO_SEAMLESS) Then
+          nLayerType = CheckSeamlessForRaster(sTable)
+        End If 'seamless
+
+        ' write out keys that only apply to normal layers (i.e., not raster)
+        If nLayerType = LAYER_INFO_TYPE_NORMAL Then
+          bOK = WriteGeosetMetadata("TABLE\" + sLayerNum + "\AUTOLABEL", LogicalToString$(LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_AUTODISPLAY)))
+          bOK = WriteGeosetMetadata("TABLE\" + sLayerNum + "\SHOWLINEDIRECTION", LogicalToString$(LayerInfo(lMapWin, lLayer, LAYER_INFO_ARROWS)))
+          bOK = WriteGeosetMetadata("TABLE\" + sLayerNum + "\SHOWNODES", LogicalToString$(LayerInfo(lMapWin, lLayer, LAYER_INFO_NODES)))
+          bOK = WriteGeosetMetadata("TABLE\" + sLayerNum + "\SHOWCENTROIDS", LogicalToString$(LayerInfo(lMapWin, lLayer, LAYER_INFO_CENTROIDS)))
+
+          ' seamless maps can't be selectable
+          If Not TableInfo(sTable, TAB_INFO_SEAMLESS) Then
+            bOK = WriteGeosetMetadata("TABLE\" + sLayerNum + "\SELECTABLE", LogicalToString$(LayerInfo(lMapWin, lLayer, LAYER_INFO_SELECTABLE)))
+            bOK = WriteGeosetMetadata("TABLE\" + sLayerNum + "\EDITABLE", LogicalToString$(LayerInfo(lMapWin, lLayer, LAYER_INFO_EDITABLE)))
+          End If 'not seamless
+
+          ' if the layer is displayed using global styles, write styles
+          sKey = "TABLE\" + sLayerNum + "\DISPLAY"
+          If LayerInfo(lMapWin, lLayer, LAYER_INFO_DISPLAY) = LAYER_INFO_DISPLAY_GLOBAL Then
+            bOK = WriteGeosetMetadataBrush(sKey, LayerInfo(lMapWin, lLayer, LAYER_INFO_OVR_BRUSH))
+              And WriteGeosetMetadataPen(sKey, LayerInfo(lMapWin, lLayer, LAYER_INFO_OVR_PEN))
+              And WriteGeosetMetadataLinePen(sKey, LayerInfo(lMapWin, lLayer, LAYER_INFO_OVR_LINE))
+              And WriteGeosetMetadataFont(sKey, LayerInfo(lMapWin, lLayer, LAYER_INFO_OVR_FONT))
+              And WriteGeosetMetadataSymbol(sKey, LayerInfo(lMapWin, lLayer, LAYER_INFO_OVR_SYMBOL))
+          End If 'global display
+
+          ' write out the label info
+          sKey = "TABLE\" + sLayerNum + "\LABEL"
+
+          ' if we have zoom labels, write out the zoom info
+          If LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_VISIBILITY) = LAYER_INFO_LBL_VIS_ZOOM Then
+
+            If gsGeoSetVersion = GEOSET_VERSION_500 Then
+              bOK = WriteGeosetMetadata(sKey + "\ZOOM\MIN", LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_ZOOM_MIN))
+                And WriteGeosetMetadata(sKey + "\ZOOM\MAX", LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_ZOOM_MAX))
+                And WriteGeosetMetadata(sKey + "\ZOOM\UNIT", UnitAbbrToUnitNumber(MapperInfo(lMapWin, MAPPER_INFO_DISTUNITS)))
+            Else
+              bOK = WriteGeosetMetadata(sKey + "\ZOOM\MIN", LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_ZOOM_MIN))
+                And WriteGeosetMetadata(sKey + "\ZOOM\MAX", LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_ZOOM_MAX))
+            End If
+          End If 'zoom labels
+
+          If gsGeoSetVersion = GEOSET_VERSION_500 Then
+            bOK = WriteGeosetMetadata(sKey + "\DUPLICATE", LogicalToString$(LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_DUPLICATES)))
+              And WriteGeosetMetadata(sKey + "\LINETYPE", LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_LT))
+              And WriteGeosetMetadata(sKey + "\OFFSET", LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_OFFSET))
+              And WriteGeosetMetadata(sKey + "\OVERLAP", LogicalToString$(LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_OVERLAP)))
+              And WriteGeosetMetadata(sKey + "\ALONG", Str$(Int(LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_PARALLEL))))
+              And WriteGeosetMetadata(sKey + "\POSITION", LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_POS))
+              And WriteGeosetMetadata(sKey + "\PARTIALOBJECTS", LogicalToString$(LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_PARTIALSEGS)))
+          Else
+            bOK = WriteGeosetMetadata(sKey + "\DUPLICATE", LogicalToString$(LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_DUPLICATES)))
+              And WriteGeosetMetadata(sKey + "\LINETYPE", LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_LT))
+              And WriteGeosetMetadata(sKey + "\OFFSET", LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_OFFSET))
+              And WriteGeosetMetadata(sKey + "\OVERLAP", LogicalToString$(LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_OVERLAP)))
+              And WriteGeosetMetadata(sKey + "\PARALLEL", LogicalToString$(LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_PARALLEL)))
+              And WriteGeosetMetadata(sKey + "\POSITION", LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_POS))
+              And WriteGeosetMetadata(sKey + "\PARTIALSEGMENTS", LogicalToString$(LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_PARTIALSEGS)))
+          End If
+          ' if the label maximum is not set, LayerInfo returns 2147483647, so don't write MAXLABELS
+          ' key if that's what we get
+          If LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_MAX) < 2147483647 Then
+            bOK = WriteGeosetMetadata(sKey + "\MAXLABELS", LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_MAX))
+          End If 'max labels set
+
+          ' write the label font info
+          bOK = WriteGeosetMetadataFont(sKey, LayerInfo(lMapWin, lLayer, LAYER_INFO_LBL_FONT))
+        End If 'normal layer
+      Else
+        Print GetResString(IDS_LAYER_NOT_SUPPORTED) + " " + sTable
+      End If 'valid layer
+      'Else
+      ' Print GetResString(IDS_DUPLICATE_LAYER) + " " + sTable
+      ' End If 'not duplicate layer -- test no longer necessary: DMG112001
+    Else
+      Print GetResString(IDS_LAYER_NOT_SUPPORTED) + " " + sTable
+    End If 'if table is not a result set
+  End If 'normal or raster or grid layer
+
+Done:
+  GeosetLayerInfo = WriteGeosetOK()
+  Exit Function
+
+ErrorTrap:
+  Print "GeosetLayerInfo: " + Error$()
+  Resume Done
+End Function 'GeosetLayerInfo

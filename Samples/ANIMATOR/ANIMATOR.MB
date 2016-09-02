@@ -1,0 +1,348 @@
+'
+' ANIMATOR.MB
+' MapBasic program that uses MapInfo 4.0's "Animation Layer"
+' feature to improve the speed of map updates. 
+'
+' Features highlighted:  This program shows how you can use 
+' the "Animate" keyword (in the Add Map statement and the 
+' Remove Map statement) to manage an "Animation layer." 
+'
+' To see the related statements, search for "animate". 
+'
+
+Include "mapbasic.def"
+
+' Include a file that lets us use the "auto-load" library
+Include "..\Inc\auto_lib.def"  
+
+Declare Sub Main 
+Declare Sub prepare_animation()
+Declare Sub do_animation(ByVal source_object As Object, ByVal row_num As Integer) 
+Declare Function prompt_the_user() As Logical
+Declare Sub About 
+Declare Sub bye 
+
+Global  gi_map_id  As Integer      ' will contain window ID of a map window. 
+Global  gs_symbol  As Symbol       ' the symbol style used in the animation 
+Global  gL_fast    As Logical      ' TRUE means use fast animation
+
+
+Sub Main()
+
+  ' Assign some global variables, so that the Auto-Load button
+  ' (in the About dialog) can use the library routines
+  ' stored in AUTO_LIB.MBO.
+  gsAppFilename =  "animator.mbx"   ' name of MapBasic app file  
+  gsAppDescription = "Animator"     ' short description of MB application 
+
+  Create Menu gsAppDescription as
+    "&Show Animation..." Calling prepare_animation, 
+    "(-",
+    "&About Animator..." Calling about, 
+    "E&xit Animator" Calling bye 
+
+  Call set_tools_menu(gsAppDescription)
+
+  gs_symbol = MakeSymbol(44, RED, 18) 
+  gL_fast   = TRUE 
+
+End Sub
+
+
+'****************************************************************************
+'  PREPARE_ANIMATION:   this procedure opens (or, if necessary, creates) a table
+'                       that will act as the animation layer. 
+'                       
+Sub prepare_animation 
+  Dim poly As Object                'this will contain the object the user selected
+  Dim animation_table As String     'used to hold the name of the table to create
+  Dim i_row_id  As  Integer         'the row number of the point object we're adding. 
+  Dim i_table_count As Integer      'the number of open tables 
+  Dim drop_afterwards As Logical    'TRUE means: delete table when we're done 
+  Dim point_var As Object           'a point object which we'll move around the map
+  Dim i_start, i_elapsed As Integer 'used to calculate elapsed time 
+
+  If  SelectionInfo(SEL_INFO_NROWS) <>  1 Then 
+    Note "You must select one polyline or one region before you choose Show Animation." 
+    Exit Sub 
+  End If 
+
+  ' Now, copy the expression   Selection.obj  (which represents the
+  ' currently-selected object) into an Object variable.  
+  ' But before we copy the object, first let's determine the number 
+  ' of tables that are currently open.  
+
+  i_table_count = NumTables()  
+
+  ' If the selected row does not have a map object attached, then halt. 
+
+  If  Str$( Selection.obj ) = ""  Then 
+    Note "You must select one polyline or one region before you choose Show Animation." 
+    Exit Sub 
+  End If 
+
+  poly = Selection.obj 
+
+  ' The Object variable, poly, now contains a copy of the selected object. 
+  ' When we queried the selection, MapInfo may have taken a snapshot of 
+  ' the selection, and called the snapshot Query1  (or Query2...) 
+  ' If this is the case, we will determine the name of the Query table,
+  ' and close it.  (QueryN tables do not do any harm, but they can 
+  ' get in the user's way.)
+
+  If NumTables() > i_table_count  Then 
+    ' ... then our query opened a new Query table; let's close it. 
+    ' We'll determine the name of the latest opened table 
+    ' by calling TableInfo() with zero as the table number. 
+    Close Table  TableInfo(0, TAB_INFO_NAME) 
+  End If 
+
+  If ObjectInfo(poly, OBJ_INFO_TYPE) <>  OBJ_PLINE And 
+     ObjectInfo(poly, OBJ_INFO_TYPE) <>  OBJ_REGION  Then 
+    Note "You must select one polyline or one region before you choose Show Animation." 
+    Exit Sub     
+  End If 
+
+  ' Test to make sure the selected object isn't a Layout object. 
+
+  If  Left$( SelectionInfo(SEL_INFO_TABLENAME), 6) = "Layout" Then 
+    Note "Select a polyline or a region from a Map window, then choose Show Animation."
+    Exit Sub  
+  End If 
+
+  ' We'll assign the animation layer to the active window, 
+  ' but only if the active window is a Map.  
+ 
+  If  NumWindows() > 0  Then 
+    gi_map_id = FrontWindow() 
+    If  WindowInfo(gi_map_id, WIN_INFO_TYPE) <> WIN_MAPPER  Then 
+      Note "You must make a map window the active window before you run this demo."
+      Exit Sub 
+    End If 
+  Else 
+    Note "You must open a map window before you can run this demo." 
+    Exit Sub 
+  End If 
+
+  ' If we made it this far, then the active window is a map, 
+  ' and the map window's ID is in the global variable  gi_map_id . 
+  ' Now we'll create a table  (which we'll delete later).  We will store 
+  ' a point object in this table, and we'll move the point around the map
+  ' as our "animation." 
+   
+  animation_table = PathToDirectory$( TempFileName$("") ) + "tmp_demo.tab" 
+
+  If  FileExists(animation_table)  Then 
+    Open Table animation_table 
+    drop_afterwards = FALSE 
+  Else 
+    Create Table  tmp_demo
+      ( Name Char(10), 
+        Number SmallInt )
+      File animation_table 
+      
+    Create Map For tmp_demo
+    drop_afterwards = TRUE 
+  End If 
+
+  If  prompt_the_user()  Then 
+    ' ... then the user wants to continue. 
+
+    ' Use a Set Table statement to set up fast edit processing    
+ 
+    Set Table tmp_demo  FastEdit On  Undo Off 
+
+    ' Now add the point layer to the map window. 
+    ' If the user checked the "Use animation layer" check box, 
+    ' we'll use the optional "Animate" keyword for speed. 
+    ' If the user cleared the check box, we'll leave off the 
+    ' Animate keyword, and the layer will be treated as a 
+    ' normal layer (which means slower processing). 
+
+    If  gL_fast  Then 
+      '... then make this an animation layer. 
+      Add Map  Window gi_map_id  Layer tmp_demo  Animate
+    Else 
+      '  make this a conventional layer. 
+      Add Map  Window gi_map_id  Layer tmp_demo  
+    End If 
+
+    ' Create a point object: 
+
+    Create Point  Into Variable point_var  (0,0)  Symbol gs_symbol 
+
+    ' Now store the point in the tmp_demo table. 
+    ' (We will move this point object around the map as our 
+    ' demonstration of animation.) 
+
+    Insert Into tmp_demo (Obj) 
+      Values ( point_var )
+
+    i_row_id = TableInfo("tmp_demo", TAB_INFO_NROWS) 
+
+    ' Call the DO_ANIMATION procedure to do the animation.
+
+    Call  do_animation(poly, i_row_id) 
+
+    ' Delete the point we added to tmp_demo. 
+
+    Delete From tmp_demo Where RowID = i_row_id 
+
+    ' Remove the animation-layer table from the Map window. 
+    ' If we added it using the "Animate" keyword, then we must 
+    ' also use "Animate" in the Remove Map statement. 
+
+    If  gL_fast Then 
+      Remove Map  Window gi_map_id  Layer  Animate
+    Else 
+      Remove Map  Window gi_map_id  Layer  tmp_demo 
+    End If 
+
+  End If 
+
+  ' If we created the  tmp_demo  table just for this demo, 
+  ' then let's delete the table now (so that we don't clutter up
+  ' the user's hard disk). 
+
+  If drop_afterwards Then   
+    Drop Table tmp_demo 
+  Else 
+    Close Table tmp_demo 
+  End If 
+
+End Sub 
+
+
+'****************************************************************************
+'  prompt_the_user:  this procedure lets the user choose a symbol style 
+'                    for the animation. 
+'  
+Function  prompt_the_user() As Logical
+
+  Dialog  
+    Title "Animation Options" 
+    
+    Control StaticText   
+      Title "Symbol style:" 
+      Position 5, 5 
+
+    Control SymbolPicker 
+      Value gs_symbol  Into gs_symbol 
+      Position 50, 5
+
+    Control CheckBox 
+      Title "Use 'Animation Layer' for speed" 
+      Value gL_fast    Into gL_fast 
+
+    Control OKButton 
+    Control CancelButton 
+
+  If CommandInfo(CMD_INFO_DLG_OK) Then 
+    prompt_the_user = TRUE 
+  Else
+    prompt_the_user = FALSE
+  End If 
+End Function
+
+
+'****************************************************************************
+'  do_animation:  this procedure actually moves a point object in the 
+'                 tmp_demo table, moving it to each node in the original object. 
+'  
+Sub do_animation (ByVal source_object As Object, ByVal row_num As Integer) 
+  Dim i_part_number As Integer   
+  Dim i_node_number As Integer 
+  Dim x, y As Float  ' these will hold the coordinates of a node 
+  Dim o_new_point  As Object 
+  Dim i_start, i_elapsed As Integer   ' use these to calculate elapsed time
+
+  i_start = Timer()
+
+  ' Loop through each polygon in this region (or each section in this polyline)...
+  For  i_part_number = 1 To ObjectInfo(source_object, OBJ_INFO_NPOLYGONS)  
+
+    ' Loop through each node in this polygon (or in this polyline section)... 
+    For i_node_number = 1 To ObjectInfo(source_object, OBJ_INFO_NPOLYGONS + i_part_number) 
+       
+      ' retrieve the coordinates of the next node... 
+
+      x = ObjectNodeX(source_object, i_part_number, i_node_number)
+      y = ObjectNodeY(source_object, i_part_number, i_node_number) 
+ 
+      ' Move the Point object in our animation table to this x/y location...
+
+      Fetch Rec  row_num From tmp_demo 
+      o_new_point = tmp_demo.obj 
+      Alter Object o_new_point Geography OBJ_GEO_POINTX, x
+      Alter Object o_new_point Geography OBJ_GEO_POINTY, y
+      Update tmp_demo  
+        Set obj = o_new_point 
+        Where Rowid = row_num
+ 
+    Next   ' this closes the "for each node in the section" loop 
+ 
+  Next  ' this closes the "for each section in the object" loop 
+
+  i_elapsed = Timer() - i_start 
+  If  gL_fast Then 
+    Note "Time elapsed during a 'fast' (animation layer) demo: " +  i_elapsed + " seconds."
+  Else 
+    Note "Time elapsed during a 'slow' (NON-animation layer) demo: " +  i_elapsed + " seconds."
+  End If 
+
+End Sub    ' end of the do_animation procedure.  
+
+
+'****************************************************************************
+'  About: This procedure displays an About dialog box. 
+'         
+Sub About 
+
+  Dialog 
+     Title "About the Animator Demo Program..." 
+     
+     Control StaticText 
+        Title "Animator.mbx is now running." 
+        Position 10, 10 
+
+     Control StaticText
+        Title "This MapBasic application demonstrates MapBasic's" 
+        Position 10, 25
+     Control StaticText
+        Title "Animation Layer feature.  To see an animation,"
+        Position 10, 35
+     Control StaticText
+        Title "select one region or one polyline in a Map window," 
+        Position 10, 45
+     Control StaticText
+        Title "and then choose Tools > Animator > Show Animation." 
+        Position 10, 55
+ 
+     Control StaticText 
+        Title "Tip: If you clear the 'Use Animation Layer' check box"  Position 10, 70
+     Control StaticText 
+        Title "(in the Animation Options dialog box), MapInfo "  Position 10, 80
+     Control StaticText 
+        Title "disables Animation Layer optimization (so that you"  Position 10, 90
+     Control StaticText 
+        Title "can compare system speed with/without Animation Layers)."  Position 10, 100
+  
+     Control OKButton
+        Title "OK"  
+        Position 82, 120
+
+  ' If the user chooses "Auto-Load"  we call a procedure 
+  ' from the Auto_Lib library  (HandleInstallation). 
+
+End Sub 
+
+
+'****************************************************************************
+'  BYE:  This procedure cleans up and shuts down the animation demo. 
+'        Called if the user chooses Exit from the Animator submenu. 
+'  
+Sub Bye 
+    End Program  
+End Sub 
+
+

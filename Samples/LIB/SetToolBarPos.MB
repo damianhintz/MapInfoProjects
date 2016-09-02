@@ -1,0 +1,156 @@
+'
+' SetToolBarPos.MB :  It contains subroutines to save and apply  
+'                     docking and position related information
+'                     for toolbars created by Mapbasic Application 
+'
+'  To use this in your Mapbasic application, do the following: 
+'
+'  1.  In your application, include  "SetToolBarPos.def"
+'  2.  Call saveToolbarPositionInfo in EndHandler and Exit_program 
+'  3.  Call setToolBarPosition at the time of loading the toolbar
+
+
+ 
+Include "..\Inc\SetToolBarPos.def"
+Include "..\Inc\MapBasic.def"
+
+'************************************************************************************
+' Sub:  setToolBarPosition
+' 
+' It should be called at the time of loading the toolbar by the Mapbasic application
+' It restores the toolbar docked state and position to the same value as that existed
+' at the time of closing last time. The position and docking information are stored 
+' and read from a file specified by the calling mapbasic application 
+' *********************************************************************************
+Sub setToolBarPosition(Byval sToolbarName as string, Byval sToolBarPosFileName as string )
+	Onerror Goto HandleError
+	Dim sToolBarPosFile, sParam, sValue, sCmd, sLine  as String
+	Dim iToolBarDockPosition as Integer
+	Dim sToolbarX, sToolbarY, sToolbarWidth, sToolBarDockPosition, sToolbarDocked  as String
+	
+	'Keeping the location of file storing the position information same as location of mapinfo pref file
+  	sToolBarPosFile = pathtodirectory$(LocateFile$(LOCATE_PREF_FILE)) + sToolBarPosFileName + STR_TOOLBAR_POS_FILE_EXT
+
+	' Reading the parameters from file
+	If FileExists(sToolBarPosFile) Then 
+		Open File sToolBarPosFile For INPUT As #1 
+		
+		' Assuming in worst circumstance file is corrupted we will like to parameters initialize by some default values
+		sToolbarWidth = STR_DEFAULT_TOOLBAR_WIDTH 
+		sToolBarDockPosition = STR_DEFAULT_DOCK_POSITION
+		sToolbarX = STR_DEFAULT_DOCK_X 
+		sToolbarY = STR_DEFAULT_DOCK_Y 
+		sToolbarDocked = STR_DOCKED
+		
+		While Not(EOF(1))
+			Input #1, sLine 
+			sParam = LTrim$( RTrim$( Left$(sLine , instr(1, sLine , STR_EQUAL_TO)-1)))
+			sValue = LTrim$( RTrim$( Right$(sLine , Len(sLine ) - Len(sParam) -1)))
+			Do Case sParam 
+				Case STR_TOOLBAR_DOCKED 
+					sToolbarDocked = sValue 
+				Case STR_TOOLBAR_X 
+					sToolbarX = str$(val(sValue))
+				Case STR_TOOLBAR_Y 
+					sToolbarY = str$(val(sValue)) 
+				Case STR_TOOLBAR_WIDTH 
+					If val(sValue) >= 1 then
+						sToolbarWidth = str$(val(sValue)) 
+					End If
+				Case STR_TOOLBAR_DOCK_POSITION
+					iToolBarDockPosition = val(sValue) 
+			End Case
+		Wend
+
+		Close file #1
+
+		' Change the toolbar position
+	
+		If sToolbarDocked=STR_DOCKED  Then  'Toolbar was docked
+
+		'Since we now support docking in left, top, right, bottom. Find out the docking position
+			If iToolBarDockPosition > 0 and iToolBarDockPosition <5 then
+				If iToolBarDockPosition = BTNPAD_INFO_DOCK_LEFT then     
+					sToolBarDockPosition = STR_LEFT
+				ElseIf iToolBarDockPosition = BTNPAD_INFO_DOCK_TOP then  
+					sToolBarDockPosition = STR_TOP
+				ElseIf iToolBarDockPosition = BTNPAD_INFO_DOCK_RIGHT then  
+					sToolBarDockPosition = STR_RIGHT
+				ElseIf iToolBarDockPosition = BTNPAD_INFO_DOCK_BOTTOM then  
+					sToolBarDockPosition = STR_BOTTOM
+				End If
+			End if
+			
+		' Constructing  the  Command string for docking the toolbar, sToolbarY is row and sToolbarX is column
+      		sCmd = STR_ALTER_BUTTONPAD + Chr$(34)+ sToolbarName + Chr$(34)+ STR_TOOLBAR_POSITION+STR_OPEN_BRAC +
+             sToolbarY + STR_COMMA+ sToolbarX + STR_CLOSE_BRAC+ STR_WIDTH  + sToolbarWidth+ sToolBarDockPosition + STR_SHOW
+
+		Else     ' Toolbar was floating
+ 		' Constructing  the  Command string for keeping the toolbar floating
+			sCmd = STR_ALTER_BUTTONPAD + Chr$(34)+ sToolbarName + Chr$(34)+ STR_FLOAT + STR_POSITION +STR_OPEN_BRAC + sToolbarX+STR_COMMA+ sToolbarY +STR_CLOSE_BRAC 
+				 + STR_UNITS + Chr$(34) +STR_CM +Chr$(34) + STR_SHOW +  STR_WIDTH + sToolbarWidth
+		End If
+
+      	Run Command sCmd 
+	End If
+
+	Exit Sub
+
+	HandleError:
+		Note STR_FN_SET_TB_POS+ Error$()
+		Resume Next
+End Sub
+
+
+
+'************************************************************************************
+' Sub:  saveToolbarPositionInfo
+' 
+' It stores the toolbar docked state and position in a file
+'************************************************************************************	
+
+Sub saveToolbarPositionInfo(Byval sToolbarName as string, Byval sToolBarPosFileName as string)
+	Dim iToolbarX, iToolbarY, iToolBarDockPosition as integer
+	Dim iToolbarWidth as smallint
+	Dim isToolbarDocked as logical
+	Dim sToolBarPosFile as String
+	OnError Goto NotValidToolbar
+	' check if there is a vaild tools button pad
+	If  ButtonPadInfo(sToolbarName, BTNPAD_INFO_NBTNS) >=1 then
+		OnError Goto HandleError
+		Set Paper units STR_CM	
+		'get the tool bar position related information
+		iToolbarX = ButtonPadInfo(sToolbarName, BTNPAD_INFO_X)
+		iToolbarY = ButtonPadInfo(sToolbarName, BTNPAD_INFO_Y)
+		iToolbarWidth = ButtonPadInfo(sToolbarName, BTNPAD_INFO_WIDTH)
+		iToolBarDockPosition = ButtonPadInfo(sToolbarName, BTNPAD_INFO_DOCK_POSITION)
+		If iToolBarDockPosition =0 then
+			isToolbarDocked  = FALSE
+		Else
+			isToolbarDocked  = TRUE
+		End If
+		'Keeping the location of file storing the position information same as location of mapinfo pref file
+		sToolBarPosFile = pathtodirectory$(LocateFile$(LOCATE_PREF_FILE)) + sToolBarPosFileName + STR_TOOLBAR_POS_FILE_EXT
+
+		'saving the information in the file
+		Open File sToolBarPosFile For OUTPUT As #2 
+			If isToolbarDocked then
+				Print #2, STR_TOOLBAR_DOCKED + STR_EQUAL_TO + STR_DOCKED
+			Else
+				Print #2, STR_TOOLBAR_DOCKED + STR_EQUAL_TO + STR_NOT_DOCKED
+			End If
+			Print #2, STR_TOOLBAR_X + STR_EQUAL_TO + iToolbarX
+			Print #2, STR_TOOLBAR_Y + STR_EQUAL_TO + iToolbarY
+			Print #2, STR_TOOLBAR_WIDTH + STR_EQUAL_TO +	iToolbarWidth 
+			Print #2, STR_TOOLBAR_DOCK_POSITION + STR_EQUAL_TO +	iToolBarDockPosition 
+		Close file #2
+	End If
+	Exit Sub
+
+	NotValidToolbar:
+		Resume Next
+	HandleError:
+		Note STR_FN_SAVE_TB_POS_INFO + Error$()
+		Resume Next
+End Sub
+

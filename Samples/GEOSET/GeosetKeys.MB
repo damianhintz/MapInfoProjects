@@ -1,0 +1,278 @@
+Include "MapBasic.def"
+Include "GeosetLoad.def"
+Include "Error.def"
+
+'---------------------------------------
+' Parse Subkey of ".\ZOOM" Keys and Memorize Geoset Value 
+'---------------------------------------
+Function ParseZoomKey( vtZoom As tZoom, sKey As String, sValue As String ) As Integer
+  OnError Goto ErrorTrap
+  Dim SSubKey  As String
+
+    ParseZoomKey = CODE_OK
+
+    sSubKey = GetSubKey( sKey )
+    Do Case sSubKey
+        Case KEY_MAX
+            vtZoom.sMax = sValue
+        Case KEY_MIN
+            vtZoom.sMin = sValue
+        Case KEY_UNIT
+            vtZoom.sUnit = sValue
+        Case Else
+            ParseZoomKey = CODE_UNKNOWN_KEY
+    End Case
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  ParseZoomKey = CODE_ERROR
+  Print "ParseZoomKey: " & Error$()
+  Resume Done
+End Function 'ParseZoomKey
+
+'---------------------------------------
+' Parse Subkey of ".\BRUSH" Keys and Memorize Geoset Value 
+'---------------------------------------
+Function ParseBrushKey( vtBrush As tBrush, sKey As String, sValue As String ) As Integer
+  OnError Goto ErrorTrap
+  Dim sSubKey  As String
+
+    ParseBrushKey = CODE_OK
+
+    sSubKey = GetSubKey( sKey )
+    Do Case sSubKey
+        Case KEY_BACKCOLOR
+            vtBrush.sBackColor = sValue
+        Case KEY_FORECOLOR
+            vtBrush.sForeColor = sValue
+        Case KEY_PATTERN
+            vtBrush.sPattern = sValue
+        Case KEY_TRANSPARENT
+            vtBrush.sTransparent = sValue
+        Case Else
+            ParseBrushKey = CODE_UNKNOWN_KEY
+    End Case
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  ParseBrushKey = CODE_ERROR
+  Print "ParseBrushKey: " & Error$()
+  Resume Done
+End Function 'ParseBrushKey
+
+'---------------------------------------
+' Parse Subkey of ".\PEN" Keys and Memorize Geoset Value
+'---------------------------------------
+Function ParsePenKey( vtPen As tPen, sKey As String, sValue As String ) As Integer
+  OnError Goto ErrorTrap
+  Dim sSubKey  As String
+ 
+    ParsePenKey = CODE_OK
+
+    sSubKey = GetSubKey( sKey )
+    Do Case sSubKey
+        Case KEY_COLOR
+            vtPen.sColor = sValue
+        Case KEY_LINESTYLE
+            vtPen.sLineStyle = sValue
+        Case KEY_LINEWIDTH
+            vtPen.sLineWidth = sValue
+        Case KEY_PATTERN
+        Case Else
+            ParsePenKey = CODE_UNKNOWN_KEY
+        End Case
+Done:
+  Exit Function
+
+ErrorTrap:
+  ParsePenKey = CODE_ERROR
+  Print "ParsePenKey: " & Error$()
+  Resume Done
+End Function 'ParsePenKey
+
+'---------------------------------------
+' Parse Subkey of ".\FONT" Keys and Memorize Geoset Value
+'---------------------------------------
+Function ParseFontKey( vtFont As tFont, sKey As String, sValue As String ) As Integer
+  OnError Goto ErrorTrap
+  Dim sSubKey  As String
+
+    ParseFontKey = CODE_OK
+
+    sSubKey = GetSubKey( sKey )
+    Do Case sSubKey
+        Case KEY_BACKCOLOR
+            vtFont.sBackColor = sValue
+        Case KEY_FORECOLOR
+            vtFont.sForeColor = sValue
+        Case KEY_DESCRIPTION
+            vtFont.sDescription = sValue
+        Case KEY_EXTSTYLE
+            vtFont.sExtStyle = sValue
+        Case KEY_OPAQUE
+            vtFont.sOpaque = sValue
+        Case KEY_SIZE
+            vtFont.sSize = sValue
+        Case KEY_STYLE
+            vtFont.sStyle = sValue
+        Case KEY_ROTATION
+            vtFont.sRotation = sValue
+        Case Else
+            ParseFontKey = CODE_UNKNOWN_KEY
+    End Case
+Done:
+  Exit Function
+
+ErrorTrap:
+  ParseFontKey = CODE_ERROR
+  Print "ParseFontKey: " & Error$()
+  Resume Done
+End Function 'ParseFontKey
+
+'---------------------------------------
+' Parse Subkey of ".\BITMAP" Keys and Memorize Geoset Value
+'---------------------------------------
+Function ParseBitmapKey( vtBitmap As tBitmap, sKey As String, sValue As String ) As Integer
+  OnError Goto ErrorTrap
+  Dim sSubKey  As String
+
+    ParseBitmapKey = CODE_OK
+
+    sSubKey = GetSubKey( sKey )
+    Do Case sSubKey
+        Case KEY_NAME
+            vtBitmap.sName = sValue
+        Case KEY_TRANSPARENT
+            vtBitmap.sTransparent = sValue
+        Case KEY_OVERRIDECOLOR
+            vtBitmap.sOverrideColor = sValue
+        Case Else
+            ParseBitmapKey = CODE_UNKNOWN_KEY
+    End Case
+Done:
+  Exit Function
+
+ErrorTrap:
+  ParseBitmapKey = CODE_ERROR
+  Print "ParseBitmapKey: " & Error$()
+  Resume Done
+End Function 'ParseBitmapKey
+
+'---------------------------------------
+' Parse Subkey of ".\SYMBOL" Keys and Memorize Geoset Value
+'---------------------------------------
+Function ParseSymbolKey( vtSymbol As tSymbol, sKey As String, sValue As String ) As Integer
+  OnError Goto ErrorTrap
+  Dim sSubKey  As String
+
+    ParseSymbolKey = CODE_OK
+
+    sSubKey = GetSubKey( sKey )
+    Do Case sSubKey 
+        Case KEY_COLOR
+            vtSymbol.sColor = sValue
+        Case KEY_CODE
+            vtSymbol.sCode = sValue
+        Case KEY_POINTSIZE
+            vtSymbol.sPointSize = sValue
+        Case KEY_FONT
+            ParseSymbolKey = ParseFontKey( vtSymbol.vtFont, sKey, sValue )
+        Case KEY_BITMAP
+            ParseSymbolKey = ParseBitmapKey( vtSymbol.vtBitmap, sKey, sValue )
+        Case KEY_TYPE
+            vtSymbol.sType = sValue
+        Case Else
+            ParseSymbolKey = CODE_UNKNOWN_KEY
+    End Case
+Done:
+  Exit Function
+
+ErrorTrap:
+  ParseSymbolKey = CODE_ERROR
+  Print "ParseSymbolKey: " & Error$()
+  Resume Done
+End Function 'ParseSymbolKey
+
+'---------------------------------------
+' Parse Subkey of ".\DISPLAY" Keys and Memorize Geoset Value
+'---------------------------------------
+Function ParseDisplayKey( vtDisplay As tDisplay, sKey As String, sValue As String ) As Integer
+  OnError Goto ErrorTrap
+  Dim sSubKey  As String
+
+    ParseDisplayKey = CODE_OK
+
+    sSubKey = GetSubKey( sKey )
+    Do Case sSubKey 
+        Case KEY_BRUSH
+            ParseDisplayKey = ParseBrushKey( vtDisplay.vtBrush, sKey, sValue )
+        Case KEY_FONT
+            ParseDisplayKey = ParseFontKey( vtDisplay.vtFont, sKey, sValue )
+        Case KEY_PEN
+            ParseDisplayKey = ParsePenKey( vtDisplay.vtPen, sKey, sValue )
+        Case KEY_LINEPEN
+            ParseDisplayKey = ParsePenKey( vtDisplay.vtLinePen, sKey, sValue )
+        Case KEY_SYMBOL
+            ParseDisplayKey = ParseSymbolKey( vtDisplay.vtSymbol, sKey, sValue )
+        Case Else
+            ParseDisplayKey = CODE_UNKNOWN_KEY
+    End Case
+Done:
+  Exit Function
+
+ErrorTrap:
+  ParseDisplayKey = CODE_ERROR
+  Print "ParseDisplayKey: " & Error$()
+  Resume Done
+End Function 'ParseDisplayKey
+
+'---------------------------------------
+' Parse Subkey of ".\LABEL" Keys and Memorize Geoset Value
+'---------------------------------------
+Function ParseLabelKey( vtLabel As tLabel, sKey As String, sValue As String ) As Integer
+  OnError Goto ErrorTrap
+  Dim sSubKey  As String
+
+    ParseLabelKey = CODE_OK
+
+    sSubKey = GetSubKey( sKey )
+    Do Case sSubKey 
+        Case KEY_DUPLICATE
+            vtLabel.sDuplicate = sValue
+        Case KEY_LINETYPE
+            vtLabel.sLineType = sValue
+        Case KEY_MAXLABELS
+            vtLabel.sMaxLabels = sValue
+        Case KEY_OFFSET
+            vtLabel.sOffset = sValue
+        Case KEY_OVERLAP
+            vtLabel.sOverlap = sValue
+        Case KEY_PARALLEL
+            vtLabel.sParallel = sValue
+        Case KEY_ALONG
+             ' MapX 5.0 equivalent to "PARALLEL":  convert to "0" or "1"
+             vtLabel.sParallel = Str$(Sgn(Val(sValue)))
+        Case KEY_POSITION
+            vtLabel.sPosition = sValue
+        Case KEY_PARTIALSEGMENTS, KEY_PARTIALOBJECTS
+            vtLabel.sPartialSegments = sValue
+        Case KEY_FONT
+            ParseLabelKey = ParseFontKey( vtLabel.vtFont, sKey, sValue )
+        Case KEY_ZOOM
+            ParseLabelKey = ParseZoomKey( vtLabel.vtZoom, sKey, sValue )
+        Case Else
+            ParseLabelKey = CODE_UNKNOWN_KEY
+    End Case
+Done:
+  Exit Function
+
+ErrorTrap:
+  ParseLabelKey = CODE_ERROR
+  Print "ParseLabelKey: " & Error$()
+  Resume Done
+End Function 'ParseLabelKey
+

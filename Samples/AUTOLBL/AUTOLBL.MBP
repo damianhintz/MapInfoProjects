@@ -1,0 +1,5 @@
+[Link] 
+Application=autolbl.mbx 
+Module=autolbl.mbo
+Module=..\Lib\auto_lib.mbo
+

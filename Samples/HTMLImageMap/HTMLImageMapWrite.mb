@@ -1,0 +1,1101 @@
+'*****************************************************************************
+'       Copyright (c) 2000-2001, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: HTMLImageMapWrite.mb $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+' API for writing HTML Image Maps
+'
+'*****************************************************************************
+Include "mapbasic.def"
+Include "HTMLImageMap.def"
+
+Declare Sub HTMLImageMapExport
+Declare Sub HTMLImageMapSingleObject
+Declare Sub SelectObjectsThatIntersect
+Declare Sub ClipSingleObject
+Declare Function EvaluateHotLink$() As String
+Declare Function ReadJPEG(JPEGFileName As String) As Logical
+Declare Function CalculateX(ByVal in As Float) As SmallInt
+Declare Function CalculateY(ByVal in As Float) As SmallInt
+Declare Function CalculateSlope(ByVal xmin As Float, ByVal ymin As Float, ByVal xmax As Float, ByVal ymax As Float) As Float
+
+'*****************************************************************************
+' 'local' globals mostly to support handler routines that cannot take parameters
+'*****************************************************************************
+Global ImageFileName, ImageFileExt As String
+Global lgiRecNum, ExportPass As Integer
+Global ObjectAlias As Alias
+Global image_bound As Box        'Bounding box of image in real-world coords
+Global image_size As Pixel
+Global ImageRatio As Coord
+Global extent_obj As Object      'Rectangular object of the mapper extent
+Global iSelectionPhase As Integer
+
+Global lgsImageCopyright As String
+Global lgsHTMLFileName, lgsPaperUnits As String
+Global lgsLayerName, lgsColumnNames(0) As String
+Global lgsColumnNamesTarget(0), lgsColumnNameAliases(0), lgsTreatAsLinks(0) As String
+Global lglCreateLandingPages, lglPopulateLandingPages, lglIncludeHotLink, lglOnePage As Logical
+Global lgiSelectedLinkType, lgiSelectedFormat As SmallInt
+Global lgiMapWindowID, lgiClipResolution, lgiDelta, lgiPlaceHolder, lgiSelectedColumn As Integer
+Global lgfImageHeight, lgfImageWidth As Float
+Global lgsMsgSelectingObjects As String
+Global lgsMsgClippingObjects As String
+Global lgsMsgCreatingImageFile As String
+Global lgsMsgCreatingImageMap As String
+Global lgsMsgReturnToMap As String
+Global lgsMsgEmptyField As String
+Global lgsMsgYes As String
+Global lgsHotLinkMetaDataKeyValue As String
+Global lgsUsedFileNames(0) As String
+
+Global lgiError As Integer
+'*****************************************************************************
+'
+'*****************************************************************************
+Function HTMLImageMapWrite300(
+  sWebPageTitle As String,
+  sImageCopyright As String,
+  sHTMLFileName As String,
+  sPaperUnits As String,
+  tLayerNamesTarget(0) As SelectedLayer,
+  iSelectedFormat As SmallInt,
+  iMapWindowID As Integer,
+  iClipResolution As Integer,
+  iDelta As Integer,
+  fImageHeight As Float,
+  fImageWidth As Float,
+  iSelectedLinkType As SmallInt,
+  lCreateLandingPages As Logical,
+  lPopulateLandingPages As Logical,
+  lIncludeHotLink As Logical,
+  lOnePage As Logical, 
+  ByVal sMsgSelectingObjects As String,
+  ByVal sMsgClippingObjects As String,
+  ByVal sMsgCreatingImageFile As String,
+  ByVal sMsgCreatingImageMap As String,
+  ByVal sMsgReturnToMap As String,
+  ByVal sMsgEmptyField As String,
+  ByVal sMsgYes As String
+) As Integer
+
+  OnError Goto HandleError
+
+'  ************************************************************************************************
+'  * Declare local variables...
+'  ************************************************************************************************
+
+  dim
+    iteration,          'Counter for record number in For-Loop
+    NumLayers,          'Number of layers in the current mapper
+    ValidLayers
+      As SmallInt,
+    TempTableName,      'Temporary working table name
+    WorkTableName,      'Table to convert
+    CommandString,
+    sCopyRightSymbol,
+    sLine
+      As String
+  Dim i, iLayer as Integer
+
+'  ************************************************************************************************
+'  * Copy parameters to private global variables...
+'  ************************************************************************************************
+
+  lgsImageCopyright = sImageCopyright
+  lgsHTMLFileName = sHTMLFileName
+  lgsPaperUnits = sPaperUnits
+  lgiSelectedLinkType = iSelectedLinkType
+  lglCreateLandingPages = lCreateLandingPages
+  lglPopulateLandingPages = lPopulateLandingPages
+  lgiSelectedFormat = iSelectedFormat
+  lgiMapWindowID = iMapWindowID
+  lgiClipResolution = iClipResolution
+  lgiDelta = iDelta
+  lgfImageHeight = fImageHeight
+  lgfImageWidth = fImageWidth
+  lgsMsgSelectingObjects = sMsgSelectingObjects 
+  lgsMsgClippingObjects = sMsgClippingObjects
+  lgsMsgCreatingImageFile = sMsgCreatingImageFile
+  lgsMsgCreatingImageMap = sMsgCreatingImageMap
+  lgsMsgReturnToMap = sMsgReturnToMap
+  lgsMsgEmptyField = sMsgEmptyField'
+  lgsMsgYes = sMsgYes
+  lglIncludeHotLink  = lIncludeHotLink
+  lglOnePage = lOnePage
+
+  lgiError = HTMLImageMapWriteOK
+
+  ReDim lgsUsedFileNames(0)
+
+'  ************************************************************************************************
+'  * Setup window id and mapbasic coordsys...
+'  ************************************************************************************************
+
+    Set CoordSys Window lgiMapWindowID
+
+'  ************************************************************************************************
+'  * Retrieve geographic extents of the mapper window...
+'  ************************************************************************************************
+
+  image_bound.min.x = MapperInfo(lgiMapWindowID, MAPPER_INFO_MINX)
+  image_bound.min.y = MapperInfo(lgiMapWindowID, MAPPER_INFO_MINY)
+  image_bound.max.x = MapperInfo(lgiMapWindowID, MAPPER_INFO_MAXX)
+  image_bound.max.y = MapperInfo(lgiMapWindowID, MAPPER_INFO_MAXY)
+
+'  ************************************************************************************************
+'  * Stuff for zoomed-in window...
+'  ************************************************************************************************
+
+  Create Region Into Variable extent_obj 0
+  If lgiClipResolution < 1 Then
+    lgiClipResolution = 1
+  End If
+  If lgiClipResolution > 1000 Then
+    lgiClipResolution = 1000
+  End If
+  For iteration = 0 to lgiClipResolution
+
+    Alter Object extent_obj
+      Node Add (image_bound.min.x + (((image_bound.max.x-image_bound.min.x)/lgiClipResolution)*iteration), image_bound.min.y)
+  Next 
+  For iteration = 0 to lgiClipResolution
+    Alter Object extent_obj
+      Node Add (image_bound.max.x, image_bound.min.y + (((image_bound.max.y-image_bound.min.y)/lgiClipResolution)*iteration))
+  Next 
+  For iteration = 0 to lgiClipResolution
+    Alter Object extent_obj
+      Node Add (image_bound.max.x - (((image_bound.max.x-image_bound.min.x)/lgiClipResolution)*iteration), image_bound.max.y)
+  Next 
+  For iteration = 0 to lgiClipResolution
+    Alter Object extent_obj
+      Node Add (image_bound.min.x, image_bound.max.y - (((image_bound.max.y-image_bound.min.y)/lgiClipResolution)*iteration))
+  Next 
+
+  OnError Goto SupressError
+  Drop Table ImageMapWorkTable
+  OnError Goto HandleError
+
+  TempTableName = TempFileName$("")
+  WorkTableName = PathToDirectory$(TempTableName) + PathToTableName$(TempTableName) + ".tab"
+
+'  ************************************************************************************************
+'  * Adjust image size...
+'  ************************************************************************************************
+   Set Paper Units lgsPaperUnits
+
+'  ************************************************************************************************
+'  * Export image...
+'  ************************************************************************************************
+  Do Case lgiSelectedFormat
+    Case FormatJPEG
+      ExportPass = 1
+    Case FormatPNG
+      ExportPass = 2
+  End Case
+  ProgressBar lgsMsgCreatingImageFile
+    Calling HTMLImageMapExport
+    Range ExportPass 
+
+  If Not CommandInfo(CMD_INFO_STATUS) Then 
+    HTMLImageMapWrite300 = HTMLImageMapWriteOperationCanceled
+    Exit Function
+  End If 
+
+
+'  ************************************************************************************************
+'  * Check projection and zoom level combination...
+'  ************************************************************************************************
+
+  If image_bound.max.x - image_bound.min.x = 0 Then
+    HTMLImageMapWrite300 = HTMLImageMapWriteBadProjectionOrZoom
+    Exit Function
+  Else
+    ImageRatio.x = image_size.x / (image_bound.max.x - image_bound.min.x)
+  End If
+  If image_bound.max.y - image_bound.min.y = 0 Then
+    HTMLImageMapWrite300 = HTMLImageMapWriteBadProjectionOrZoom
+    Exit Function
+  Else
+    ImageRatio.y = image_size.y / (image_bound.max.y - image_bound.min.y)
+  End If
+  If ImageRatio.y > 100*ImageRatio.x Or ImageRatio.x > 100*ImageRatio.y Then
+    HTMLImageMapWrite300 = HTMLImageMapWriteBadProjectionOrZoom
+    Exit Function
+  End If
+
+'  ************************************************************************************************
+'  * Open an HTML file for output, and write header information to the file...
+'  ************************************************************************************************
+
+  Open File lgsHTMLFileName for output access write as #1 CharSet SystemInfo(SYS_INFO_CHARSET)'"WindowsLatin1"
+  Print #1, "<HTML>"
+  Print #1, "<HEAD></HEAD>"
+  Print #1, "<BODY>"
+  Print #1, "<A NAME=" + QUOTE + "MapAtTopOfPage" + QUOTE + ">"
+  Print #1, "<H2>" + ltrim$(rtrim$(sWebPageTitle)) + "</H2>"
+  Print #1, "<CENTER>"
+  Print #1, "<A>"
+  Print #1, "<IMG SRC=" + QUOTE + lcase$(PathToTableName$(ImageFileName)) + ImageFileExt + QUOTE +
+            " USEMAP=" + QUOTE + "#ImageMap" + QUOTE + " ISMAP VSPACE=100%>"
+  Print #1, "</A>"
+  Print #1, "</CENTER>"
+  Print #1, "<MAP NAME = " + QUOTE + "ImageMap" + QUOTE + ">"
+
+  i = Ubound(lgsUsedFileNames)+1
+  ReDim lgsUsedFileNames(i)
+  lgsUsedFileNames(i) = PathToFileName$(lgsHTMLFileName)
+  
+
+'  ************************************************************************************************
+'  * Start working with layers...
+'  ************************************************************************************************
+  For iLayer = 1 To Ubound(tLayerNamesTarget)
+
+'   ***********************************************************************************************
+'   * make private global copies of parameters...
+'   ***********************************************************************************************
+
+    lgsLayerName = tLayerNamesTarget(iLayer).sLayerName
+    ReDim lgsColumnNames(Ubound(tLayerNamesTarget(iLayer).sColumnNames))
+    For i = 1 To Ubound(tLayerNamesTarget(iLayer).sColumnNames)
+      lgsColumnNames(i) = tLayerNamesTarget(iLayer).sColumnNames(i)
+    Next
+    lgiSelectedColumn = tLayerNamesTarget(iLayer).iSelectedColumn
+    ReDim lgsColumnNamesTarget(Ubound(gtLayerNamesTarget(iLayer).sColumnNamesTarget))
+    For i = 1 To Ubound(gtLayerNamesTarget(iLayer).sColumnNamesTarget)
+      lgsColumnNamesTarget(i) = gtLayerNamesTarget(iLayer).sColumnNamesTarget(i)
+    Next
+    ReDim lgsColumnNameAliases(Ubound(gtLayerNamesTarget(iLayer).sColumnNameAliases))
+    For i = 1 To Ubound(gtLayerNamesTarget(iLayer).sColumnNameAliases)
+      lgsColumnNameAliases(i) = gtLayerNamesTarget(iLayer).sColumnNameAliases(i)
+    Next
+    ReDim lgsTreatAsLinks(Ubound(gtLayerNamesTarget(iLayer).sTreatAsLinks))
+    For i = 1 To Ubound(gtLayerNamesTarget(iLayer).sTreatAsLinks)
+      lgsTreatAsLinks(i) = gtLayerNamesTarget(iLayer).sTreatAsLinks(i)
+    Next
+    lgsHotLinkMetaDataKeyValue = gtLayerNamesTarget(iLayer).sHotLinkMetaDataKeyValue
+
+'   ***********************************************************************************************
+'   * Select the objects to image map...
+'   ***********************************************************************************************
+
+    iSelectionPhase = 1
+    ProgressBar lgsMsgSelectingObjects + " " + lgsLayerName + " ..."
+      Calling SelectObjectsThatIntersect
+      Range 5 
+
+    If Not CommandInfo(CMD_INFO_STATUS) Then 
+      Close File #1
+      HTMLImageMapWrite300 = HTMLImageMapWriteOperationCanceled
+      Exit Function
+    End If 
+
+    If TableInfo(ImageMapWorkTable, TAB_INFO_NROWS) = 0 Then
+      If Ubound(tLayerNamesTarget) = 1 Then
+        Drop Table ImageMapWorkTable
+        HTMLImageMapWrite300 = HTMLImageMapWriteSelectLayerWithRegion
+        Exit Function
+      End If
+    Else
+      lgiRecNum = 1
+      ProgressBar lgsMsgClippingObjects + " " + lgsLayerName + " ..."
+        Calling ClipSingleObject
+        Range TableInfo(ImageMapWorkTable, TAB_INFO_NROWS) 
+
+      If Not CommandInfo(CMD_INFO_STATUS) Then 
+        Drop Table ImageMapWorkTable
+        Close File #1
+        HTMLImageMapWrite300 = HTMLImageMapWriteOperationCanceled
+        Exit Function
+      End If 
+
+      Commit Table ImageMapWorkTable
+
+      Select * From ImageMapWorkTable Where Str$(ObjectInfo(Obj, OBJ_INFO_TYPE)) = Str$(OBJ_TYPE_REGION)  Or
+                                            Str$(ObjectInfo(Obj, OBJ_INFO_TYPE)) = Str$(OBJ_TYPE_PLINE) Or
+                                            Str$(ObjectInfo(Obj, OBJ_INFO_TYPE)) = Str$(OBJ_TYPE_LINE) Or
+                                            Str$(ObjectInfo(Obj, OBJ_INFO_TYPE)) = Str$(OBJ_TYPE_POINT) 
+      If SelectionInfo(SEL_INFO_NROWS) = 0 Then
+        If Ubound(tLayerNamesTarget) = 1 Then
+          Drop Table ImageMapWorkTable
+          HTMLImageMapWrite300 = HTMLImageMapWriteSelectLayerWithRegion
+          Exit Function
+        End If
+      End If
+      If SelectionInfo(SEL_INFO_NROWS) > 0 Then
+
+'   ***********************************************************************************************
+'   * Create image map...
+'   ***********************************************************************************************
+
+        lgiRecNum = 1
+        ProgressBar lgsMsgCreatingImageMap + " " + lgsLayerName + " ..."
+          Calling HTMLImageMapSingleObject
+          Range TableInfo(ImageMapWorkTable, TAB_INFO_NROWS) 
+
+        If Not CommandInfo(CMD_INFO_STATUS) Then 
+          Drop Table ImageMapWorkTable
+          Close File #1
+          HTMLImageMapWrite300 = HTMLImageMapWriteOperationCanceled
+          Exit Function
+        End If 
+
+      End If
+    End If
+    Drop Table ImageMapWorkTable
+
+  Next
+
+'  ************************************************************************************************
+'  * Write out HTML trailer tags and close HTML file 
+'  ************************************************************************************************
+
+  Print #1, "</MAP>"
+
+  If lglOnePage Then
+    Print #1, "<BR>" 
+    Open File PathToDirectory$(lgsHTMLFileName) + "LandingPages.HTM"
+         For Input Access Read As #2 CharSet SystemInfo(SYS_INFO_CHARSET)'"WindowsLatin1"
+    Do While Not EOF(2)  
+      Line Input #2, sLine
+      If Not EOF(2) Then 
+        Print #1, sLine
+      End If  
+    Loop 
+    Close File #2
+    Kill PathToDirectory$(lgsHTMLFileName) + "LandingPages.HTM"
+  End If
+  Print #1, "</BODY>"
+  Print #1, "</HTML>"
+
+  Close File #1
+
+  HTMLImageMapWrite300 = lgiError
+  Exit Function
+
+HandleError:
+  Note "HTMLImageMapWrite: " + Error$()
+  Resume Next
+SupressError:
+  Resume Next
+End Function 'HTMLImageMapWrite
+
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub SelectObjectsThatIntersect
+  Dim
+    TempTableName,      'Temporary working table name
+    WorkTableName,      'Table to convert
+    CommandString
+      As String
+  Dim iColumn As Integer
+  Dim x, y As Float
+  Dim o, p As Object
+ 
+  OnError Goto HandleError
+
+  Do Case iSelectionPhase
+    Case 1
+'     *********************************************************************************************
+'     * start with points...
+'     *********************************************************************************************
+
+      Select * From lgsLayerName Where Obj Intersects extent_obj And
+                                       Str$(ObjectInfo(Obj, OBJ_INFO_TYPE)) = Str$(OBJ_TYPE_POINT)
+                                 Into ImageMapWorkTable NoSelect
+
+'     *********************************************************************************************
+'     * save and reopen table so we can add to it...
+'     *********************************************************************************************
+
+      TempTableName = TempFileName$("")
+      WorkTableName = PathToDirectory$(TempTableName) + PathToTableName$(TempTableName) + ".tab"
+
+      'Save out the temporary table in the projection of the map window, otherwise things get screwy with weird projections (like polar)
+      CommandString = "Commit Table ImageMapWorkTable As " + """" + WorkTableName + """" + " " + MapperInfo(lgiMapWindowID, MAPPER_INFO_COORDSYS_CLAUSE_WITH_BOUNDS)
+      Run Command CommandString
+
+      Close Table ImageMapWorkTable
+      Open Table WorkTableName As ImageMapWorkTable
+
+      iSelectionPhase = iSelectionPhase + 1
+      ProgressBar = iSelectionPhase
+
+    Case 2
+'     *********************************************************************************************
+'     * select lines...
+'     *********************************************************************************************
+
+      lgiPlaceHolder = TableInfo(ImageMapWorkTable, TAB_INFO_NROWS)
+
+      Select * From lgsLayerName Where Obj Into ImageMapWorkTable2 NoSelect 'watch out for records without objects!
+
+      Select * From ImageMapWorkTable2 Where Str$(ObjectInfo(Obj, OBJ_INFO_TYPE)) = Str$(OBJ_TYPE_PLINE) Or
+                                             Str$(ObjectInfo(Obj, OBJ_INFO_TYPE)) = Str$(OBJ_TYPE_LINE) Or
+                                             Str$(ObjectInfo(Obj, OBJ_INFO_TYPE)) = Str$(OBJ_TYPE_ARC)
+                                       Into ImageMapWorkTable3 NoSelect           'get rid of points!
+
+      Select * From ImageMapWorkTable3 Where Obj Intersects extent_obj Or
+                                             Str$(ObjectInfo(Obj, OBJ_INFO_TYPE)) = Str$(OBJ_TYPE_ARC)
+                                       Into ImageMapWorkTable2 NoSelect 'have to allow arcs because intersect doesn't catch them
+
+      Insert Into ImageMapWorkTable Select * From ImageMapWorkTable2
+      Close Table ImageMapWorkTable2
+      Close Table ImageMapWorkTable3
+
+      iSelectionPhase = iSelectionPhase + 1
+      ProgressBar = iSelectionPhase
+
+    Case 3
+'     *********************************************************************************************
+'     * Clip lines now, before buffering to avoid weirdness with some projections...
+'     *********************************************************************************************
+      Select * From ImageMapWorkTable Where Str$(ObjectInfo(Obj, OBJ_INFO_TYPE)) = Str$(OBJ_TYPE_PLINE) Or
+                                             Str$(ObjectInfo(Obj, OBJ_INFO_TYPE)) = Str$(OBJ_TYPE_LINE) Or
+                                             Str$(ObjectInfo(Obj, OBJ_INFO_TYPE)) = Str$(OBJ_TYPE_ARC)
+                                      Into ImageMapWorkTable2 NoSelect
+      Update ImageMapWorkTable2 Set Obj = Overlap(Obj, extent_obj)
+      Close Table ImageMapWorkTable2
+
+      iSelectionPhase = iSelectionPhase + 1
+      ProgressBar = iSelectionPhase
+
+    Case 4
+'     *********************************************************************************************
+'     * buffer and add lines...
+'     *********************************************************************************************
+      x = Distance(MapperInfo(FrontWindow(),MAPPER_INFO_MAXX),MapperInfo(FrontWindow(),MAPPER_INFO_MAXY),
+                   MapperInfo(FrontWindow(),MAPPER_INFO_MINX),MapperInfo(FrontWindow(),MAPPER_INFO_MINY), "mi")
+      y = sqr(lgfImageHeight^2 + lgfImageWidth^2)*DPI
+
+      Fetch Rec lgiPlaceHolder+1 From ImageMapWorkTable
+      Do While Not EOT(ImageMapWorkTable)
+        o = ImageMapWorkTable.obj
+        p = Buffer(o, 3, (x/y)*lgiDelta, "mi")
+        If ObjectInfo(p, OBJ_INFO_NPNTS) = 0 Then
+          p = CreatePoint(CentroidX(o), CentroidY(o))
+        End If
+        Update ImageMapWorkTable Set Obj = p Where RowID = ImageMapWorkTable.RowID
+        Fetch Next From ImageMapWorkTable
+      Loop
+
+      iSelectionPhase = iSelectionPhase + 1
+      ProgressBar = iSelectionPhase
+
+    Case 5
+'     ********************************************************************************************
+'     * add regions last...
+'     *********************************************************************************************
+      Select * From lgsLayerName Where Obj Into ImageMapWorkTable2 NoSelect 'watch out for records without objects!
+
+      'Have to sort by size to help reduce problems with doughnuts and islands in HTML
+      'Have to execute selections with Run Command because need variable number of columns because
+      'need to sort by area, an additional column, so can't use "select *".
+      'To execute selection with Run Command, need to dim and assign object variable with Run Command
+      'also, because Run Command is essentially another MB application.
+
+      'create table to hold extent object which can be retrieved easily with Run Command
+
+      Create Table ImageMapWorkTable4 (ID Char(1))
+      Create Map For ImageMapWorkTable4 CoordSys Window + lgiMapWindowID
+      Insert Into ImageMapWorkTable4 (ID, obj) Values( 1, extent_obj)
+
+      'set coordsys and get object into variable with Run Command
+
+      Run Command "Set CoordSys Window " + lgiMapWindowID
+      Run Command "Dim o As Object"
+      Run Command "o = ImageMapWorkTable4.Obj"
+      Drop Table ImageMapWorkTable4
+
+      'build select statement with order by area
+
+      CommandString = "Select "
+      For iColumn = 1 To TableInfo(ImageMapWorkTable, TAB_INFO_NCOLS)
+        CommandString = CommandString + ColumnInfo(ImageMapWorkTable2, "COl"+iColumn, COL_INFO_NAME) + ", "
+      Next 'note: have to use ImageMapWorkTable2 above because column names in ImageMapWorkTable can be different because it has been saved!
+      CommandString = CommandString + "area(obj, "+""""+"sq mi"+""""+") From ImageMapWorkTable2 " +
+                                      "Where Obj Intersects o And " + 
+                                      "Str$(ObjectInfo(Obj, " + OBJ_INFO_TYPE + ")) = Str$(" + OBJ_TYPE_REGION + ") Or " +
+                                      "Str$(ObjectInfo(Obj, " + OBJ_INFO_TYPE + ")) = Str$(" + OBJ_TYPE_RECT + ") Or " +
+                                      "Str$(ObjectInfo(Obj, " + OBJ_INFO_TYPE + ")) = Str$(" + OBJ_TYPE_ROUNDRECT + ") Or " +
+                                      "Str$(ObjectInfo(Obj, " + OBJ_INFO_TYPE + ")) = Str$(" + OBJ_TYPE_ELLIPSE+ ") " +
+                                 "Order By Col" + (TableInfo(ImageMapWorkTable, TAB_INFO_NCOLS) + 1) +
+                                 " Into ImageMapWorkTable3 NoSelect"
+      Run Command CommandString
+      Run Command "UnDim o"
+
+      'insert selected, sorted objects into work table
+
+      CommandString = "Insert Into ImageMapWorkTable Select "
+      For iColumn = 1 To TableInfo(ImageMapWorkTable, TAB_INFO_NCOLS)
+        If iColumn > 1 Then
+          CommandString = CommandString + ", "
+        End If
+        CommandString = CommandString + ColumnInfo(ImageMapWorkTable2, "COl" + iColumn, COL_INFO_NAME)
+      Next 'note: have to use ImageMapWorkTable2 above because column names in ImageMapWorkTable can be different because it has been saved!
+      CommandString = CommandString + " From ImageMapWorkTable3"
+      Run Command CommandString
+
+      Close Table ImageMapWorkTable3
+      Close Table ImageMapWorkTable2
+      iSelectionPhase = iSelectionPhase + 1
+      ProgressBar = iSelectionPhase
+
+    Case 6
+'     ********************************************************************************************
+'     * convert circles and rectangles to polygons
+'     *********************************************************************************************
+      Select * From ImageMapWorkTable Where Str$(ObjectInfo(Obj, OBJ_INFO_TYPE)) <> Str$(OBJ_TYPE_REGION) And
+                                            Str$(ObjectInfo(Obj, OBJ_INFO_TYPE)) <> Str$(OBJ_TYPE_POINT)
+                                      Into ImageMapWorkTable2
+
+      Update ImageMapWorkTable2 Set Obj = ConvertToRegion(Obj)
+
+      Close Table ImageMapWorkTable2
+
+      ProgressBar = -1      'tell caller All Done!
+    End Case
+
+  Exit Sub
+
+HandleError:
+  Note "SelectObjectsThatIntersect: " + Error$()
+  Resume Next
+End Sub 'SelectObjectsThatIntersect
+
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub HTMLImageMapExport
+  OnError Goto HandleError
+'  ************************************************************************************************
+'  * Export the window image to a file...
+'  ************************************************************************************************
+  If ExportPass > 0 Then
+  Do Case lgiSelectedFormat
+    Case FormatJPEG
+      If ExportPass = 1 Then
+        ImageFileExt = ".jpg"
+        ImageFileName = PathToDirectory$(lgsHTMLFileName) + PathToTableName$(lgsHTMLFileName) + ImageFileExt
+        Save Window lgiMapWindowID As ImageFileName Type "JPEG"
+          Width lgfImageWidth Units lgsPaperUnits Height lgfImageHeight Units lgsPaperUnits Copyright lgsImageCopyright
+        If Not ReadJPEG(ImageFileName) Then
+          Exit Sub
+        End If
+        ExportPass = ExportPass - 1
+        ProgressBar = -1      'tell caller All Done!
+        Exit Sub
+      End If
+    Case FormatPNG
+      If ExportPass = 2 Then
+        ImageFileExt = ".jpg"
+        ImageFileName = PathToDirectory$(lgsHTMLFileName) + PathToTableName$(lgsHTMLFileName) + ImageFileExt
+        Save Window lgiMapWindowID As ImageFileName Type "JPEG"
+          Width lgfImageWidth Units lgsPaperUnits Height lgfImageHeight Units lgsPaperUnits Copyright lgsImageCopyright
+        If Not ReadJPEG(ImageFileName) Then
+          Exit Sub
+        End If
+        Kill ImageFileName
+        ExportPass = ExportPass - 1
+        ProgressBar = 1  'tell caller Partly done
+        Exit Sub
+      End If
+      If ExportPass = 1 Then
+        ImageFileExt = ".png"
+        ImageFileName = PathToDirectory$(lgsHTMLFileName) + PathToTableName$(lgsHTMLFileName) + ImageFileExt
+        Save Window lgiMapWindowID As ImageFileName Type "PNG"
+          Width lgfImageWidth Units lgsPaperUnits Height lgfImageHeight Units lgsPaperUnits Copyright lgsImageCopyright
+        ExportPass = ExportPass - 1
+        ProgressBar = -1      'tell caller All Done!
+        Exit Sub
+      End If
+  End Case
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "HTMLImageMapExport: " + Error$()
+  Resume Next
+End Sub 'HTMLImageMapExport
+
+'*****************************************************************************
+' Have to do them one at a time, otherwise, when it chokes on one, it won't finish the rest
+' They can be easy to choke on with some of the wierder projections
+'*****************************************************************************
+Sub ClipSingleObject
+
+  OnError Goto SupressError
+
+'    ************************************************************************************************
+'    * Loop through the entire table record by record...
+'    ************************************************************************************************
+  If lgiRecNum <= TableInfo(ImageMapWorkTable, TAB_INFO_NROWS) Then
+'      ************************************************************************************************
+'      * Grab a record, and retrieve it's object and name...
+'      ************************************************************************************************
+    Fetch Rec lgiRecNum From ImageMapWorkTable
+
+    Update ImageMapWorkTable Set Obj = Overlap(ImageMapWorkTable.Obj, extent_obj) Where RowID = lgiRecNum
+
+    OnError Goto HandleError
+
+    lgiRecNum = lgiRecNum + 1
+  End If
+  If lgiRecNum > TableInfo(ImageMapWorkTable, TAB_INFO_NROWS) Then
+    ProgressBar = -1      'tell caller All Done!
+  Else
+    ProgressBar = lgiRecNum  'tell caller Partly done
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "ClipSingleObject: " + Error$()
+  Resume Next
+SupressError:
+  Resume Next
+End Sub ClipSingleObject
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub HTMLImageMapSingleObject
+
+  OnError Goto HandleError
+
+  Dim polygon_number,  'Counter for polygon number in For-Loop
+    point_number,      'Counter for point number in For-Loop
+    number_of_points,  'Number of accumulated points
+
+    iColumn,
+    i, j
+      As Integer,
+    ObjectName,        'Identifier for current record
+    FileName,
+    outline,           'String used to construct HTML imagemap statement
+    sColumn,
+    sLink
+      As String,
+    current_point,     'Place-holder for the point currently processing
+    last_point         'Place-holder for the previously processed point
+      as pixel,
+    slope,             'slope of latest line segment
+    old_slope          'slope of previous line segment
+      As Float,
+    tempobj            'Place-holder for the geographic object currently processing
+      As Object,
+    aColumn
+      As Alias,
+    iType
+      As SmallInt
+
+'    ************************************************************************************************
+'    * Loop through the entire table record by record...
+'    ************************************************************************************************
+  If lgiRecNum <= TableInfo(ImageMapWorkTable, TAB_INFO_NROWS) Then
+'      ************************************************************************************************
+'      * Grab a record, and retrieve it's object and name...
+'      ************************************************************************************************
+
+    Fetch Rec lgiRecNum From ImageMapWorkTable
+
+    ObjectAlias = "ImageMapWorkTable." + lgsColumnNames(lgiSelectedColumn)
+    ObjectName = ObjectAlias
+    FileName = Left$(LTrim$(RTrim$(ObjectName)),8) + ".HTM"
+    i = 0
+    Do
+      For j = 1 to Ubound(lgsUsedFileNames)
+        If FileName = lgsUsedFileNames(j) Then
+          Exit For
+        End If
+      Next
+      If j <= Ubound(lgsUsedFileNames) Then
+        i = i + 1
+        FileName = Left$(LTrim$(RTrim$(ObjectName)), 8-Len(Str$(i))) + Str$(i) + ".HTM"
+      Else
+        Exit Do
+      End If
+    Loop
+    i = Ubound(lgsUsedFileNames)+1
+    ReDim lgsUsedFileNames(i)
+    lgsUsedFileNames(i) = FileName
+
+    tempobj = ImageMapWorkTable.obj
+    If ObjectInfo(tempobj, OBJ_INFO_TYPE) = OBJ_TYPE_REGION Then
+'      ************************************************************************************************
+'      * Loop through each polygon in the object...
+'      ************************************************************************************************
+
+      For Polygon_number = 1 to ObjectInfo(tempobj, OBJ_INFO_NPOLYGONS)
+
+'        ************************************************************************************************
+'        * Get first point from object, Calculate it, assign to old and setup output for this record...
+'        ************************************************************************************************
+
+        current_point.x = CalculateX(ObjectNodeX(tempobj, Polygon_number, 1))
+        current_point.y = CalculateY(ObjectNodeY(tempobj, Polygon_number, 1))
+
+        outline = ltrim$(str$(current_point.x)) + COMMA + ltrim$(str$(current_point.y))
+        number_of_points = 1
+
+        For point_number = 2 to ObjectInfo(tempobj, OBJ_INFO_NPOLYGONS+Polygon_number)
+
+'          ************************************************************************************************
+'          * Retrieve current point and Calculate...
+'          ************************************************************************************************
+
+          last_point.x = current_point.x
+          last_point.y = current_point.y
+          current_point.x = CalculateX(ObjectNodeX(tempobj, Polygon_number, Point_number))
+          current_point.y = CalculateY(ObjectNodeY(tempobj, Polygon_number, Point_number))
+
+'          ************************************************************************************************
+'          * Test if consecutive points Calculated to the same coordinate values, or
+'          * If consecutive segments have the same slope...
+'          ************************************************************************************************
+
+          Do
+            If last_point.y = current_point.y Then
+              If last_point.x <> current_point.x Then
+
+'                ************************************************************************************************
+
+'                * ...horizontal line, i.e. slope is zero...
+'                ************************************************************************************************
+
+                slope = 0
+              Else
+
+'                ************************************************************************************************
+'                * ...Calculated to the same point, so skip...
+'                ************************************************************************************************
+
+                exit do
+              End If
+            Else
+              If last_point.x <> current_point.x Then
+
+'                ************************************************************************************************
+'                * ...different point, with non-horizontal, non-vertical line...
+'                ************************************************************************************************
+
+                slope = CalculateSlope(last_point.x, last_point.y, current_point.x, current_point.y)
+              Else
+
+'                ************************************************************************************************
+'                * ...vertical line, i.e. slope is infinity...
+'                ************************************************************************************************
+
+                slope = 100000000
+              End If
+            End If
+
+'            ************************************************************************************************
+'            * Test to see if slope is different...
+'            ************************************************************************************************
+
+            If slope <> old_slope Then
+
+'              ************************************************************************************************
+'              * ...if it is, tack it on to the current line...
+'              ************************************************************************************************
+
+              number_of_points = number_of_points + 1
+              outline = rtrim$(outline) + COMMA + ltrim$(str$(last_point.x)) + COMMA + ltrim$(str$(last_point.y))
+              old_slope = slope
+            End If
+
+'            ************************************************************************************************
+'            * ...bail out of loop...
+'            ************************************************************************************************
+
+            Exit Do
+          Loop
+        Next 'point_number = 2 to ObjectInfo(tempobj, OBJ_INFO_NPOLYGONS+Polygon_number)
+
+'        ************************************************************************************************
+'        * Add HREF of file for current record, and write out map coords to file...
+'        ************************************************************************************************
+
+        number_of_points = number_of_points + 1
+        outline = rtrim$(outline) + COMMA + ltrim$(str$(current_point.x)) + COMMA + ltrim$(str$(current_point.y))
+
+        If number_of_points > 2 Then
+          If lgiSelectedLinkType = LinkTypeHotLink Then
+            Print #1, "<AREA SHAPE=" + QUOTE + "polygon" + QUOTE + " COORDS=" + QUOTE + rtrim$(outline) +
+                       QUOTE + " HREF = " + QUOTE + LTrim$(RTrim$(EvaluateHotLink$())) + QUOTE +
+                       " ALT = " + QUOTE + LTrim$(RTrim$(ObjectName))+ QUOTE + ">"
+          Else
+            If lglOnePage Then
+              Print #1, "<AREA SHAPE=" + QUOTE + "polygon" + QUOTE + " COORDS=" + QUOTE + rtrim$(outline) +
+                         QUOTE + " HREF = " + QUOTE + "#" + FileName + QUOTE +
+                         " ALT = " + QUOTE + LTrim$(RTrim$(ObjectName))+ QUOTE + ">"
+            Else
+              Print #1, "<AREA SHAPE=" + QUOTE + "polygon" + QUOTE + " COORDS=" + QUOTE + rtrim$(outline) +
+                         QUOTE + " HREF = " + QUOTE + FileName + QUOTE +
+                         " ALT = " + QUOTE + LTrim$(RTrim$(ObjectName))+ QUOTE + ">"
+            End If
+          End If
+        End If
+
+        outline = ""
+      Next 'Polygon_number = 1 to ObjectInfo(tempobj, OBJ_INFO_NPOLYGONS)
+
+    Else
+      current_point.x = CalculateX(CentroidX(tempobj))
+      current_point.y = CalculateY(CentroidY(tempobj))
+      outline = ltrim$(str$(current_point.x+lgiDelta)) + COMMA + ltrim$(str$(current_point.y+lgiDelta))
+      outline = rtrim$(outline) + COMMA + ltrim$(str$(current_point.x+lgiDelta)) + COMMA + ltrim$(str$(current_point.y-lgiDelta))
+      outline = rtrim$(outline) + COMMA + ltrim$(str$(current_point.x-lgiDelta)) + COMMA + ltrim$(str$(current_point.y-lgiDelta))
+      outline = rtrim$(outline) + COMMA + ltrim$(str$(current_point.x-lgiDelta)) + COMMA + ltrim$(str$(current_point.y+lgiDelta))
+      If lgiSelectedLinkType = LinkTypeHotLink Then
+        Print #1, "<AREA SHAPE=" + QUOTE + "polygon" + QUOTE + " COORDS=" + QUOTE + rtrim$(outline) +
+                   QUOTE + " HREF = " + QUOTE + LTrim$(RTrim$(EvaluateHotLink$())) + QUOTE +
+                   " ALT = " + QUOTE + LTrim$(RTrim$(ObjectName))+ QUOTE + ">"
+      Else
+        If lglOnePage Then
+          Print #1, "<AREA SHAPE=" + QUOTE + "polygon" + QUOTE + " COORDS=" + QUOTE + rtrim$(outline) +
+                     QUOTE + " HREF = " + QUOTE + "#" + FileName + QUOTE +
+                     " ALT = " + QUOTE + LTrim$(RTrim$(ObjectName))+ QUOTE + ">"
+        Else
+          Print #1, "<AREA SHAPE=" + QUOTE + "polygon" + QUOTE + " COORDS=" + QUOTE + rtrim$(outline) +
+                     QUOTE + " HREF = " + QUOTE + FileName + QUOTE +
+                     " ALT = " + QUOTE + LTrim$(RTrim$(ObjectName))+ QUOTE + ">"
+        End If
+      End If
+      outline = ""
+    End If 'ObjectInfo(tempobj, OBJ_INFO_TYPE) = OBJ_TYPE_REGION
+'   ************************************************************************************************
+'   * Create landing pages
+'   ************************************************************************************************
+    If lglCreateLandingPages Then
+      If lglOnePage Then
+        Open File PathToDirectory$(lgsHTMLFileName) + "LandingPages.HTM"
+             For Append Access Write As #2 CharSet SystemInfo(SYS_INFO_CHARSET)'"WindowsLatin1"
+        Print #2, "<BR>" 
+        Print #2, "<HR>"
+        Print #2, "<A NAME=" + QUOTE + FileName + QUOTE + ">"
+      Else
+        Open File PathToDirectory$(lgsHTMLFileName) + FileName
+             For Output Access Write As #2 CharSet SystemInfo(SYS_INFO_CHARSET)'"WindowsLatin1"
+        Print #2, "<HTML>"
+        Print #2, "<HEAD></HEAD>"
+      End If
+      Print #2, "<BODY>"
+      Print #2, "<H2>" + ltrim$(rtrim$(ObjectName)) + "</H2>"
+      If lglPopulateLandingPages Then
+        Print #2, "<TABLE BORDER CELLSPACING=1 CELLPADDING=7 WIDTH=600>"
+        If lglIncludeHotLink Then
+          Print #2, "<TR><TD WIDTH=" + QUOTE + "50%" + QUOTE + " VALIGN=" + QUOTE + "TOP" + QUOTE + ">"
+          Print #2, "<FONT SIZE=2><P>" + "HotLink" + "</FONT></TD>"
+          Print #2, "<TD WIDTH=" + QUOTE + "50%" + QUOTE + " VALIGN=" + QUOTE + "TOP" + QUOTE + ">"
+          Print #2, "<FONT SIZE=2><P>" + "<a href=" + EvaluateHotLink$() + ">" + EvaluateHotLink$() + "</FONT></TD>"
+          Print #2, "</TR>"
+        End If
+        For iColumn = 1 To UBound(lgsColumnNamesTarget) 'TableInfo(ImageMapWorkTable, TAB_INFO_NCOLS)
+          sColumn = lgsColumnNamesTarget(iColumn) 'ColumnInfo(ImageMapWorkTable, "COL"+iColumn, COL_INFO_NAME)
+          aColumn = "ImageMapWorkTable." + sColumn
+          sColumn = lgsColumnNameAliases(iColumn)
+          Print #2, "<TR><TD WIDTH=" + QUOTE + "50%" + QUOTE + " VALIGN=" + QUOTE + "TOP" + QUOTE + ">"
+          Print #2, "<FONT SIZE=2><P>" + sColumn + "</FONT></TD>"
+          Print #2, "<TD WIDTH=" + QUOTE + "50%" + QUOTE + " VALIGN=" + QUOTE + "TOP" + QUOTE + ">"
+          sColumn = aColumn
+          If sColumn = "" Then
+            sColumn = lgsMsgEmptyField
+          End If
+          If lgsTreatAsLinks(iColumn) = lgsMsgYes Then
+            sLink = sColumn
+            If LCase$(Left$(sLink, 4)) = "www." Then
+              sLink = "http://" + sLink
+            End If
+            Print #2, "<FONT SIZE=2><P>" + "<a href=" + sLink + ">" + sColumn + "</FONT></TD>"
+          Else
+            iType = ColumnInfo(ImageMapWorkTable, lgsColumnNamesTarget(iColumn), COL_INFO_TYPE)
+            If sColumn <> lgsMsgEmptyField And lgsTreatAsLinks(iColumn) <> lgsMsgYes Then
+              Do Case iType
+                Case COL_TYPE_DECIMAL, COL_TYPE_FLOAT, COL_TYPE_INTEGER
+                  Print #2, "<FONT SIZE=2><P>" + FormatNumber$(Val(sColumn)) + "</FONT></TD>"
+                Case COL_TYPE_DATE
+                  Print #2, "<FONT SIZE=2><P>" + FormatDate$(sColumn) + "</FONT></TD>"
+                Case Else
+                  Print #2, "<FONT SIZE=2><P>" + sColumn + "</FONT></TD>"
+              End Case
+            Else
+              Print #2, "<FONT SIZE=2><P>" + sColumn + "</FONT></TD>"
+            End If
+          End If
+          Print #2, "</TR>"
+        Next
+        Print #2, "</TABLE>"
+      End If
+      If lglOnePage Then
+        Print #2, "<BR>"
+        Print #2, "<A HREF = " + QUOTE + "#MapAtTopOfPage" + QUOTE + ">" + lgsMsgReturnToMap + "</A>"
+        Print #2, "<BR>"
+      Else
+        Print #2, "</BODY>"
+        Print #2, "</HTML>"
+      End If
+      Close File #2
+    End If
+    lgiRecNum = lgiRecNum + 1
+  End If 'lgiRecNum = 1 to TableInfo(ImageMapWorkTable, TAB_INFO_NROWS)
+ 
+  If lgiRecNum > TableInfo(ImageMapWorkTable, TAB_INFO_NROWS) Then
+    ProgressBar = -1      'tell caller All Done!
+  Else
+
+    ProgressBar = lgiRecNum  'tell caller Partly done
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "HTMLImageMapSingleObject: " + Error$()
+  Resume Next
+
+End Sub HTMLImageMapSingleObject
+
+
+'***************************************************************************************************
+'***************************************************************************************************
+'***************************************************************************************************
+
+Function EvaluateHotLink$() As String
+  Dim sHotLink, s As String
+
+
+  OnError Goto HandleError
+
+  If lgsHotLinkMetaDataKeyValue <> "" Then
+    s = "Dim sHotLink As String"
+    Run Command s
+
+    s = "Fetch Rec " + lgiRecNum + " From " + lgsLayerName
+    Run Command s
+
+    s = "sHotLink = " + lgsHotLinkMetaDataKeyValue
+    Run Command s
+
+    s = "Set Command Info 1 To sHotLink"
+    Run Command s
+
+    s = "UnDim sHotLink"
+    Run Command s
+
+
+    sHotLink = CommandInfo(1)
+    If LCase$(Left$(sHotLink, 4)) = "www." Then
+      sHotLink = "http://" + sHotLink
+    End If
+  Else
+    sHotLink = " "
+  End If
+
+
+  EvaluateHotLink$ = sHotLink
+  Exit Function
+
+HandleError:
+  Note "EvaluateHotLink$: " + Error$()
+  Resume Next
+End Function EvaluateHotLink$
+
+'***************************************************************************************************
+'***************************************************************************************************
+'***************************************************************************************************
+
+
+Function CalculateX(ByVal in As Float) As SmallInt
+  Dim f As Float
+  f = round((in - image_bound.min.x) * ImageRatio.x, 1)
+  If f > 32000 Then
+    f = 32000
+  End If
+  If f < -32000 Then
+    f = -32000
+  End If
+  CalculateX = f
+End Function
+
+'***************************************************************************************************
+'***************************************************************************************************
+'***************************************************************************************************
+
+Function CalculateY(ByVal in As Float) As SmallInt
+  Dim f As Float
+  f = image_size.y - round((in - image_bound.min.y) * ImageRatio.y, 1)
+  If f > 32000 Then
+    f = 32000
+  End If
+  If f < -32000 Then
+    f = -32000
+  End If
+  CalculateY = f
+End Function
+
+'***************************************************************************************************
+'***************************************************************************************************
+'***************************************************************************************************
+
+Function CalculateSlope(ByVal xmin As Float, ByVal ymin As Float, ByVal xmax As Float, ByVal ymax As Float) As Float
+  CalculateSlope = (((ymax) - (ymin))/((xmax) - (xmin)))
+End Function
+
+'***************************************************************************************************
+'***************************************************************************************************
+'***************************************************************************************************
+
+Function ReadJPEG(JPEGFileName As String) As Logical
+
+  OnError Goto HandleError
+
+  dim marker As String*1
+  dim iteration, width, height, length As SmallInt
+  dim precision as logical
+
+  image_size.y = 0
+  image_size.x = 0
+
+  Open File JPEGFileName For Binary Access Read As #1 ByteOrder HIGHLOW
+
+  Do
+    Get #1,, marker
+
+    If asc(marker) = asc(chr$(&HFF)) Then
+      Get #1,, marker
+      Do case ASC(marker)
+        Case asc(chr$(&HC0)), asc(chr$(&HC1)), asc(chr$(&HC2)), asc(chr$(&HC3)), asc(chr$(&HC5)), asc(chr$(&HC6)), asc(chr$(&HC7)), asc(chr$(&HC9)), asc(chr$(&HCA)), asc(chr$(&HCB)), asc(chr$(&HCD)), asc(chr$(&HCE)), asc(chr$(&HCF))
+          Get #1,, length
+          Get #1,, precision
+          Get #1,, image_size.y
+          Get #1,, image_size.x
+          ReadJPEG = TRUE
+          Exit Do
+        Case asc(chr$(&HD9)), asc(chr$(&HDA))
+          lgiError = HTMLImageMapWriteImageDimensionsNotFound
+          ReadJPEG = FALSE
+          Exit Do
+      End Case
+    End If
+
+  Loop
+
+  Close File 1
+
+  Exit Function
+
+HandleError:
+  Note "ReadJPEG: " + Error$()
+  Resume Next
+End Function 'ReadJPEG
+
+' End of File

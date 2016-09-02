@@ -1,0 +1,16 @@
+Define SVRT_WARNING                  0
+Define SVRT_ERROR                    1
+
+Define ERR_AREA_READING               1 
+Define ERR_AREA_PARSING_GEOSET        2
+Define ERR_AREA_PARSING_TABLE         3
+Define ERR_AREA_OPENING_TABLE         4
+Define ERR_AREA_BRUSH_STYLE           5
+Define ERR_AREA_PEN_STYLE             6
+Define ERR_AREA_FONT_STYLE            7
+Define ERR_AREA_SYMBOL_STYLE          8
+
+Declare Sub IncrementCurrentLineNumber()
+Declare Sub PrintErrMsg( ByVal lSeverity As Integer, ByVal lArea As Integer, 
+                         ByVal sErrMsg As String )
+

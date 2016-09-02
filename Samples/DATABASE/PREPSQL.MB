@@ -1,0 +1,362 @@
+'***********************************************************************
+' SQL Query prepare function that processes query parameters.
+' The parameters are bound here (resolved and replaced with a value)
+'
+' Parameter formats supported
+'   [EditText Prompt]                     EditText  
+'   [LIST:item1;item2;item3:List Prompt]  Constant list picker
+'   [LISTTAB:Table List prompt]           Table Picker
+'   [LISTQRY:List Query:List Prompt]      Query results list picker
+'
+' To use, declare the external function here as follows
+' Declare Sub SQLPrepare(BYVAL SQLIn AS STRING, SQLOut AS STRING)
+'
+' Given an SQL Query string with embedded parameters of the format described
+' above, resolve each parameter to a value and return the resolved SQL query string.
+' The parameters (enclosed within []) are directly replaced with their string value.
+' Remember to enclose the parameter in single quotes in your query if it is intended 
+' to define a string literal.  eg. '[Enter name]'
+' Remember to enclose the parameter in identifier quotes in your query if it is intended 
+' to define an identifier like a table name.  eg. "[Enter Table Name]"
+'***********************************************************************
+INCLUDE "MAPBASIC.DEF"
+INCLUDE "..\INC\DLSAMP.DEF"
+
+
+' Parameter delimiter   eg.  [Parameter]
+DEFINE SQL_PARAMETER_START_DELIM "["    
+DEFINE SQL_PARAMETER_END_DELIM   "]"
+
+' Intra Parameter tokens
+DEFINE SQL_PARAMETER_SEP   ":"
+
+' Parameter Type tokens
+DEFINE SQL_LISTTOK         "LIST:"
+DEFINE SQL_TBLNAMETOK      "LISTTAB:"
+DEFINE SQL_LISTFROMQRYTOK  "LISTQRY:"
+
+Declare Function GetAutoParm(BYVAL ParmName AS STRING) AS STRING
+Declare Function GetAutoParmString(BYVAL ParmName AS STRING) AS STRING
+Declare Function GetAutoParmTableName(BYVAL ParmName AS STRING) AS STRING
+Declare Function GetAutoParmListValue(BYVAL ParmName AS STRING) AS STRING
+Declare Function GetAutoParmQryListValue(BYVAL ParmName AS STRING) AS STRING
+Declare Function GetListFromQry (BYVAL sqlstring AS STRING) AS STRING
+
+'INPUT SQLIn (With &<prompt> as placeholders for dynamic query input
+'OUTPUT SQLOut (With &,prompt> placeholders replaced w/ prompted value)
+
+'***********************************************************************
+' SQLPrepare  - the main external function
+'
+' Given an SQL Query string with embedded parameters of the format described
+' above, resolve each parameter to a value and return the resolved SQL query string.
+'***********************************************************************
+Sub SQLPrepare(BYVAL SQLIn AS STRING, SQLOut AS STRING)
+  DIM Pos, RestLen, TokLen AS INTEGER
+  DIM Tok AS STRING
+
+  IF dbg THEN
+    PRINT "SQLIn="+SQLIn
+  END IF
+
+  SQLOut=""
+  RestLen=LEN(SQLIn)
+
+  ' loop through the Input query copying it to the output query.
+  ' resolve each parameter in the input query to a result string in the output query
+
+  ' Find the next autoparm in the string
+  Pos = INSTR(1, SQLIn, SQL_PARAMETER_START_DELIM)
+  While Pos <> 0
+    SQLOut = SQLOut + LEFT$(SQLIn, Pos-1)
+    SQLIn = MID$(SQLIn, Pos+1, RestLen)
+    RestLen=Len(SQLIn)
+
+    ' Parse out the token name
+    Pos = INSTR(1, SQLIn, SQL_PARAMETER_END_DELIM)
+    IF Pos = 0 THEN  ' No end delimiter - so ignore it
+      Pos = 1
+    ELSE
+      ' get and replace the replacement value for the token name
+      Tok =Left$(SQLIn, Pos-1)
+      SQLOut = SQLOut + GetAutoParm(Tok)
+    END IF
+
+    SQLIn = MID$(SQLIn, Pos+1, RestLen)
+    RestLen=Len(SQLIn)
+
+    ' Look for next replacement parm
+    Pos = INSTR(1, SQLIn, SQL_PARAMETER_START_DELIM)
+  Wend
+
+  SQLOut = SQLOut + MID$(SQLIn, 1, RestLen)
+  If dbg THEN
+    Print SQLOut
+  END IF
+END SUB
+
+
+'***********************************************************************
+' GetAutoParm
+'
+' Given a parametyer from the query string delimited by the parameter delimiters,
+' Calls the correct parameter processing funciton to gets the string value to 
+' resolve the parameter
+'***********************************************************************
+Function GetAutoParm(BYVAL Parm AS STRING) AS STRING
+  Dim ParmValue as string
+
+  ' Look for tokens in the AutoParm name to determine how to get the parm value
+  IF (INSTR(1, Parm, SQL_TBLNAMETOK) <> 0) THEN
+	' use the table picker to get a string
+	ParmValue = GetAutoParmTableName(Parm)
+  ELSEIF (INSTR(1, Parm, SQL_LISTTOK) <> 0) THEN
+	' use a listbox to get a string
+	ParmValue = GetAutoParmListValue(Parm)
+  ELSEIF (INSTR(1, Parm, SQL_LISTFROMQRYTOK) <> 0) THEN
+	' use a listbox to get a string
+	ParmValue = GetAutoParmQryListValue(Parm)
+  ELSE
+    ' Just prompt the user for a string 
+	ParmValue = GetAutoParmString(Parm)
+  END IF	 
+
+  GetAutoParm=ParmValue
+
+END FUNCTION
+
+
+'***********************************************************************
+' Edit Text parameter
+' Puts up a dialog with an edittext and a prompt.
+' Replaces the parameter with the value the user types.
+
+' Format:  [Edit Text Prompt]  
+' eg.      [Enter Country Name]  
+'***********************************************************************
+Function GetAutoParmString(BYVAL ParmName AS STRING) AS STRING
+  Dim ParmValue as string
+  DIM DlgWidth AS INTEGER
+  DlgWidth = LEN(ParmName)*5
+
+  ' May want to strip underscores and replace with blanks - asthetics
+  DIALOG
+    WIDTH DlgWidth 	
+    CONTROL STATICTEXT
+      TITLE  ParmName
+      Position 8, 10
+      WIDTH 160
+    CONTROL EDITTEXT
+      Position 8, 28
+      WIDTH 160
+      INTO ParmValue 
+    CONTROL OKBUTTON
+      Position 60, 48
+    CONTROL CANCELBUTTON
+      Position 120, 48
+
+  IF dbg THEN
+    PRINT "GetAutoParm=" + ParmValue 
+  END IF
+  GetAutoParmString=ParmValue 
+
+END FUNCTION
+
+
+
+'***********************************************************************
+' Table Picker
+'AutoParm that gets a name from the table picker
+
+' Format:  [LISTTAB:List Prompt]  
+' eg.      [LISTTAB:Select a table to get the number of records in]  
+'***********************************************************************
+Function GetAutoParmTableName(BYVAL Parm AS STRING) AS STRING
+  DIM TabOwner, Tabname, FullTableName AS STRING
+  DIM Prompt AS STRING
+  DIM Pos AS INTEGER
+
+  ' Parse prompt from the Parameter
+  Pos = INSTR(1, Parm, SQL_PARAMETER_SEP)
+  IF Pos <> 0 THEN
+     Prompt  = MID$(Parm, Pos+1, 1000)
+  ELSE
+    Prompt = "Select a table"
+  END IF
+
+  Call TablePickerDialog (demohdbc, TabOwner, TabName, Prompt)
+  IF TabName<> "" THEN
+    IF TabOwner="" THEN
+      FullTableName =TabName
+    ELSE
+      FullTableName =TabOwner+"."+TabName
+    END IF
+  END IF
+  GetAutoParmTableName=FullTableName 
+END FUNCTION
+
+
+'***********************************************************************
+' Constant list picker
+' Get a parm values from a constant list
+' list must be in MapBasic string list format i.e. separated by ;
+' Format:  [LIST:item1;item2;item3:Select Item]  
+' eg.      [LIST:USA;Canada;Mexico:Select Country]  
+'***********************************************************************
+Function GetAutoParmListValue(BYVAL Parm AS STRING) AS STRING
+  Dim ParmValue as string
+  Dim ParmList, ParmPrompt AS STRING
+  DIM PosList, PosPrompt as Integer
+  DIM SelNo, DlgWidth AS SMALLINT
+
+  ' Parse List values and prompt from the Parameter
+  PosList = INSTR(1, Parm, SQL_PARAMETER_SEP)
+  IF PosList <> 0 THEN
+    PosPrompt = INSTR(PosList+1, Parm, SQL_PARAMETER_SEP)
+    IF PosPrompt <> 0 THEN
+       ParmPrompt = MID$(Parm, PosPrompt+1, 1000)
+       ParmList = MID$(Parm, PosList+1, PosPrompt - PosList -1)
+    ELSE
+       ParmPrompt = "Select from list" 
+       ParmList = MID$(Parm, PosList+1, 1000)
+    END IF
+  END IF
+
+  IF ParmList <> "" THEN    
+     DlgWidth = LEN(ParmPrompt)*5 
+     ONERROR GOTO DLGERR
+     DIALOG
+      TITLE ParmPrompt   'prompt
+      CONTROL LISTBOX
+         Width DlgWidth
+         Height 80
+ '       Position 0,0
+        TITLE ParmList 
+        Into SelNo
+      CONTROL OKBUTTON
+
+    IF SelNo <> 0 THEN  
+      ParmValue = SelectString(ParmList, SelNo)
+    END IF
+  END IF
+
+  GOTO ALLDONE
+
+  DLGERR:
+    NOTE(ERROR$())
+    RESUME ALLDONE
+
+  ALLDONE:
+
+  IF dbg THEN
+    PRINT "ParmValue =" + ParmValue 
+  END IF
+  GetAutoParmListValue=ParmValue 
+
+END FUNCTION
+
+
+'***********************************************************************
+' Query results list picker
+' Get a parm values from a list built from a query
+' Format:  [LISTQRY:Query:List Prompt]  
+' eg.      [LISTQRY:Select Country from Customer group by Country:Select Country]  
+' '***********************************************************************
+Function GetAutoParmQryListValue(BYVAL Parm AS STRING) AS STRING
+  Dim ParmValue as string
+  Dim ListQry, ParmList, ParmPrompt AS STRING
+  DIM PosList, PosPrompt as Integer
+  DIM SelNo, DlgWidth AS SMALLINT
+
+  ' Parse List query and prompt from the Parameter
+  PosList = INSTR(1, Parm, SQL_PARAMETER_SEP)
+  IF PosList <> 0 THEN
+    PosPrompt = INSTR(PosList+1, Parm, SQL_PARAMETER_SEP)
+    IF PosPrompt <> 0 THEN
+       ParmPrompt = MID$(Parm, PosPrompt+1, 1000)
+       ListQry = MID$(Parm, PosList+1, PosPrompt - PosList -1)
+    ELSE
+       ParmPrompt = "Select from list" 
+       ListQry = MID$(Parm, PosList+1, 1000)
+    END IF
+    
+    ' execute the list query and bu8ild a list from the values
+    ParmList = GetListFromQry(ListQry)
+  END IF
+
+  IF ParmList <> "" THEN
+     DlgWidth = LEN(ParmPrompt)*5     
+     ONERROR GOTO DLGERR
+     DIALOG
+      TITLE ParmPrompt 
+      CONTROL LISTBOX
+        Width DlgWidth
+        Height 80
+ '       Position 0,0
+        TITLE ParmList 
+        Into SelNo
+      CONTROL OKBUTTON
+
+    IF SelNo <> 0 THEN  
+      ParmValue = SelectString(ParmList, SelNo)
+    END IF
+  END IF
+
+  GOTO ALLDONE
+
+  DLGERR:
+    NOTE(ERROR$())
+    RESUME ALLDONE
+
+  ALLDONE:
+
+  IF dbg THEN
+    PRINT "ParmValue =" + ParmValue 
+  END IF
+  GetAutoParmQryListValue=ParmValue 
+
+END FUNCTION
+
+
+'***********************************************************************
+' Utility function for Query list pareameter processing
+' given a query, returns a string list of the results from the first column
+' (The query should only return a single column.
+'***********************************************************************
+Function GetListFromQry (BYVAL sqlstring AS STRING) AS STRING
+  DIM ValList, Sep AS STRING
+  DIM hstmnt AS INTEGER
+
+  DEFINE SizeColumnNamesIncrement 20
+
+  IF dbg THEN
+    PRINT "IN GetListFromQry" 
+    PRINT "sqlstring = " + sqlstring
+  END IF
+
+  ONERROR GOTO EXEERR
+  hstmnt = SERVER_EXECUTE(demohdbc, sqlstring)
+
+  WHILE NOT Server_EOT(hstmnt)  
+    Server hstmnt FETCH NEXT  
+
+    IF NOT Server_EOT(hstmnt ) THEN
+      ValList = ValList + Sep + RTRIM$(SERVER_COLUMNINFO(hstmnt, 1, SRV_COL_INFO_VALUE))
+      Sep = ";"     
+      IF dbg THEN
+        PRINT "NextValue = " + RTRIM$(SERVER_COLUMNINFO(hstmnt, 1, SRV_COL_INFO_VALUE))
+      END IF   
+    END IF
+  WEND
+  Server hstmnt CLOSE
+  GOTO ALLDONE 
+
+  EXEERR:
+    NOTE Error$()
+    RESUME ALLDONE
+
+  ALLDONE:
+  GetListFromQry = ValList
+
+END FUNCTION
+

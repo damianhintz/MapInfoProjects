@@ -1,0 +1,7 @@
+[Link] 
+Application=dmscnvrt.mbx 
+Module=dmscnvrt.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\Lib\Resstrng.mbo
+Module=longlats.mbo
+

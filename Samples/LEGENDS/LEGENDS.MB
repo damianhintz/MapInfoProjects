@@ -1,0 +1,356 @@
+'*****************************************************************************
+'       Copyright (c) 2001, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: LEGENDS.MB $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description: Multiple Legend Manager for MapInfo 4.0 +
+'
+' Help user keep track of legend windows. Imbed legend window in map windows
+'
+' Revision History:
+'
+'    Rev 1.0   1995 16:14:56
+'    Rev 1.1   10 Jan 2001           DRESSEL
+'            - change all references to legends to thematic legends #14587
+'            - remove all references to graph window #13530
+'            - add error handling
+'            - extract strings for localization
+'            - add app versioning
+'            - remove support for 16-bit OS
+'    Rev 1.2   10 mar 2008            Rajan Batra
+'            - Internationalization of Tool
+'*****************************************************************************
+Include "..\Inc\mapbasic.def"
+Include "legends.def"
+' Include a file that lets us use the "auto-load" library                 
+Include "..\Inc\auto_lib.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+Declare Function GetParent Lib "USER32" Alias "GetParent" (ByVal hwnd as Integer) As Integer
+
+Declare Sub Main
+Declare Sub LegendManager
+Declare Sub ShowHideLegendForActiveWindow
+Declare Sub CreateEmbeddedLegendForActiveWindow
+Declare Function WindowParented(ByVal hwndChild as Integer, ByVal hwndParent as Integer) As Logical
+Declare Function WindowHasLegend(ByVal win as Integer, ByVal bEmbedded as Logical) As Integer
+Declare Sub WinFocusChangedHandler
+Declare Sub WinClosedHandler
+Declare Sub About
+Declare Sub EndProgram
+
+Define AppVersion 1.2
+
+'***********************************************************************************
+Sub Main
+
+  OnError Goto HandleError
+
+  If LoadStrings((ApplicationDirectory$() + STR_RES_STR_FILE)) = FALSE Then
+    Note STR_FILE_NOT_ACCESSIBLE + ApplicationDirectory$() + STR_RES_STR_FILE
+    Exit Sub
+  End If
+
+  gsAppDescription = GetResString(IDS_APP_DESCRIPTION)
+  gsAppFilename = STR_APP_FILE_NAME
+
+  Create Menu GetResString(IDS_MENU_NAME) as
+    GetResString(IDS_MENU_ITEM_NAME)
+      HelpMsg GetResString(IDS_MENU_ITEM_HELP_MSG)
+      Calling LegendManager,
+    STR_MENU_ITEM_SEPERATOR,
+    GetResString(IDS_HIDE_MENU_ITEM_NAME)
+      HelpMsg GetResString(IDS_HIDE_MENU_ITEM_HELP_MSG)
+      calling ShowHideLegendForActiveWindow,
+    GetResString(IDS_REMOVE_MENU_ITEM_NAME)
+      HelpMsg GetResString(IDS_REMOVE_MENU_ITEM_HELP_MSG)
+      calling CreateEmbeddedLegendForActiveWindow,
+    STR_MENU_ITEM_SEPERATOR,
+    GetResString(IDS_ABOUT_MENU_ITEM_NAME)
+      HelpMsg GetResString(IDS_ABOUT_MENU_ITEM_HELP_MSG)
+      calling About,
+    GetResString(IDS_EXIT_MENU_ITEM_NAME)
+      HelpMsg GetResString(IDS_EXIT_MENU_ITEM_HELP_MSG)
+      calling EndProgram
+
+  Call set_tools_menu(GetResString(IDS_MENU_NAME))
+
+  Call WinFocusChangedHandler
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_MAIN + Error$()
+  Resume Next
+End Sub
+
+'***********************************************************************************
+Sub LegendManager
+  Dim win as Integer
+  Dim title as String
+  Dim bHasPopup, bHasEmbedded as Logical
+  Dim bWantPopup, bWantEmbedded as Logical
+
+  OnError Goto HandleError
+
+  win = FrontWindow()
+  If win = 0 Then
+    Note GetResString(IDS_MAP_ACTIVE)
+    Exit Sub
+  End If
+  If WindowInfo(win, WIN_INFO_TYPE)<>WIN_MAPPER Then
+    Note GetResString(IDS_MAP_ACTIVE)
+    Exit Sub
+  End If
+  '
+  'got an active Map window: figure our our current state
+  '
+  title = WindowInfo(win, WIN_INFO_NAME)
+  bHasPopup = WindowHasLegend(win, FALSE) <> 0
+  bHasEmbedded = WindowHasLegend(win, TRUE) <> 0
+
+  Dialog
+    Title GetResString(IDS_APP_DESCRIPTION)
+    Control StaticText
+      Title GetResString(IDS_FOR_WINDOW) + STR_EMPTY_STR + title + STR_COLON
+    Control CheckBox
+      Title GetResString(IDS_SHOW_FLOATING)
+      Value bHasPopup
+      Into  bWantPopup
+    Control CheckBox
+      Title GetResString(IDS_SHOW_EMBEDDED)
+      Value bHasEmbedded
+      Into  bWantEmbedded
+    Control OKButton
+      Title GetResString(IDS_OK)
+    Control CancelButton
+      Title GetResString(IDS_CANCEL)
+
+  If CommandInfo(CMD_INFO_DLG_OK) Then
+    If bWantPopup and NOT bHasPopup Then
+      Create Legend From Window Win
+      Alter Menu Item ShowHideLegendForActiveWindow Check
+    End If
+
+    If NOT bWantPopup and bHasPopup Then
+      Close Window WindowHasLegend(win, FALSE)
+      Alter Menu Item ShowHideLegendForActiveWindow Uncheck
+    End If
+
+    If bWantEmbedded and NOT bHasEmbedded Then
+      Set Next Document Parent WindowInfo(win, WIN_INFO_WND) Style 1
+      Create Legend From Window Win
+      Alter Menu Item CreateEmbeddedLegendForActiveWindow Check
+    End If
+
+    If NOT bWantEmbedded and bHasEmbedded Then
+      Close Window WindowHasLegend(win, TRUE)
+      Alter Menu Item CreateEmbeddedLegendForActiveWindow Uncheck
+    End If
+  End If
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_LEGEND_MANAGER + Error$()
+  Resume Next
+End Sub
+
+'***********************************************************************************
+Sub ShowHideLegendForActiveWindow
+  Dim win, legend_win as Integer
+
+  OnError Goto HandleError
+
+  win = FrontWindow()
+  If win = 0 Then
+    Note GetResString(IDS_MAP_ACTIVE)
+    Exit Sub
+  End If
+  If WindowInfo(win, WIN_INFO_TYPE)<>WIN_MAPPER Then
+    Note GetResString(IDS_MAP_ACTIVE)
+    Exit Sub
+  End If
+  legend_win = WindowHasLegend(win, FALSE)
+  If legend_win <> 0 Then
+    Close Window legend_win
+    Alter Menu Item ShowHideLegendForActiveWindow Enable Uncheck
+  Else
+    Create Legend From Window Win
+    Alter Menu Item ShowHideLegendForActiveWindow Check
+  End If
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_SHOW_HIDE_LEG_ACT_WIN + Error$()
+  Resume Next
+End Sub
+
+'***********************************************************************************
+Sub CreateEmbeddedLegendForActiveWindow
+  Dim win, legend_win as Integer
+
+  OnError Goto HandleError
+
+  win = FrontWindow()
+  If win = 0 Then
+    Note GetResString(IDS_MAP_ACTIVE)
+    Exit Sub
+  End If
+  If WindowInfo(win, WIN_INFO_TYPE)<>WIN_MAPPER Then
+    Note GetResString(IDS_MAP_ACTIVE)
+    Exit Sub
+  End If
+  legend_win = WindowHasLegend(win, TRUE)
+  If legend_win <> 0 Then
+    Close Window legend_win
+    Alter Menu Item CreateEmbeddedLegendForActiveWindow Uncheck
+  Else
+    Set Next Document Parent WindowInfo(win, WIN_INFO_WND) Style 1
+    Create Legend From Window Win
+    Alter Menu Item CreateEmbeddedLegendForActiveWindow Check
+  End If
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_CRE_EMB_LEG_FOR_ACT_WIN + Error$()
+  Resume Next
+End Sub
+
+'***********************************************************************************
+Sub WinFocusChangedHandler
+  Dim win as Integer
+  Dim bDisable as Logical
+  Dim bHasPopup, bHasEmbedded as Logical
+
+  OnError Goto HandleError
+  
+  bDisable = FALSE
+  bHasPopup = FALSE
+  bHasEmbedded = FALSE
+
+  win = FrontWindow()
+  If win = 0 Then
+    bDisable = TRUE
+  ElseIf WindowInfo(win, WIN_INFO_TYPE) <> WIN_MAPPER Then
+    bDisable = TRUE
+  Else
+    bHasPopup = WindowHasLegend(win, FALSE) <> 0
+    bHasEmbedded = WindowHasLegend(win, TRUE) <> 0
+  End If
+
+  If bDisable Then
+    Alter Menu Item LegendManager Disable
+    Alter Menu Item ShowHideLegendForActiveWindow Disable Uncheck
+    Alter Menu Item CreateEmbeddedLegendForActiveWindow Disable Uncheck
+  Else
+    Alter Menu Item LegendManager Enable
+    If bHasPopup Then
+      Alter Menu Item ShowHideLegendForActiveWindow Enable Check
+    Else
+      Alter Menu Item ShowHideLegendForActiveWindow Enable Uncheck
+    End If
+    If bHasEmbedded Then
+      Alter Menu Item CreateEmbeddedLegendForActiveWindow Enable Check
+    Else
+      Alter Menu Item CreateEmbeddedLegendForActiveWindow Enable Uncheck
+    End If
+  End If  
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_WIN_FOCUS_CHANGE_HANDLER + Error$()
+  Resume Next
+End Sub
+
+'***********************************************************************************
+Sub WinClosedHandler
+  OnError Goto HandleError
+  Call WinFocusChangedHandler
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_WIN_CLOSED_HANDLER + Error$()
+  Resume Next
+End Sub
+
+'***********************************************************************************
+Function WindowParented(ByVal hwndChild as Integer, ByVal hwndParent as Integer) As Logical
+  OnError Goto HandleError
+  WindowParented = GetParent(hwndChild) = hwndParent
+  Exit Function
+
+HandleError:
+  Note STR_SUB_WINDOW_PARENTED + Error$()
+  Resume Next
+End Function
+
+'***********************************************************************************
+Function WindowHasLegend(ByVal win as Integer, ByVal bEmbedded as Logical) As Integer
+  Dim  legend_win as Integer
+  Dim i as Integer
+
+  OnError Goto HandleError
+
+  legend_win = 0
+  For i = -1 to -NumAllWindows() step -1
+    'do we have right kind of window?
+      If WindowInfo(i, WIN_INFO_TYPE) = WIN_LEGEND Then
+      'do we have a nonstandard legend attached to this window?
+      If WindowInfo(i, WIN_INFO_TABLE) = win Then
+        If bEmbedded and WindowParented(WindowInfo(i, WIN_INFO_WND), WindowInfo(win, WIN_INFO_WND)) Then
+          legend_win = WindowID(i)
+          Exit For
+        ElseIf NOT bEmbedded and NOT WindowParented(WindowInfo(i, WIN_INFO_WND), WindowInfo(win, WIN_INFO_WND)) Then
+          legend_win = WindowID(i)
+          Exit For
+        End If
+      End If
+    End If
+  Next
+  WindowHasLegend = legend_win
+  Exit Function
+
+HandleError:
+  Note STR_SUB_WINDOW_HAS_LEGEND + Error$()
+  Resume Next
+End Function
+
+'***********************************************************************************
+Sub About
+  Dim aboutRow1, aboutRowSpacer as SmallInt
+
+  OnError Goto HandleError
+
+  aboutRow1 = 10
+  aboutRowSpacer = 10
+
+  Dialog  Title GetResString(IDS_ABOUT) + STR_EMPTY_STR + 
+               GetResString(IDS_APP_DESCRIPTION) + STR_EMPTY_STR + STR_OPEN_BRAC +
+               GetResString(IDS_VERSION)+ STR_EMPTY_STR + AppVersion + STR_CLOSE_BRAC
+
+    Control Statictext Position 10, aboutRow1 
+      Title GetResString(IDS_ABOUT_1) + GetResString(IDS_ABOUT_2)+ Chr$(13)+ Chr$(13)+
+            GetResString(IDS_ABOUT_3) + GetResString(IDS_ABOUT_4)+ GetResString(IDS_ABOUT_5)+ Chr$(13)+ Chr$(13)+
+            GetResString(IDS_ABOUT_6) + GetResString(IDS_ABOUT_7)+ GetResString(IDS_ABOUT_8)
+       Height  150
+       Width   300
+ 
+    Control OKButton
+      Title GetResString(IDS_OK)
+  Exit Sub
+
+HandleError:
+  Note STR_ABOUT + Error$()
+  Resume Next
+End Sub
+
+'***********************************************************************************
+Sub EndProgram
+  End Program
+End Sub
+

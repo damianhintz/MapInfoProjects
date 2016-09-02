@@ -1,0 +1,386 @@
+'/*****************************************************************************
+'*       Copyright © 2011 Pitney Bowes Software Inc.
+'*       All rights reserved.
+'*****************************************************************************/
+'****************************************************************************
+' Include files
+'****************************************************************************
+Include "MapBasic.def"
+Include "..\Inc\STR_Lib.def"
+Include "..\Inc\Auto_lib.def"
+Include "..\Inc\MiStdLib.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+'****************************************************************************
+' Define constants
+'****************************************************************************
+Define AppVersion 2.7
+
+Define LB_TABLELIST        100
+Define ST_NAME             101
+Define ST_TYPE             102
+Define ST_NCOLS            103
+Define ST_NROWS            104
+Define ST_MAPPABLE         105
+Define ST_READONLY         106
+Define LB_KEYLIST          110
+Define TB_VALUE            111
+Define ST_TABLELOCATION    112
+Define ST_TEMPLATELOCATION 113
+Define BT_ADD              114
+Define BT_UPDATE           115
+Define BT_DELETE           116
+Define PUM_FUNCTIONS       117
+Define BT_CLEAR            118
+Define BT_SAVE             119
+Define BT_LOAD             120
+Define BT_SAVEAS           121
+Define BT_EXPORT           122
+Define CB_MODIFYMETADATA   123
+Define ET_NEWKEY           124
+Define ST_VERSION          126
+Define ST_DATATYPE         127
+Define ST_COORDSYS         128
+Define ST_COORDSYSWARNING  129
+
+Define MAX_VALID_FUNCTIONS 27 
+Define META_DATA_TEMPLATE "mdt"
+'****************************************************************************
+' Data Types
+'****************************************************************************
+Type structMetaDataArray
+	sKeyName as string
+	sKeyValue as string
+	sKeyFunction as string
+End Type
+'****************************************************************************
+' Global Variables
+'****************************************************************************
+Global gsTableList As String
+Global gsCurTable As String
+Global giCurKeyIndex As Integer
+Global glModifyMetaData As Logical
+Global glMetaDataModified As Logical
+Global glMetaDataTemplateModified As Logical
+Global gaLocalisedAppendValue(MAX_VALID_FUNCTIONS) As String
+Global gaMetaData(0) as structMetaDataArray
+Global giMetaDataCount as Integer
+Global gsMetaDataTemplate As String
+'****************************************************************************
+' Subroutine and Function Declarations
+'****************************************************************************
+'in Tablemgr.mb
+Declare Sub Main
+Declare Sub TableManager
+Declare Function GetMetadataKeys(byVal gCurTable as String) As String
+Declare Sub TableListHandler
+Declare Sub KeyListHandler
+Declare Sub TableLocationStaticTextHandler
+Declare Sub AddMetaDataKey
+Declare Sub AddMetaDataKeytoTemplate '*** new in v2.4
+Declare Sub UpdateMetaDataKey
+Declare Sub DeleteMetaDataKey
+Declare Sub InitializeDialog
+Declare Sub ModifyMetaDataCheckBoxHandler
+Declare Sub AddNewKeyOKButtonHandler
+Declare Sub AboutTableManager
+Declare Sub ExitTableManager
+Declare Sub ClearMetaData
+Declare Sub SaveMetaData
+Declare Sub ApplyMetaDataTemplate(ByVal lEvaluate As Logical)
+Declare Function BuildMetaDataKeyList() As String
+Declare Sub DoneHandler
+Declare Sub TemplateDoneHandler
+
+'in
+Declare Sub ExportMetaData
+Declare Sub ExportFGDCMetaData(sTableName As String)
+Declare Sub PrintMetaData(ByVal level, ByVal position, ByVal linked As Integer)
+Declare Sub ParseAndStoreMetaData()
+Declare Sub ReadMetaData(sTableName As String)
+Declare Sub DefinitionPrintOut()
+Declare Sub CallPrintOut()
+Declare Sub FindNumberOfFIelds()
+Declare Sub ReadDefinitionTable()
+
+Declare Sub TemplateManager
+Declare Sub xApplyMetaDataTemplate
+Declare Sub yApplyMetaDataTemplate
+
+'in TableUtilities.mb
+Declare Sub ReadTableInfo(sTableName As String, iVersion As Integer, sType As String, sFile As  String)
+
+'in FunctionUtilities.mb
+Declare Sub InitValidFunctions
+Declare Sub AppendFunction
+Declare Function PerformFunction(iFunctions As Integer) As String
+
+'in ReadAndWriteTemplates.mb
+Declare Sub LoadMetaDataTemplate(lEvaluate As Logical)
+Declare Sub SaveMetadataTemplate
+Declare Sub SaveMetadataTemplateAs
+Declare Sub ReadMetadataFromTemplate(sTemplate as String, lEvaluate As Logical)
+Declare Sub WriteMetadataToTemplate(sTemplate as String)
+
+'In TableMetaDataUtilities.MB
+Declare Sub ReadMetadataFromTable(sTable as String)
+Declare Sub WriteMetaDataToTable(sTable as String)
+Declare Sub ClearMetaDataFromTable(sTable as String)
+
+'In TableManagerHelp.MB
+Declare Sub TableManagerHelp
+Declare Sub MetaDataTemplateHelp
+
+' Resource String Ids
+Define IDS_STR_RES_RANGE_ERR             1
+Define IDS_APP_DESCRIPTION               2
+Define IDS_MENU_NAME                     3
+Define IDS_MENU_ITEM_NAME                4
+Define IDS_TEMPLATE_MENU_ITEM_NAME       5
+Define IDS_ABOUT_MENU_ITEM_NAME          6
+Define IDS_EXIT_MENU_ITEM_NAME           7
+Define IDS_NO_TABLES_OPEN                8
+Define IDS_VERSION                       9
+Define IDS_PICK_A_TABLE                  10
+Define IDS_TABLE_INFORMATION             11
+Define IDS_TABLE_METADATA                12
+Define IDS_ADDITIONAL_TABLE_INFO         13
+Define IDS_TABLE_NAME                    14
+Define IDS_TABLE_VERSION                 15
+Define IDS_TABLE_TYPE                    16
+Define IDS_DATA_TYPE                     17
+Define IDS_COLUMNS                       18
+Define IDS_ROWS                          19
+Define IDS_MAPPABLE                      20
+Define IDS_READ_ONLY                     21
+Define IDS_MODIFY_METADATA               22
+Define IDS_KEY_NAME                      23
+Define IDS_NOTE_COORDSYS_NOT_MATCH       24
+Define IDS_KEY_VALUE                     25
+Define IDS_ADD                           26
+Define IDS_DELETE                        27
+Define IDS_DELETE_ALL                    28
+Define IDS_SAVE                          29
+Define IDS_APPEND                        30
+Define IDS_TEMPLATE                      31
+Define IDS_LOAD                          32
+Define IDS_SAVE_AS                       33
+Define IDS_FGDC                          34
+Define IDS_EXPORT                        35
+Define IDS_COORDSYS                      36
+Define IDS_LOCATION                      37
+Define IDS_HELP_BUTTON                   38
+Define IDS_DONE_BUTTON                   39
+Define IDS_SAVE_CHANGES                  40
+Define IDS_YES_BUTTON                    41
+Define IDS_NO_BUTTON                     42
+Define IDS_NOT_SPECIFIED                 43
+Define IDS_SEAMLESS_TABLE                44
+Define IDS_PERMANENT_TABLE_EDITED        45
+Define IDS_PERMANENT_TABLE_SAVED         46
+Define IDS_LINKED_TABLE                  47
+Define IDS_RASTER_TABLE                  48
+Define IDS_VIEW_TABLE                    49
+Define IDS_QUERY_TABLE                   50
+Define IDS_YES                           51
+Define IDS_NO                            52
+Define IDS_NO_METADATA                   53
+Define IDS_TABLE_NOT_MAPPABLE            54
+Define IDS_TEMPORARY_TABLE               55
+Define IDS_EMPTY                         56
+Define IDS_ADD_NEW_KEY                   57
+Define IDS_NEW_KEY_NAME                  58
+Define IDS_USE_SLASHES                   59
+Define IDS_NEW_KEY_VALUE                 60
+Define IDS_OK                            61
+Define IDS_CANCEL                        62
+Define IDS_KEYS_MUST_BEGIN               63
+Define IDS_KEYS_MUST_NOT_END             64
+Define IDS_VALUES_CANNOT_BE              65
+Define IDS_READONLY_RESERVED             66
+Define IDS_ABOUT                         67
+Define IDS_ABOUT_1                       68
+Define IDS_ABOUT_2                       69
+Define IDS_ABOUT_4                       70
+Define IDS_ABOUT_7                       71
+Define IDS_ARE_YOU_SURE                  72
+Define IDS_UNDEFINED                     73
+Define IDS_NOT_APPLICABLE                74
+Define IDS_TEMPLATE_MANAGER              75
+Define IDS_TEMPLATE_LOCATION             76
+Define IDS_SAVE_CURRENT_METADATA         77
+Define IDS_SPECIFY_METADATA              78
+Define IDS_SPECIFY_OUTPUT                79
+Define IDS_PARSING_AND_STORING           80
+Define IDS_OPERATION_CANCELED            81
+Define IDS_METADATA_SUMMARY              82
+Define IDS_HELP                          83
+Define IDS_HELP_1                        84
+Define IDS_HELP_2                        85
+Define IDS_HELP_3                        86
+Define IDS_HELP_4                        87
+Define IDS_HELP_5                        88
+Define IDS_HELP_6                        89
+Define IDS_HELP_7                        90
+Define IDS_HELP_8                        91
+Define IDS_HELP_9                        92
+Define IDS_HELP_10                       93
+Define IDS_HELP_11                       94
+Define IDS_HELP_13                       95
+Define IDS_HELP_14                       96
+Define IDS_ENTITY_AND_ATTRIBUTE          97
+Define IDS_MAPINFO_NATIVE                98
+Define IDS_ENTITY_TYPE                   99
+Define IDS_ENTITY_TYPE_DEFINITION       100
+Define IDS_FIELD                        101
+Define IDS_NUMBER                       102
+Define IDS_NAME                         103
+Define IDS_TYPE                         104
+Define IDS_LENGTH                       105
+Define IDS_PRINTING_METADATA            106
+Define IDS_READING_DEFINITION           107
+Define IDS_PRINTING_DEFINITION          108
+Define IDS_NO_METADATA_FOUND            109
+Define IDS_FINISHED_WRITING             110
+Define IDS_UNABLE_TO_OPEN_TAB           111
+Define IDS_META_DATA_HELP_VER           112
+Define IDS_ABOUT_3                      113
+Define IDS_ABOUT_5                      114
+Define IDS_ABOUT_6                      115
+Define IDS_HELP_12                      116
+Define IDS_VALID_FUNCTION2              117     
+Define IDS_VALID_FUNCTION3              118     
+Define IDS_VALID_FUNCTION4              119     
+Define IDS_VALID_FUNCTION5              120     
+Define IDS_VALID_FUNCTION6              121     
+Define IDS_VALID_FUNCTION7              122     
+Define IDS_VALID_FUNCTION8              123     
+Define IDS_VALID_FUNCTION9              124     
+Define IDS_VALID_FUNCTION10             125     
+Define IDS_VALID_FUNCTION11             126     
+Define IDS_VALID_FUNCTION12             127     
+Define IDS_VALID_FUNCTION13             128     
+Define IDS_VALID_FUNCTION14             129     
+Define IDS_VALID_FUNCTION15             130     
+Define IDS_VALID_FUNCTION16             131     
+Define IDS_VALID_FUNCTION17             132     
+Define IDS_VALID_FUNCTION18             133     
+Define IDS_VALID_FUNCTION19             134     
+Define IDS_VALID_FUNCTION20             135     
+Define IDS_VALID_FUNCTION21             136     
+Define IDS_VALID_FUNCTION22             137     
+Define IDS_VALID_FUNCTION23             138     
+Define IDS_VALID_FUNCTION24             139     
+Define IDS_VALID_FUNCTION25             140     
+Define IDS_VALID_FUNCTION26             141     
+Define IDS_VALID_FUNCTION27             142     
+
+'Strings not to be localized
+Define STR_MENU_ITEM_SEPARATOR               "(-"
+Define STR_SEMI_COLON                        ";"
+Define STR_COLON                             ":"
+Define STR_OPEN_BRAC                         "("
+Define STR_CLOSE_BRAC                        ")"
+Define STR_UNDER_SCORE                       "_"
+Define STR_DOT                               "."
+Define STR_HASH                              "#"
+Define STR_PIPE                              "|"
+Define STR_BACK_SLASH                        "\"
+Define STR_EMPTY_STR                         ""
+Define STR_EMPTY_STR1                        " "
+Define STR_EMPTY_STR2                        "  "
+Define STR_EMPTY_STR3                        "   "
+Define STR_EMPTY_STR4                        "    "
+Define STR_EMPTY_STR5                        "     "
+Define STR_STATIC_INT                        "                                         "
+Define STR_STATIC_SHORT_INT                  "                    "
+Define STR_EMPTY_TITLE                       "                                               "
+Define STR_QUOTED_EMPTY_STR                  """"
+Define STR_FILE                              "FILE"
+Define STR_IS_READ_ONLY                      "IsReadOnly"
+Define STR_IS_READ_ONLY_IN_UPPER_CASE        "ISREADONLY"
+Define STR_RES_STR_FILE                      "tablemgr.str"
+Define STR_APP_FILE_NAME                     "tablemgr.mbx"
+Define STR_FILE_NOT_ACCESSIBLE               "Unable to access resource string file: "
+Define STR_SUB_TABLE_MANAGER_HELP            "TableManagerHelp: "
+Define STR_SUB_META_DATA_TEMPLATE_HELP       "MetaDataTemplateHelp: "
+Define STR_SUB_SAVE_METADATA_TEMPLATE        "SaveMetadataTemplate: "
+Define STR_SUB_READ_META_DATA_FROM_TABLE     "ReadMetadataFromTable: "
+Define STR_SUB_WRITE_META_DATA_FROM_TABLE    "WriteMetaDataToTable: "
+Define STR_SUB_CLEAR_META_DATA_FROM_TABLE    "ClearMetaDataFromTable: "
+Define STR_SUB_READ_METADATA_FROM_TEMPLATE   "ReadMetadataFromTemplate: "
+Define STR_SUB_ABOUT_TABLE_MANAGER           "AboutTableManager: "
+Define STR_SUB_EXPORT_META_DATA              "ExportMetaData: "
+Define STR_SUB_TEMPLATE_MANAGER              "TemplateManager: "
+Define STR_SUB_TEMPLATE_DONE_HANDLER         "TemplateDoneHandler: "
+Define STR_SUB_X_APPLY_METADATA_TEMPLATE     "xApplyMetaDataTemplate: "
+Define STR_SUB_ADD_METADATA_KEY              "AddMetaDataKey: "
+Define STR_SUB_SAVE_METADATA_TEMPLATE_AS     "SaveMetadataTemplateAs: "
+Define STR_SUB_LOAD_METADATA_TEMPLATE        "LoadMetaDataTemplate: "
+Define STR_SUB_INIT_VALID_FUNCTIONS          "InitValidFunctions: "
+Define STR_SUB_PERFORM_FUNCTION              "PerformFunction: "
+Define STR_SUB_APPEND_FUNCTION               "AppendFunction: "
+Define STR_SUB_EXIT_TABLE_MANAGER            "ExitTableManager: "
+Define STR_SUB_MAIN                          "Main: " 
+Define STR_SUB_TABLE_MANAGER                 "TableManager: "
+Define STR_SUB_SAVE_TEMPLATE                 "SaveTemplate: "
+Define STR_SUB_TABLE_LIST_HANDLER            "TableListHandler: " 
+Define STR_SUB_KEY_LIST_HANDLER              "KeyListHandler: "
+Define STR_SUB_TABLE_LOCATION_STATIC_TEXT    "TableLocationStaticTextHandler: "
+Define STR_SUB_ADD_METADATA_KEY_TO_TMPLT     "AddMetaDataKeyToTemplate: "
+Define STR_SUB_ADD_NEW_KEY_OK_BUTTON         "AddNewKeyOKButtonHandler: "
+Define STR_SUB_SAVE_META_DATA                "SaveMetaData: "
+Define STR_SUB_APPLY_METADATA_TEMPLATE       "ApplyMetaDataTemplate: "
+Define STR_SUB_Y_APPLY_METADATA_TEMPLATE     "yApplyMetaDataTemplate: "
+Define STR_SUB_UPDATE_METADATA_KEY           "UpdateMetaDataKey: "
+Define STR_SUB_DELETE_METADATA_KEY           "DeleteMetaDataKey: "
+Define STR_SUB_INITIALIZE_DIALOG             "InitializeDialog: "
+Define STR_SUB_MODIFY_METADATA_CHECKBOX      "ModifyMetaDataCheckBoxHandler: "
+Define STR_SUB_DONE_HANDLER                  "DoneHandler: "
+Define STR_SUB_BUILD_METADATA_KEY_LIST       "BuildMetaDataKeyList: "
+Define STR_SUB_CLEAR_METADATA                "ClearMetaData: "
+Define STR_SUB_READ_TABLE_INFO               "ReadTableInfo: "
+Define STR_VERSION                           "VERSION"
+Define STR_TYPE                              "TYPE"
+Define STR_COORD_SYS                         "CoordSys"
+Define STR_LIKE_TYPE                         "%type%"
+Define STR_LIKE_FIELDS                       "%fields%"
+Define STR_MET                               "MET"
+Define STR_NATIVE                            "native"
+Define STR_ZERO                              "0"
+Define STR_REGION                            "Region"
+Define STR_LINE                              "Line"
+Define STR_POINT                             "Point"
+Define STR_POLYLINE                          "Polyline"
+Define STR_VALID_FUNCTION2                   "CurDate();" 
+Define STR_VALID_FUNCTION3                   "CurDate() & Time();" 
+Define STR_VALID_FUNCTION4                   "Time();" 
+Define STR_VALID_FUNCTION5                   "NumberOfPointObjectsInTable();" 
+Define STR_VALID_FUNCTION6                   "NumberOfRegionObjectsInTable();" 
+Define STR_VALID_FUNCTION7                   "NumberOfLineObjectsInTable();" 
+Define STR_VALID_FUNCTION8                   "NumberOfPolyLineObjectsInTable();" 
+Define STR_VALID_FUNCTION9                   "TableInfo(TAB_INFO_NAME);" 
+Define STR_VALID_FUNCTION10                  "TableInfo(TAB_INFO_TYPE);" 
+Define STR_VALID_FUNCTION11                  "TableInfo(TAB_INFO_NCOLS);" 
+Define STR_VALID_FUNCTION12                  "TableInfo(TAB_INFO_MAPPABLE);" 
+Define STR_VALID_FUNCTION13                  "TableInfo(TAB_INFO_READONLY);" 
+Define STR_VALID_FUNCTION14                  "TableInfo(TAB_INFO_NROWS);" 
+Define STR_VALID_FUNCTION15                  "TableInfo(TAB_INFO_MAPPABLE_TABLE);" 
+Define STR_VALID_FUNCTION16                  "TableInfo(TAB_INFO_TABFILE);"  
+Define STR_VALID_FUNCTION17                  "TableInfo(TAB_INFO_MINX);" 
+Define STR_VALID_FUNCTION18                  "TableInfo(TAB_INFO_MINY);" 
+Define STR_VALID_FUNCTION19                  "TableInfo(TAB_INFO_MAXX);" 
+Define STR_VALID_FUNCTION20                  "TableInfo(TAB_INFO_MAXY);" 
+Define STR_VALID_FUNCTION21                  "TableInfo(TAB_INFO_SEAMLESS);" 
+Define STR_VALID_FUNCTION22                  "TableInfo(TAB_INFO_COORDSYS_MINX);" 
+Define STR_VALID_FUNCTION23                  "TableInfo(TAB_INFO_COORDSYS_MINY);" 
+Define STR_VALID_FUNCTION24                  "TableInfo(TAB_INFO_COORDSYS_MAXX);" 
+Define STR_VALID_FUNCTION25                  "TableInfo(TAB_INFO_COORDSYS_MAXY);" 
+Define STR_VALID_FUNCTION26                  "TableInfo(TAB_INFO_COORDSYS_CLAUSE);" 
+Define STR_VALID_FUNCTION27                  "TableInfo(TAB_INFO_COORDSYS_NAME);"
+Define STR_TAB_TYPE_BASE				     "TAB_TYPE_BASE"
+Define STR_TAB_TYPE_RESULT				     "TAB_TYPE_RESULT"
+Define STR_TAB_TYPE_VIEW				     "TAB_TYPE_VIEW"
+Define STR_TAB_TYPE_IMAGE				     "TAB_TYPE_IMAGE"
+Define STR_TAB_TYPE_LINKED				     "TAB_TYPE_LINKED"
+Define STR_FORMAT1                           "#.######"

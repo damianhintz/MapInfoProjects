@@ -1,0 +1,930 @@
+'*****************************************************************************
+'       Copyright (c) 2004, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: COGOLINE.MB $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+' Utility to draw a line on a map starting at a point chosen by the user,
+'  with the selected direction, distance, and distance units.
+'
+' Revision History:
+'
+'    3     28 May 2004               Smith
+'            Now allows creation of polylines, supports DMS option (if map is 
+'            in Lon/Lat) and supports native coordinate unit of active map. 
+'    2.1    6 Jun 2003               Greene
+'            New functionality:  place drawn lines in editable layer, if one exists;
+'            otherwise, draw lines in Cosmetic layer as previous versions did.
+'    2.0   12 May 2003               Greene
+'            Revised algorithm to use new Offset() function, if available
+'				Allow distance to be measured in any available map units
+'            For consistency with Offset dialog and other MapInfo functionality using angles,
+'				 removed code offering the "0=North" option.  Instead, added generalized 
+'				 "advanced" options for custom adjustments [e.g. for entering compass bearings]
+'
+'    1.2	 Now lets you choose whether 0 = East or North.
+'
+'    1.1   Sample MapBasic program that demonstrates how to determine
+'          the end points of a line, given: 
+'              the starting x- and y-coordinates, 
+'              the length (user can specify Feet or Miles) 
+'              and the angle, in degrees, where zero is parallel to equator.
+' **************************************************************************
+
+Include "MapBasic.DEF" 
+Include "Icons.DEF"
+Include "COGOLine.DEF"
+' Include the standard library for retrieving localized strings
+Include "..\Inc\resstrng.def"
+
+Declare Sub Main 
+Declare Sub SetStartPointAndAskUser
+Declare Sub AskUser
+Declare Sub DialogHandler
+Declare Sub AdvancedOptionsHandler
+Declare Sub OKButtonHandler
+Declare Sub CancelHandler 
+Declare Sub About 
+Declare Sub GoodBye
+Declare Sub LineTypeRadioButtonHandler
+Declare Sub ProcessPendingPolyline 
+
+Declare Sub calculate_dms_from_degrees(
+  ByVal f_decimal_degrees As Float,
+        f_degrees As Float,
+        f_minutes As Float,
+        f_seconds As Float)
+
+Declare Function degrees_to_dms_string$(
+  ByVal degree_location As Float) As String 
+
+Declare Function dms_string_to_degrees( 
+  ByVal dms_coord As String) As Float
+
+Declare Function get_xy_unit_name$() As String 
+
+Declare Function remove_leading_text( 
+   ByVal str As String) As String
+
+Define ANGLE_INC_CWISE  1
+Define ANGLE_INC_CCWISE 2
+
+Define CTRL_START_X_EDIT_ID    8128
+Define CTRL_START_Y_EDIT_ID    8129
+Define CTRL_LENGTH_EDIT_ID     8130
+Define CTRL_UNITS_POPUP_ID     8131
+Define CTRL_ANGLE_EDIT_ID      8132
+Define CTRL_ADVANCED_CHECK_ID  8133
+Define CTRL_ORIGIN_STATIC_ID   8134
+Define CTRL_ORIGIN_EDIT_ID     8135
+Define CTRL_DEGREES_STATIC_ID  8136
+Define CTRL_DIR_STATIC_ID      8137
+Define CTRL_DIR_RADIO_ID       8138
+Define CTRL_MOVESTART_CHECK_ID 8139
+Define CTRL_CLOSE_DLG_CHECK_ID 8140
+Define CTRL_UNIT_LABEL         8141
+Define CTRL_LINE_OR_POLYLINE   8142
+Define CTRL_OK_BUTTON          8143 
+
+Define DEGREE_SYMBOL  "°"   
+Define MINUTE_SYMBOL  "'" 
+
+' to allow the dialog to be used multiple times, the code creating the lines 
+'  must be in the OKButtonHandler -- so the following variables must all be globals:
+Global g_fLength As Float    'Line length typed in by user      
+Global g_fAngle  As Float    'Line angle typed by user; 0 == due East
+Global g_strUnits As String  'should be standard internal MapInfo abbreviation of a unit
+Global g_iUnits as SmallInt	   'index of appropriate unit from g_strUnitAbbr() array
+Global g_fOriginAngle as Float  ' trigonometric angle to be interpreted as "zero" by COGOLine
+Global g_iAngleIncreaseDir as SmallInt ' angle increases c'wise or cc'wise from "zero"?
+Global g_bApplyAdvancedOptions as Logical ' sticky setting for Advanced Options checkbox
+Global g_bMoveStartPoint as Logical ' sticky setting for drawing several lines in a row
+Global g_bDismissDialog as Logical ' sticky setting for using dialog multiple times
+Global gx_1 as Float ' remember starting point if user accesses dialog from menu
+Global gy_1 as Float
+Global gi_win_id As Integer 
+Global g_iLineOrPoly as SmallInt  ' 1 means "Create Line"; 2 means "Create Polyline"
+Global g_bPendingPolyline as Logical ' true means a polyline has been started 
+Global g_objPendingPolyline as Object ' the polyline object that has been started 
+Global g_strUnitName(12) as String
+Global g_strUnitAbbr(12) as String
+Global g_fConvertToMiles(12) as Float
+Global g_bUseDegrees As Logical  ' false means use some X/Y Coord unit other than degrees
+
+                 
+Sub Main 
+  OnError Goto HandleError
+
+  If LoadStrings(ApplicationDirectory$() + "COGOLine.str") = FALSE Then
+    Note "Unable to access resource string file: " + ApplicationDirectory$() + "COGOLine.str"
+    Exit Sub
+  End If
+
+ 
+  ' US Survey Feet have not been included as a separate entry in the list of units,
+  '  because the great-circle algorithm used by the Distance function is not
+  '  precise enough to distinguish US Survey feet from standard International feet.
+ 
+ ' internal unit abbreviations must not be localized:
+  g_strUnitAbbr(1)="mm"
+  g_fConvertToMiles(1)=0.0000006213711922
+  g_strUnitAbbr(2)="cm"
+  g_fConvertToMiles(2)=0.000006213711922
+  g_strUnitAbbr(3)="m"
+  g_fConvertToMiles(3)=0.0006213711922
+  g_strUnitAbbr(4)="km"
+  g_fConvertToMiles(4)=0.6213711922
+  g_strUnitAbbr(5)="nmi"
+  g_fConvertToMiles(5)=1.1507794479544
+  g_strUnitAbbr(6)="in"
+  g_fConvertToMiles(6)=0.000015782
+  g_strUnitAbbr(7)="ft"
+  g_fConvertToMiles(7)=0.00018939394
+  g_strUnitAbbr(8)="yd"
+  g_fConvertToMiles(8)=0.000568182
+  g_strUnitAbbr(9)="mi"
+  g_fConvertToMiles(9)=1
+  g_strUnitAbbr(10)="li"
+  g_fConvertToMiles(10)=0.000125
+  g_strUnitAbbr(11)="rd"
+  g_fConvertToMiles(11)=0.003125
+  g_strUnitAbbr(12)="ch"
+  g_fConvertToMiles(12)=0.0125
+
+  g_fLength = 1
+  g_fAngle = 0
+  g_fOriginAngle = 90
+  g_iAngleIncreaseDir = ANGLE_INC_CWISE
+  g_bApplyAdvancedOptions = FALSE
+  g_bMoveStartPoint = FALSE
+  g_bDismissDialog = TRUE
+  ' the first line of the .STR localization file should give a standard English unit
+  '  abbreviation, not a translated one.  But just in case a valid unit is not specified:
+  g_iUnits = 3 ' the "default default" will be meters
+  gx_1=-999
+  gy_1=-999 ' random coordinate meaning "not set: use current map window center"
+  g_iLineOrPoly = 1 
+
+  ' get localized names for distance units, for use in dialog.
+  Dim i as integer
+  for i=1 to 12
+	g_strUnitName(i)=UnitName$(g_strUnitAbbr(i))
+	if g_strUnitAbbr(i)=GetResString(IDS_DEFAULT_UNITS) then
+		g_iUnits=i ' found matching unit in the localization file; use as default
+	end if
+  next
+
+  ' Create a custom menu, and add it as a submenu off the Tools menu. 
+  Create Menu GetResString(IDS_MENU_NAME) As
+    GetResString(IDS_MENU_ASK_USER) Calling AskUser,
+    GetResString(IDS_MENU_ABOUT) Calling About,
+    GetResString(IDS_MENU_EXIT) Calling GoodBye
+
+  ' line replacing 'set_tools_menu' call from auto_lib -- identical functionality 
+  Alter Menu ID 4 Add GetResString(IDS_MENU_NAME) As GetResString(IDS_MENU_NAME)
+  
+  ' Create a custom ToolButton.  The user will select that tool, 
+  ' then click on a map to indicate the starting point of a line object. 
+  ' Once the user clicks a starting point, the AskUser procedure 
+  ' will ask the user to type in the desired line length and angle. 
+  Alter ButtonPad ID 3 ' Tools buttonpad
+    Add 
+      Separator 
+      ToolButton 
+        Icon MI_ICON_MISC_12          '  the Pencil icon for the MB tool 
+        HelpMsg GetResString(IDS_TOOL_HELP)
+        Cursor MI_CURSOR_CROSSHAIR    ' the draw-mode mouse cursor 
+        DrawMode  DM_CUSTOM_POINT     ' let the user click, but not drag
+        Calling SetStartPointAndAskUser
+    Show 
+  Exit Sub
+HandleError:
+  Note "Main: " + Error$()
+  Resume Next
+End Sub 
+
+
+'**********************************************************
+' SetStartPointAndAskUser
+
+
+' When the user selects the custom tool and clicks on a window, 
+'  the program automatically calls this procedure.  If the 
+'  dialog is activated through the menu system, the AskUser
+'  subroutine is called directly, without setting a start point.
+Sub SetStartPointAndAskUser
+
+  ' Set MapBasic's coordinate system to match the active map window
+  Set CoordSys Window FrontWindow()
+
+  gx_1=CommandInfo(CMD_INFO_X)
+  gy_1=CommandInfo(CMD_INFO_Y) 
+  Call AskUser
+End Sub
+
+
+'*************************************************************
+' creates a dialog to request angle and length information from the user,
+'  and calls the appropriate subroutine to process request
+Sub AskUser 
+  gi_win_id = FrontWindow()
+  ' Since the dialog can be called from menu, 
+  ' we have to make that _some_ window is open --
+  if gi_win_id=0 then
+    Note GetResString(IDS_NO_WINDOW)
+    exit sub
+  end if
+  ' make sure the user didn't click in a Layout window. 
+  if WindowInfo(gi_win_id, WIN_INFO_TYPE) <> WIN_MAPPER then 
+    Note GetResString(IDS_ERROR_MAP_ONLY)
+    Exit Sub 
+  end if 
+
+  ' Set MapBasic's coordinate system to match the active map window
+  Set CoordSys Window FrontWindow()
+  
+  ' If no coordinates were set (when user invokes dialog from menu 
+  ' instead of clicking with tool), use the center of the window. 
+  if gx_1=-999 and gy_1=-999 then
+	gx_1= MapperInfo(gi_win_id, MAPPER_INFO_CENTERX) 
+	gy_1= MapperInfo(gi_win_id, MAPPER_INFO_CENTERY) 
+  end if
+
+  ' Set flag to note that we have not (yet) started a polyline geometry
+  g_bPendingPolyline = FALSE 
+
+  Dialog 
+    Title GetResString(IDS_ASK_TITLE) Calling DialogHandler
+
+    ' get the initial focus right by defining controls in non-top-down order
+    Control StaticText Title GetResString(IDS_ASK_ANGLE) Position 10, 47
+    Control EditText ID CTRL_ANGLE_EDIT_ID Width 50 Height 13 Position 50, 45
+      Value g_fAngle 
+    Control StaticText Title GetResString(IDS_ASK_DEGREES) Position 103, 47
+    Control StaticText Title GetResString(IDS_ASK_LENGTH) Position 10, 62
+
+    Control StaticText ID CTRL_UNIT_LABEL Title "                         " Position 135, 18 
+
+    Control EditText ID CTRL_LENGTH_EDIT_ID Height 13 Position 50, 60 
+      Value g_fLength
+    Control PopUpMenu ID CTRL_UNITS_POPUP_ID Width 66 Position 133, 60
+      Title From Variable g_strUnitName
+      Value g_iUnits Into g_iUnits
+
+    Control GroupBox Width 190 Height 95 Position 10, 80
+      Title GetResString(IDS_ASK_ADVANCED)
+    Control CheckBox ID CTRL_ADVANCED_CHECK_ID Position 15, 93
+      Title GetResString(IDS_ASK_CUSTOM)
+      Value g_bApplyAdvancedOptions Into g_bApplyAdvancedOptions
+      Calling AdvancedOptionsHandler
+    Control StaticText ID CTRL_ORIGIN_STATIC_ID Position 20, 105
+      Title GetResString(IDS_ASK_FOR_ZERO)
+    Control EditText ID CTRL_ORIGIN_EDIT_ID Width 50 Height 13 Position 50, 117
+      Value g_fOriginAngle
+    Control StaticText ID CTRL_DEGREES_STATIC_ID Position 103, 119
+      Title GetResString(IDS_ASK_DEGREES)
+    Control StaticText ID CTRL_DIR_STATIC_ID Position 20, 135
+      Title GetResString(IDS_ASK_WHICH_WAY)
+    Control RadioGroup ID CTRL_DIR_RADIO_ID Position 50, 145
+      Title GetResString(IDS_ASK_DIRECTION)
+      Value g_iAngleIncreaseDir Into g_iAngleIncreaseDir
+    Control RadioGroup ID CTRL_LINE_OR_POLYLINE Position 10, 180 
+      Calling LineTypeRadioButtonHandler 
+      Title GetResString(IDS_LINE_OR_POLY)
+      Value g_iLineOrPoly Into g_iLineOrPoly
+    Control Checkbox ID CTRL_MOVESTART_CHECK_ID Position 10, 210 
+      Title GetResString(IDS_ASK_MOVESTART)
+      Value g_bMoveStartPoint into g_bMoveStartPoint
+    Control Checkbox ID CTRL_CLOSE_DLG_CHECK_ID Position 10, 222 
+      Title GetResString(IDS_ASK_CLOSE_DLG)
+      Value g_bDismissDialog into g_bDismissDialog
+
+    Control OKButton Title GetResString(IDS_ASK_OK) Position 50, 239 ID CTRL_OK_BUTTON Calling OKButtonHandler
+    Control CancelButton Title GetResString(IDS_ASK_CANCEL) Position 125, 239  Calling CancelHandler
+
+    Control StaticText Position 10, 12
+      Title GetResString(IDS_ASK_START_X) 
+    Control EditText ID CTRL_START_X_EDIT_ID Height 13 Position 50, 10     
+      Value Format$(gx_1, "0.########") 
+    Control StaticText Title GetResString(IDS_ASK_START_Y) Position 10, 27
+    Control EditText ID CTRL_START_Y_EDIT_ID Height 13 Position 50, 25
+      Value Format$(gy_1, "0.########") 
+  'all processing has been done by the OKButtonHandler subroutine, so there's
+  ' no need to check CommandInfo(CMD_INFO_DLG_OK) at this point --
+
+  ' If the user created a polyline, we temporarily stored it in the
+  ' Cosmetic layer, in which case we may now need to transfer the polyline
+  ' to a different layer.  
+  Call ProcessPendingPolyline
+
+End Sub 
+
+
+Sub DialogHandler
+	if g_bApplyAdvancedOptions=FALSE then
+		Alter Control CTRL_ORIGIN_STATIC_ID Disable
+		Alter Control CTRL_ORIGIN_EDIT_ID Disable
+		Alter Control CTRL_DEGREES_STATIC_ID Disable
+		Alter Control CTRL_DIR_STATIC_ID Disable
+		Alter Control CTRL_DIR_RADIO_ID Disable
+   end if
+
+   ' Preserve the previous state of the Draw Line / Draw Polyline radio button group
+   Alter Control CTRL_LINE_OR_POLYLINE Value g_iLineOrPoly
+   Call LineTypeRadioButtonHandler 
+
+   Dim sUnit as String
+   sUnit = get_xy_unit_name$()  
+   Alter Control CTRL_UNIT_LABEL Title UnitName$(sUnit) 
+   if sUnit = "degree" Then 
+      g_bUseDegrees = True
+      If MapperInfo(FrontWindow(), MAPPER_INFO_DISPLAY_DMS) = True Then 
+         Alter Control CTRL_START_X_EDIT_ID Value degrees_to_dms_string$(gx_1)
+         Alter Control CTRL_START_Y_EDIT_ID Value degrees_to_dms_string$(gy_1)
+      End If    
+   Else 
+      g_bUseDegrees = False  
+   End If 
+   
+End Sub
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'  Return a string representing the XY Coordinates unit (such as
+'  "degree" for degrees or "m" for meters) for the active map window.
+'  This function assumes you have already set MapBasic's CoordSys
+'  to match the active map window (Set CoordSys Window FrontWindow() ).
+'
+Function get_xy_unit_name$() As String
+  Dim csysString  As String   ' CoordSys clause of active map window 
+  Dim iStartPos As SmallInt   ' Index of starting quotation mark
+  Dim iEndPos   As SmallInt   ' Index of ending quotation mark 
+
+  OnError Goto HandleError
+
+  csysString = SessionInfo(SESSION_INFO_COORDSYS_CLAUSE)
+  ' Get the position of the first double-quote, which marks 
+  ' the beginning of the unit string 
+  iStartPos = InStr(1, csysString, Chr$(34) )
+  If iStartPos > 0 Then 
+     ' If there is a quotation mark, there must be a unit name, 
+     ' between the first and second quotation marks, e.g.: 
+     '    CoordSys Earth Projection 12, 104, "m", 0
+     ' or 
+     '    CoordSys NonEarth Units "ft"
+     ' 
+     iEndPos = InStr(iStartPos + 1, csysString, Chr$(34) )
+     If (iStartPos > 0 And iEndPos > iStartPos) Then 
+        get_xy_unit_name$ = Mid$(csysString, iStartPos + 1,  (iEndPos - iStartPos) - 1 )
+     End If 
+     
+  Else 
+     ' Must be Lat/Lon map, such as: 
+     '   CoordSys Earth Projection 1, 62   
+     get_xy_unit_name$ = "degree" 
+  End If 
+  Exit Function
+
+HandleError:
+  Note "get_xy_unit_name$: " + Error$()
+  Resume Next
+End Function
+
+
+Sub AdvancedOptionsHandler
+	if ReadControlValue(CTRL_ADVANCED_CHECK_ID)=FALSE then
+		Alter Control CTRL_ORIGIN_STATIC_ID Disable
+		Alter Control CTRL_ORIGIN_EDIT_ID Disable
+		Alter Control CTRL_DEGREES_STATIC_ID Disable
+		Alter Control CTRL_DIR_STATIC_ID Disable
+		Alter Control CTRL_DIR_RADIO_ID Disable
+	else
+		Alter Control CTRL_ORIGIN_STATIC_ID Enable
+		Alter Control CTRL_ORIGIN_EDIT_ID Enable
+		Alter Control CTRL_DEGREES_STATIC_ID Enable
+		Alter Control CTRL_DIR_STATIC_ID Enable
+		Alter Control CTRL_DIR_RADIO_ID Enable
+   end if
+End Sub
+
+
+Sub CancelHandler 
+   ' If user cancels, reset the x/y values.  If we did not do this, 
+   ' then the next time the user invoked the dialog off of the menu,
+   ' it would re-use the previous values instead of using the 
+   ' center of the map window. 
+   gx_1 = -999
+   gy_1 = -999
+End Sub 
+
+
+Sub LineTypeRadioButtonHandler 
+   Dim iButton as SmallInt 
+   iButton = ReadControlValue(CTRL_LINE_OR_POLYLINE) 
+   If iButton = 1 Then 
+      ' User clicked on the Create Lines radio button 
+      Alter Control CTRL_MOVESTART_CHECK_ID Enable 
+      Alter Control CTRL_CLOSE_DLG_CHECK_ID Enable 
+      Alter Control CTRL_OK_BUTTON Title GetResString(IDS_ASK_OK) 
+
+      ' If the user created a polyline, we temporarily stored it in the
+      ' Cosmetic layer, in which case we may now need to insert the polyline
+      ' into a different layer. 
+      Call ProcessPendingPolyline
+
+   Else 
+      ' User clicked on Create Polylines.  Set enabled/disabled 
+      ' status of various controls accordingly, such as changing
+      ' the OK button's caption from Draw Line to Draw Polyline.
+      ' NOTE: Once the user has clicked the OK button once to begin
+      ' a polyline, do not apply these changes again, because elsewhere,
+      ' we change the button caption again to Extend Polyline. 
+      if g_bPendingPolyline = FALSE Then
+        ' The user has not yet begun the polyline, so update the dialog now.
+        Alter Control CTRL_MOVESTART_CHECK_ID Value true Disable 
+        Alter Control CTRL_CLOSE_DLG_CHECK_ID Value false Disable 
+        Alter Control CTRL_OK_BUTTON Title GetResString(IDS_CREATE_POLY)
+      End If 
+   End If 
+End Sub 
+
+
+Sub OKButtonHandler
+	Dim x_2, y_2 As Float 
+	Dim length_in_miles, trig_angle As Float 
+	Dim line_obj As Object
+   Dim coordString as String
+   Dim iRadioButton as SmallInt 
+   Dim strCosmetic As String 
+   Dim iRowCount As Integer 
+   Dim iNextNodeNumber As Integer 
+   Dim iSectionCount As Integer 
+
+   coordString = ReadControlValue(CTRL_START_X_EDIT_ID)
+
+   If g_bUseDegrees Then 
+      ' The X/Y unit is degrees.  Parse the DMS value into degrees 
+      gx_1 = dms_string_to_degrees(coordString)
+   Else 
+      gx_1 = Val( DeformatNumber$(coordString) )
+   End If 
+
+   coordString = ReadControlValue(CTRL_START_Y_EDIT_ID)    
+   If g_bUseDegrees Then 
+      ' The X/Y unit is degrees.  Parse the DMS value into degrees 
+      gy_1 = dms_string_to_degrees(coordString)
+   Else 
+      gy_1 = Val(DeformatNumber$(coordString ))
+   End If
+
+	g_fLength = Val(DeformatNumber$(ReadControlValue(CTRL_LENGTH_EDIT_ID)))
+	g_iUnits = ReadControlValue(CTRL_UNITS_POPUP_ID)
+	g_fAngle = Val(DeformatNumber$(ReadControlValue(CTRL_ANGLE_EDIT_ID)))
+	g_bApplyAdvancedOptions = ReadControlValue(CTRL_ADVANCED_CHECK_ID)
+	g_fOriginAngle = Val(DeformatNumber$(ReadControlValue(CTRL_ORIGIN_EDIT_ID)))
+	g_iAngleIncreaseDir = ReadControlValue(CTRL_DIR_RADIO_ID)
+	g_bMoveStartPoint = ReadControlValue(CTRL_MOVESTART_CHECK_ID)
+	g_bDismissDialog = ReadControlValue(CTRL_CLOSE_DLG_CHECK_ID)
+
+   If g_fLength <= 0 Then 
+     ' Do not add line segment; length must be greater than zero. 
+     Note GetResString(IDS_ERROR_LENGTH) 
+     Dialog Preserve
+     Exit Sub 
+   End If 
+
+   ' Place a ceiling on the maximum length allowed
+   If g_fLength > 1000000000 Then 
+      g_fLength = 1000000000
+   End If 
+
+   If g_fAngle > 360 Then 
+      g_fAngle = 360
+   ElseIf g_fAngle < -360 Then
+      g_fAngle = -360
+   End If 
+
+   If g_fOriginAngle > 360 Then 
+      g_fOriginAngle = 360
+   ElseIf g_fOriginAngle < -360 Then
+      g_fOriginAngle = -360
+   End If 
+
+	' convert the number they specified into miles. 
+	length_in_miles = g_fLength * g_fConvertToMiles(g_iUnits)
+
+	' If the user chose to invoke the "Advanced Settings" option, 
+	' we convert the angle to a 0-degrees-equals-East system,
+	' because we will be calling trig functions, such as Cos,
+	' which treat zero degrees as due East. 
+
+	if g_bApplyAdvancedOptions Then
+		if g_iAngleIncreaseDir = ANGLE_INC_CWISE then
+			trig_angle = g_fOriginAngle - g_fAngle
+		else	
+			trig_angle = g_fOriginAngle + g_fAngle
+		end if
+	else 
+		'the user did not override the default "0 degrees = East".
+		trig_angle = g_fAngle
+	end if 
+
+	' Use the Offset function to calculate the line's end point. 
+	dim obj_p1, obj_p2 as Object
+	obj_p1=CreatePoint(gx_1, gy_1)
+	obj_p2=Offset(obj_p1, trig_angle, length_in_miles, "mi")
+	x_2=centroidx(obj_p2)
+	y_2=centroidy(obj_p2)
+
+   ' the variables x_2 and y_2 now contain the x- and y-coordinates
+   ' of the end of the projected line.  
+
+   ' Determine whether the user chose Create Line or Create Polyline radio button
+   iRadioButton = ReadControlValue(CTRL_LINE_OR_POLYLINE) 
+   g_iLineOrPoly = iRadioButton
+   If iRadioButton = 1 Then  
+     ' The user wants to create a Line object 
+
+     ' Create a line object in the local Object variable... 
+     Create Line  
+       Into Variable line_obj 
+       (gx_1, gy_1)  (x_2, y_2)  
+       Pen CurrentPen() 
+
+     ' Insert the line object into the map's Editable layer, or the Cosmetic layer 
+     if MapperInfo(gi_win_id, MAPPER_INFO_EDIT_LAYER)<>-1 then
+       Insert Into LayerInfo(gi_win_id,
+                             MapperInfo(gi_win_id, MAPPER_INFO_EDIT_LAYER),
+                              LAYER_INFO_NAME)
+         (Object) Values (line_obj)
+     else
+       ' Insert the line object into the map's Cosmetic layer 
+       Insert Into WindowInfo(gi_win_id, WIN_INFO_TABLE) (Object) Values (line_obj)
+       Set Map Window gi_win_id Layer 0 Editable On
+     end if
+
+   ElseIf  g_bPendingPolyline = FALSE Then 
+
+     ' The Create Polyline radio button is selected, but there is not 
+     ' yet any Polyline object; so create a new polyline object
+
+     Create Pline 
+        Into Variable g_objPendingPolyline
+        2
+        (gx_1, gy_1)  (x_2, y_2)  
+       Pen CurrentPen()         
+
+     ' Insert the new polyline into the Cosmetic layer.  Later, 
+     ' we may move the object to the Editable layer, in the 
+     ' ProcessPendingPolyline subroutine. 
+     Insert Into WindowInfo(gi_win_id, WIN_INFO_TABLE) (Object) Values (g_objPendingPolyline)
+
+      ' Now that the Polyline has been started, change the text 
+      ' on the OK button to say "Extend Polyline"  
+      Alter Control CTRL_OK_BUTTON Title GetResString(IDS_EXTEND_POLY) 
+
+      ' Reset the flag so that the next time the user clicks OK, we 
+      ' will know to extend the polyline, instead of creating a new one
+      g_bPendingPolyline = TRUE
+
+   Else 
+
+     ' The Create Polyline radio button is selected, and the user 
+     ' just clicked Extend Polyline button to continue the polyline
+     Create Line  
+       Into Variable line_obj 
+       (gx_1, gy_1)  (x_2, y_2)  
+       Pen CurrentPen() 
+
+     ' Add the new segment to the polyline 
+     g_objPendingPolyline = Combine(g_objPendingPolyline, line_obj)
+
+     ' Update the last object in the cosmetic layer, using the 
+     ' new, extended version of the polyline 
+     strCosmetic = WindowInfo(gi_win_id, WIN_INFO_TABLE)
+     iRowCount = TableInfo(strCosmetic, TAB_INFO_NROWS) 
+     Update strCosmetic 
+        Set Obj = g_objPendingPolyline
+        Where Rowid = iRowCount 
+
+   End If
+
+   ' check if start point for next line should be moved to current end point
+	if g_bMoveStartPoint then
+		gx_1=x_2
+		gy_1=y_2
+		' for Mapper windows, make sure the the end point is on the screen
+		'  -- if not, pan the map to put the end point back on the screen
+		if WindowInfo(gi_win_id, WIN_INFO_TYPE) = WIN_MAPPER then
+			if x_2>=MapperInfo(gi_win_id, MAPPER_INFO_MAXX) or
+				x_2<=MapperInfo(gi_win_id, MAPPER_INFO_MINX) or
+				y_2>=MapperInfo(gi_win_id, MAPPER_INFO_MAXY) or
+				y_2<=MapperInfo(gi_win_id, MAPPER_INFO_MINY) then
+               Set Map Window gi_win_id Center (x_2, y_2)
+			end if
+		end if 
+	end if
+
+	if g_bDismissDialog=FALSE then
+       Dim sUnit as String
+       sUnit = get_xy_unit_name$() 
+       Alter Control CTRL_UNIT_LABEL Title UnitName$(sUnit) 
+       if sUnit = "degree" And MapperInfo(FrontWindow(), MAPPER_INFO_DISPLAY_DMS) = True Then 
+         Alter Control CTRL_START_X_EDIT_ID Value degrees_to_dms_string$(gx_1)
+         Alter Control CTRL_START_Y_EDIT_ID Value degrees_to_dms_string$(gy_1)
+       Else 
+         Alter Control CTRL_START_X_EDIT_ID Value Format$(gx_1, "0.########")
+         Alter Control CTRL_START_Y_EDIT_ID Value Format$(gy_1, "0.########")
+       End If 
+
+		Dialog Preserve
+	end if
+End Sub
+
+
+'****************************************************
+' The  About subroutine displays an About dialog box.
+' Called when the user chooses the About menu command.
+Sub About
+
+  Dialog
+     Title GetResString(IDS_ABOUT_TITLE)
+     Control StaticText Title GetResString(IDS_ABOUT_1) Position 10, 10
+     Control StaticText Title GetResString(IDS_ABOUT_2) Position 10, 20
+     Control StaticText Title GetResString(IDS_ABOUT_3) Position 10, 35
+     Control StaticText Title GetResString(IDS_ABOUT_4) Position 10, 45
+     Control StaticText Title GetResString(IDS_ABOUT_5) Position 10, 55
+     Control StaticText Title GetResString(IDS_ABOUT_6) Position 10, 65
+     Control StaticText Title GetResString(IDS_ABOUT_7) Position 10, 75
+     Control StaticText Title GetResString(IDS_ABOUT_8) Position 10, 85
+     Control StaticText Title GetResString(IDS_ABOUT_9) Position 10, 100
+     Control StaticText Title GetResString(IDS_ABOUT_10) Position 10, 110
+     Control StaticText Title GetResString(IDS_ABOUT_11) Position 10, 125
+     Control StaticText Title GetResString(IDS_ABOUT_12) Position 10, 135
+     Control StaticText Title GetResString(IDS_ABOUT_13) Position 10, 145
+     Control StaticText Title GetResString(IDS_ABOUT_14) Position 10, 155
+     Control StaticText Title GetResString(IDS_ABOUT_15) Position 10, 165
+     Control OKButton Title GetResString(IDS_ABOUT_OK) Position 65, 180
+
+End Sub 
+
+'******************************************************
+' The GoodBye sub removes this application from memory, 
+' along with its custom menu items and buttons. 
+Sub GoodBye
+  End Program 
+End Sub 
+
+
+'**********************************************************
+' Calculate degrees/minutes/seconds, given decimal degrees. 
+'
+Sub calculate_dms_from_degrees(
+  ByVal f_decimal_degrees As Float,
+        f_degrees As Float,
+        f_minutes As Float,
+        f_seconds As Float)
+
+
+  OnError Goto HandleError
+  Dim work As Float 
+
+  ' If the number is negative, then we should work from the absolute value, 
+  ' because we want to use the "\" operator to truncate fractional parts,
+  ' But if the number is negative, and we use the "\" operator, it rounds down.
+  work = Abs(f_decimal_degrees) 
+
+  f_degrees = work \ 1            ' round off the remainder
+  work = 60 * (work - f_degrees)  
+  f_minutes = work \ 1
+  f_seconds = 60 * (work - f_minutes)
+  'f_seconds = Round(f_seconds, 1)
+' now round off to integers, and clean up weirdnesses like 23° 0' 60"
+  If f_seconds = 60 Then
+    f_seconds = 0
+    f_minutes = f_minutes + 1
+  End If
+  f_minutes = Round(f_minutes, 1)
+  If f_minutes = 60 Then
+    f_minutes = 0
+    f_degrees = f_degrees + 1
+  End If
+
+  If f_decimal_degrees < 0 Then 
+    f_degrees = f_degrees * -1
+  End If 
+
+  Exit Sub
+
+HandleError:
+  Note "calculate_dms_from_degrees: " + Error$()
+  Resume Next
+End Sub 
+
+'*************************************************************************
+' The  degrees_to_dms_string$ function returns a text string that represents
+' a longitude or latitude coordinate.
+'
+' Input parameters:
+'  degree_location (Float) is an x-coordinate or y-coordinate in decimal degrees
+'
+' Return value: a string, such as  "-73° 30' 0" " for 73.5 degrees West
+'
+Function degrees_to_dms_string$( 
+   ByVal degree_location As Float) As String
+
+  OnError Goto HandleError
+
+  Dim work_string, f_sec_string As String
+  Dim  f_deg, f_min, f_sec As Float
+
+  degrees_to_dms_string$ = ""
+  work_string = ""
+
+  Call calculate_dms_from_degrees( degree_location, f_deg, f_min, f_sec )
+
+  ' 
+  '  build a string such as  "42° 30'" 
+  '
+  work_string = Str$( Abs(f_deg) ) + DEGREE_SYMBOL + " " 
+
+  work_string = work_string + f_min + MINUTE_SYMBOL + " " 
+  If  f_sec <> 0  Then   
+    f_sec_string = Format$(f_sec, "0.####") 
+    work_string = work_string + f_sec_string + """ "
+  Else 
+    work_string = work_string + "0"" "
+  End If 
+
+  If degree_location < 0 Then
+    work_string = "-" + work_string  
+  End If
+
+  degrees_to_dms_string$ = work_string
+
+  Exit Function
+
+HandleError:
+  Note "degrees_to_dms_string$: " + Error$()
+  Resume Next
+End Function
+
+
+'*************************************************************************
+' The  dms_string_to_degrees function returns a decimal degree value,
+' such as 40.5,  given a string representing a Degree Minute Second
+' coordinate value, such as "40° 30' "  or  "40.5°"
+' 
+' Input parameters:
+'    dms_string (String) is an x-coordinate or y-coordinate in dms 
+'
+' Return value: a Float, such as  40.5 (given "40° 30' "  or  "40.5"). 
+'
+Function dms_string_to_degrees( 
+   ByVal dms_string As String) As Float
+
+  OnError Goto HandleError
+
+  Dim iMarkerPosition As Integer 
+  Dim fDeg, fMin, fSec As Float 
+  Dim strMinutes, strSeconds As String 
+
+  fDeg = Val(DeformatNumber$(dms_string ))
+
+  iMarkerPosition = 0
+  dms_string = LTrim$(dms_string) 
+
+  ' See whether the string contains the space or the degrees character
+  ' that marks the end of the Degrees value 
+  iMarkerPosition = InStr(1, dms_string, DEGREE_SYMBOL)
+  If iMarkerPosition <= 0 Then 
+    iMarkerPosition = InStr(1, dms_string, " ")
+  End If 
+
+  If iMarkerPosition > 0 Then 
+     ' Remove the degree symbol and everything to the left of it, so that 
+     ' we are left with a string representing minutes (and possibly seconds).
+     strMinutes = remove_leading_text( Right$(dms_string, Len(dms_string) - iMarkerPosition) )
+
+     ' Parse the remainder of the string as the Minutes value
+     fMin =  Val(DeformatNumber$(strMinutes))
+     
+     ' See whether the string contains the space or the single-quote character
+     ' that marks the end of the Minutes value  
+     iMarkerPosition = InStr(1, strMinutes, MINUTE_SYMBOL)
+     If iMarkerPosition <= 0 Then 
+       iMarkerPosition = InStr(1, strMinutes, " ")
+     End If 
+
+     If iMarkerPosition > 0 Then 
+        ' Remove the minutes symbol and everything to the left of it
+        strSeconds = remove_leading_text( Right$(strMinutes, Len(strMinutes) - iMarkerPosition) ) 
+        fSec = Val(DeformatNumber$(strSeconds))
+     End If   
+  End If 
+
+  If fDeg < -360 Then 
+     fDeg = -360 
+  ElseIf fDeg > 360 Then 
+     fDeg = 360
+  End If 
+
+  If fDeg < 0  Then 
+     fDeg = fDeg - ( (fMin / 60) + (fSec / 3600) )
+  Else 
+     fDeg = fDeg + (fMin / 60) + (fSec / 3600)
+  End If 
+
+  dms_string_to_degrees = fDeg
+  Exit Function
+
+HandleError:
+  Note "dms_string_to_degrees$: " + Error$()
+  Resume Next
+End Function 
+
+
+'************************************************************************
+' The  remove_leading_text function removes any non-numeric text 
+' from the beginning of a string, and returns the rest of the string. 
+' For example, given the string "degrees 40 seconds", 
+' return the string "40 seconds".  Given the string " 5", return "5". 
+' 
+' Input parameters:
+'    str (String) is the string to process  
+'
+' Return value: the string that remains after removing non-digits
+' from the beginning of the string 
+'
+Function remove_leading_text(ByVal str As String) As String
+
+  Dim iPosition As Integer
+  Dim nextChar As String 
+
+  OnError Goto HandleError
+  remove_leading_text = ""
+
+  iPosition = 1 
+  While iPosition <= Len(str) 
+     nextChar = Mid$(str, iPosition, 1) 
+     If nextChar >= "0" And nextChar <= "9"  Then 
+        remove_leading_text = Right$(str, (Len(str) - iPosition) + 1)
+        iPosition = Len(str) ' Force the loop to exit
+     End If 
+     iPosition = iPosition + 1
+  Wend 
+
+  Exit Function
+
+HandleError:
+  Note "remove_leading_text$: " + Error$()
+  Resume Next
+End Function 
+
+
+
+'*************************************************************
+' The ProcessPendingPolyline routine determines whether there
+' is a polyline which has only been stored in the Cosmetic 
+' layer, and now needs to be inserted into another layer. 
+' 
+Sub ProcessPendingPolyline
+
+   Dim strCosmetic As String 
+   Dim iRowCount As Integer 
+   Dim iEditableLayer As Integer 
+
+   If g_bPendingPolyline Then 
+      ' The user did create a polyline, but we have only inserted it
+      ' into the Cosmetic layer.  
+      ' Insert the line object into the map's Editable layer, if 
+      ' there is one (other than Cosmetic) 
+      
+      iEditableLayer = MapperInfo(gi_win_id, MAPPER_INFO_EDIT_LAYER)
+
+      if iEditableLayer > 0 Then 
+         ' There is an editable layer, and it is not the Cosmetic layer
+
+         ' Store the polyline in the editable layer 
+	      Insert Into LayerInfo(gi_win_id, iEditableLayer, LAYER_INFO_NAME)
+           (Object) Values (g_objPendingPolyline)
+
+         ' Remove the polyline from the Cosmetic layer 
+         strCosmetic = WindowInfo(gi_win_id, WIN_INFO_TABLE)
+         iRowCount = TableInfo(strCosmetic, TAB_INFO_NROWS) 
+         Delete From strCosmetic Where Rowid = iRowCount 
+
+     End If   
+
+     g_bPendingPolyline = FALSE 
+    
+   End If 
+End Sub 
+
+
+

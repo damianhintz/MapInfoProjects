@@ -1,0 +1,166 @@
+                        '-----------------
+                        ' QELIB FUNCTIONS
+                        '-----------------
+
+' Connection Functions
+
+Declare Function qeConnect Lib "qelib.dll" (ByVal con as String) AS SmallInt
+Declare Function qeDisconnect Lib "qelib.dll" (ByVal hdbc as SmallInt) AS SmallInt
+
+' SQL Execution Functions
+
+Declare Function qeExecSQL Lib "qelib.dll" (ByVal hdbc as SmallInt, ByVal sql as String) AS SmallInt
+Declare Function qeEndSQL Lib "qelib.dll" (ByVal hstmt as SmallInt) AS SmallInt
+Declare Function qeSetSQL Lib "qelib.dll" (ByVal hdbc as SmallInt, ByVal sql as String) AS SmallInt
+Declare Function qeAppendSQL Lib "qelib.dll" (ByVal hdbc as SmallInt, ByVal sql as String) AS SmallInt
+Declare Function qeNumModRecs Lib "qelib.dll" (ByVal hstmt as SmallInt) AS SmallInt
+Declare Function qeSetDB Lib "qelib.dll" (ByVal hdbc as SmallInt, ByVal db_name as String) AS SmallInt
+
+' Column Definition Functions
+
+Declare Function qeNumCols Lib "qelib.dll" (ByVal hstmt as SmallInt) AS SmallInt
+Declare Function qeColType Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal col as SmallInt) AS SmallInt
+Declare Function qeColDBType Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal col as SmallInt) AS SmallInt
+Declare Function qeColName Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal col as SmallInt) AS String
+Declare Function qeColNameBuf Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal dest as String, ByVal col as SmallInt) AS SmallInt
+Declare Function qeColWidth Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal col as SmallInt) AS SmallInt
+Declare Function qeColPrecision Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal col as SmallInt) AS SmallInt
+Declare Function qeColScale Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal col as SmallInt) AS SmallInt
+Declare Function qeColDateStart Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal col as SmallInt) AS SmallInt
+Declare Function qeColDateEnd Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal col as SmallInt) AS SmallInt
+
+' Data Fetching Functions
+
+Declare Function qeFetchSetOptions Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal options as Integer) AS SmallInt
+Declare Function qeFetchGetOptions Lib "qelib.dll" (ByVal hstmt as SmallInt) AS SmallInt
+Declare Function qeFetchLogClose Lib "qelib.dll" (ByVal hstmt as SmallInt) AS SmallInt
+Declare Function qeFetchNext Lib "qelib.dll" (ByVal hstmt as SmallInt) AS SmallInt
+Declare Function qeFetchPrev Lib "qelib.dll" (ByVal hstmt as SmallInt) AS SmallInt
+Declare Function qeFetchRandom Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal recnum as Integer) AS SmallInt
+Declare Function qeFetchNumRecs Lib "qelib.dll" (ByVal hstmt as SmallInt) AS SmallInt
+Declare Function qeDataLen Lib "qelib.dll" (ByVal hstmt as SmallInt) AS SmallInt
+
+Declare Function qeValChar Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal col as SmallInt, ByVal fmt_string as String, ByVal max_len as SmallInt) AS String
+
+Declare Function qeValCharBuf Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal result as String, ByVal col as SmallInt, ByVal fmt_string as String, ByVal max_len as SmallInt) AS SmallInt
+
+Declare Function qeValMultiChar Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal start_col as SmallInt, ByVal end_col as SmallInt, ByVal num_fmt_string as String, ByVal date_fmt_string as String, ByVal separator as String) AS String
+Declare Function qeValMultiCharBuf Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal result as String, ByVal start_col as SmallInt, ByVal end_col as SmallInt, ByVal num_fmt_string as String, ByVal date_fmt_string as String, ByVal separator as String) AS SmallInt
+Declare Function qeValInt Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal col as SmallInt) AS SmallInt
+Declare Function qeValLong Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal col as SmallInt) AS Integer
+Declare Function qeValFloat Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal col as SmallInt) AS Float
+Declare Function qeValDouble Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal col as SmallInt) AS Float
+Declare Function qeValDecimal Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal col as SmallInt, ByVal prec as SmallInt, ByVal scal as SmallInt) AS String
+Declare Function qeValDecimalBuf Lib "qelib.dll" (ByVal hstmt as SmallInt, ByVal result as String, ByVal col as SmallInt, ByVal prec as SmallInt, ByVal scal as SmallInt) AS SmallInt
+
+
+
+
+' *************************************************************
+' Common result code values
+' Success
+Define qeSUCCESS 0
+
+' FetchNext past last record, or
+' FetchPrev past first record, or
+' FetchRandom to non-existent record.
+Define qeEOF     -5
+
+' Retrieved Null value
+Define qeNULL_DATA -2
+
+' Retrieved truncated value
+Define qeTRUNCATION -1
+
+' Error detected by underlying database
+' system, use qeDBErr to get database
+' error number.
+Define qeDBSYS_ERROR      4
+
+' Error Handling Functions
+
+Declare Function qeErr Lib "qelib.dll" () AS SmallInt
+Declare Function qeDBErr Lib "qelib.dll" () AS SmallInt
+Declare Function qeErrMsg Lib "qelib.dll" () as String
+Declare Sub qeErrMsgBuf Lib "qelib.dll" (ByVal errbuf as String)
+
+' Transaction Functions
+
+Declare Function qeBeginTran Lib "qelib.dll" (ByVal hdbc as SmallInt) AS SmallInt
+Declare Function qeCommit Lib "qelib.dll" (ByVal hdbc as SmallInt) AS SmallInt
+Declare Function qeRollback Lib "qelib.dll" (ByVal hdbc as SmallInt) AS SmallInt
+
+' Debugging Functions
+
+Declare Function qeTraceOn Lib "qelib.dll" (ByVal db_name as String) AS SmallInt
+Declare Function qeTraceOff Lib "qelib.dll" () AS SmallInt
+
+' System Information Functions
+
+Declare Function qeVerNumBuf Lib "qelib.dll" (ByVal ver_num as String) AS SmallInt
+Declare Function qeSetupInfo Lib "qelib.dll" (ByVal setup_info as String) AS SmallInt
+
+'-------------------------
+' Data Conversion Routines
+'-------------------------
+
+' Convert From Character
+
+Declare Function qeCharToInt Lib "qelib.dll" (ByVal char as String, ByVal mask as String) AS SmallInt
+Declare Function qeCharToLong Lib "qelib.dll" (ByVal char as String, ByVal mask as String) AS Integer
+Declare Function qeCharToFloat Lib "qelib.dll" (ByVal char as String, ByVal mask as String) AS Float
+Declare Function qeCharToDouble Lib "qelib.dll" (ByVal char as String, ByVal mask as String) AS Float
+Declare Function qeCharToDecimalBuf Lib "qelib.dll" (ByVal dest as String, ByVal prec as SmallInt, ByVal scal as SmallInt, ByVal char as String, ByVal mask as String) AS SmallInt
+
+' Convert From Date
+
+Declare Function qeDateToChar Lib "qelib.dll" (ByVal dateval as String, ByVal mask as String) AS String
+Declare Function qeDateToCharBuf Lib "qelib.dll" (ByVal char as String, ByVal dateval as String, ByVal mask as String) AS SmallInt
+Declare Function qeDateToLong Lib "qelib.dll" (ByVal dateval as String) AS Integer
+Declare Function qeDateToDouble Lib "qelib.dll" (ByVal dateval as String) AS Float
+
+' Convert From Integer
+
+Declare Function qeIntToChar Lib "qelib.dll" (ByVal numVal as SmallInt, ByVal mask as String) AS String
+Declare Function qeIntToCharBuf Lib "qelib.dll" (ByVal res as String, ByVal numVal as SmallInt, ByVal mask as String) AS SmallInt
+Declare Function qeIntToLong Lib "qelib.dll" (ByVal numVal as SmallInt) AS Integer
+Declare Function qeIntToFloat Lib "qelib.dll" (ByVal numVal as SmallInt) AS Float
+Declare Function qeIntToDouble Lib "qelib.dll" (ByVal numVal as SmallInt) AS Float
+Declare Function qeIntToDecimalBuf Lib "qelib.dll" (ByVal dest as String, ByVal prec as SmallInt, ByVal scal as SmallInt, ByVal numVal as SmallInt) AS SmallInt
+
+' Convert From Long
+
+Declare Function qeLongToChar Lib "qelib.dll" (ByVal numVal as Integer, ByVal mask as String) AS String
+Declare Function qeLongToCharBuf Lib "qelib.dll" (ByVal res as String, ByVal numVal as Integer, ByVal mask as String) AS SmallInt
+Declare Function qeLongToInt Lib "qelib.dll" (ByVal numVal as Integer ) AS SmallInt
+Declare Function qeLongToFloat Lib "qelib.dll" (ByVal numVal as Integer) AS Float
+Declare Function qeLongToDouble Lib "qelib.dll" (ByVal numVal as Integer) AS Float
+Declare Function qeLongToDecimalBuf Lib "qelib.dll" (ByVal dest as String, ByVal prec as SmallInt, ByVal scal as SmallInt, ByVal numVal as Integer) AS Integer
+
+' Convert From Float
+
+Declare Function qeFloatToChar Lib "qelib.dll" (ByVal numVal as Float, ByVal mask as String) AS String
+Declare Function qeFloatToCharBuf Lib "qelib.dll" (ByVal res as String, ByVal numVal as Float, ByVal mask as String) AS SmallInt
+Declare Function qeFloatToInt Lib "qelib.dll" (ByVal numVal as Float) AS SmallInt
+Declare Function qeFloatToLong Lib "qelib.dll" (ByVal numVal as Float) AS Integer
+Declare Function qeFloatToDouble Lib "qelib.dll" (ByVal numVal as Float) AS Float
+Declare Function qeFloatToDecimalBuf Lib "qelib.dll" (ByVal dest as String, ByVal prec as SmallInt, ByVal scal as SmallInt, ByVal numVal as Float) AS SmallInt
+
+' Convert From Double
+
+Declare Function qeDoubleToChar Lib "qelib.dll" (ByVal numVal as Float, ByVal mask as String) AS String
+Declare Function qeDoubleToCharBuf Lib "qelib.dll" (ByVal res as String, ByVal numVal as Float, ByVal mask as String) AS SmallInt
+Declare Function qeDoubleToInt Lib "qelib.dll" (ByVal numVal as Float) AS SmallInt
+Declare Function qeDoubleToLong Lib "qelib.dll" (ByVal numVal as Float) AS Integer
+Declare Function qeDoubleToFloat Lib "qelib.dll" (ByVal numVal as Float) AS Float
+Declare Function qeDoubleToDecimalBuf Lib "qelib.dll" (ByVal dest as String, ByVal prec as SmallInt, ByVal scal as SmallInt, ByVal numVal as Float) AS SmallInt
+
+' Convert From Decimal
+
+Declare Function qeDecimalToChar Lib "qelib.dll" (ByVal src as String, ByVal prec as SmallInt, ByVal scal as SmallInt, ByVal mask as String) AS String
+Declare Function qeDecimalToCharBuf Lib "qelib.dll" (ByVal dest as String, ByVal src as String, ByVal prec as SmallInt, ByVal scal as SmallInt, ByVal mask as String) AS SmallInt
+Declare Function qeDecimalToInt Lib "qelib.dll" (ByVal dec as String, ByVal prec as SmallInt, ByVal scal as SmallInt) AS SmallInt
+Declare Function qeDecimalToLong Lib "qelib.dll" (ByVal dec as String, ByVal prec as SmallInt, ByVal scal as SmallInt) AS Integer
+Declare Function qeDecimalToFloat Lib "qelib.dll" (ByVal dec as String, ByVal prec as SmallInt, ByVal scal as SmallInt) AS Float
+Declare Function qeDecimalToDouble Lib "qelib.dll" (ByVal dec as String, ByVal prec as SmallInt, ByVal scal as SmallInt) AS Float
+

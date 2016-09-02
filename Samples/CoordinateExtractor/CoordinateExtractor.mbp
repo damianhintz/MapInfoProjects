@@ -1,0 +1,5 @@
+[Link] 
+Application=CoordinateExtractor.mbx 
+Module=CoordinateExtractor.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\Lib\resstrng.mbo

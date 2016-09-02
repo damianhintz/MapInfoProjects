@@ -1,0 +1,173 @@
+'/*****************************************************************************
+'*       Copyright © 2011 Pitney Bowes Software Inc.
+'*       All rights reserved.
+'*****************************************************************************/
+Include "TableManager.def"
+
+Sub TemplateManager
+
+  OnError Goto HandleError
+
+  Dim i As Integer
+  Dim sStaticInit, sShortStaticInit As String
+
+  glMetaDataTemplateModified = FALSE
+  giMetaDataCount = 0
+  Redim gaMetaData(giMetaDataCount)
+
+  Dialog 		'*** Metadata Template Manager dialog box
+
+    Title GetResString(IDS_TEMPLATE_MANAGER) + STR_EMPTY_STR1 + STR_OPEN_BRAC + GetResString(IDS_VERSION) + STR_EMPTY_STR1 + Str$(AppVersion) + STR_CLOSE_BRAC
+    Height 262-70
+
+  Control StaticText 
+    Position 10, 78-70
+    Title GetResString(IDS_KEY_NAME)
+
+  Control ListBox  '*** List of metadata keys
+    Position 10, 90-70
+    Height 50
+    Width 310
+    ID LB_KEYLIST
+    Calling KeyListHandler
+      
+  Control StaticText 
+    Position 10, 143-70
+    Title GetResString(IDS_KEY_VALUE)
+
+  Control EditText   '*** Type in key value
+    Position 10, 155-70
+    Height 35
+    Width 310
+    ID TB_VALUE
+
+  Control Button
+    Title GetResString(IDS_ADD)
+    Calling AddMetaDataKeyToTemplate
+    Position 330, 90-70
+    ID BT_ADD
+ 
+  Control Button
+    Title GetResString(IDS_DELETE)
+    Calling DeleteMetaDataKey
+    Position 330, 107-70
+    ID BT_DELETE
+
+  Control Button
+    Title GetResString(IDS_DELETE_ALL)
+    Calling ClearMetaData
+    Position 330, 124-70
+    ID BT_CLEAR
+
+  Control StaticText
+    Position 10, 193-70
+    Title GetResString(IDS_APPEND)
+
+  Control PopUpMenu
+    Position 10, 205-70
+    Width 310
+    Title From Variable gaLocalisedAppendValue()
+    ID PUM_FUNCTIONS
+    'Calling AppendFunction   'v2.4 - changed since it is only necessary to store
+    									'the reference not the actual value
+
+  Control GroupBox
+    Title GetResString(IDS_TEMPLATE)
+    Position 325, 150-70
+    Width 70
+    Height 62
+
+  Control Button 		'*** Load a metadata template.
+    Title GetResString(IDS_LOAD)
+    Calling xApplyMetaDataTemplate
+    Position 330, 160-70
+    ID BT_LOAD
+
+  Control Button
+    Title GetResString(IDS_SAVE)
+    Calling SaveMetadataTemplate
+    Position 330, 177-70
+    ID BT_SAVE
+
+  Control Button
+    Title GetResString(IDS_SAVE_AS)
+    Calling SaveMetadataTemplateAs
+    Position 330, 194-70
+    ID BT_SAVEAS
+
+  Control StaticText
+    Position 10, 222-70
+    Title GetResString(IDS_TEMPLATE_LOCATION)
+  
+  Control StaticText
+    ID ST_TEMPLATELOCATION  
+    Title STR_EMPTY_TITLE
+    Height 17
+
+  Control Button
+    'Position 280, 242-70
+    Title GetResString(IDS_HELP_BUTTON)
+    Calling MetaDataTemplateHelp
+
+  Control OKButton
+    Title GetResString(IDS_DONE_BUTTON)
+    Calling TemplateDoneHandler
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_TEMPLATE_MANAGER + Error$()
+  Resume Next
+
+End Sub 
+'****************************************************************************
+' Sub procedure: TemplateDoneHandler
+'****************************************************************************
+Sub TemplateDoneHandler
+
+  OnError Goto HandleError
+
+  If glMetaDataTemplateModified = TRUE Then
+
+    If Ask(GetResString(IDS_SAVE_CHANGES), GetResString(IDS_YES_BUTTON), GetResString(IDS_NO_BUTTON)) Then
+      Call SaveMetaDataTemplate
+    End If
+    
+  End If
+
+  glMetaDataTemplateModified = FALSE  '*** v2.4: Changed to always set these variables to FALSE.
+  glMetaDataModified = FALSE          '***    In prior version, conflicted with the Main dialog box.
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_TEMPLATE_DONE_HANDLER + Error$()
+  Resume Next
+End Sub
+
+'****************************************************************************
+' Sub procedure: xApplyMetaDataTemplate
+'****************************************************************************
+Sub xApplyMetaDataTemplate
+
+  OnError Goto HandleError
+
+  Call ApplyMetaDataTemplate(FALSE)
+
+  glMetaDataTemplateModified = TRUE
+
+  If gsMetaDataTemplate <> STR_EMPTY_STR Then
+
+    Alter Control ST_TEMPLATELOCATION Title gsMetaDataTemplate
+'    Alter Control LB_KEYLIST Value 1  '*** v2.4 eliminated this due to error that is caused when cancel is pressed
+    giCurKeyIndex = 1
+    Call KeyListHandler
+
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_X_APPLY_METADATA_TEMPLATE + Error$()
+  Resume Next
+End Sub

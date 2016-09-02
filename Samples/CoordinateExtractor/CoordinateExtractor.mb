@@ -1,0 +1,1073 @@
+'*****************************************************************************
+'       Copyright (c) 2001, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: CoordinateExtractor.mb $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+'   This program allows the user to pick a table from a list of all open tables.
+'   Two Columns are added to the table and updated with X and Y values in the table's
+'   native projection. Example: If table is in UTM Zone 16, then the Default Coordinate System
+'   will be changed to UTM Zone 16.  Then each column will be updated with CentroidX/CentroidY
+'   in UTM Zone 16 instead of the default Longitude/Latitude Decimal Degrees.  Then the default
+'   Coordinate System of Longitude/Latitude will be reset, and a browser will be opened.
+'
+' Revision History:
+'
+'    Rev 1.0   Dec 2000 16:14:56   Bachinsky
+'            - Initial revision.
+'    Rev 1.1   8 February 2001     DRESSEL
+'            - add versioning
+'            - extract strings for localization
+'    Rev 1.2   12 February 2001    DRESSEL
+'            - delete temporary table Object_Exist when done with it.
+'            - add newly created columns to list of available columns
+'            - select newly created columns from list of available columns
+'            - add columns to table in lon, lat order
+'            - handle errors creating new columns more nicely #16446
+'            - don't automatically commit changes #16442
+'    Rev 1.3   20 February 2001    DRESSEL
+'            - disable previous table tracking in order to catch any column changes
+'            - in the case of character columns, format data to force 6 digits
+'            - warn user that digits may be lost if columns are not float #16450 & #16451
+'            - clean up about box.
+'    Rev 2.0 - 7 February 2002     BACHINSKY
+'            - Added the ability to select any projection to extract coordinates in.
+'            - Added text field which updates to show status of projection the coordinates will be extracted in.
+'            - Added line to About detailing user selectablity of projection.
+'    Rev 2.1 - 26 February 2002    BACHINSKY
+'            - Added text fields to better prompt user to choose correct x/y columns.
+'            - Warn user if the same column is chosen for both x and y.  #20798
+'    Rev 2.2 - 11 March 2002    BACHINSKY
+'		 - Corrected an error with the Ask message when looking for the same column name. #20798
+'    Rev 2.3 - 29 March 2002    BACHINSKY
+'            - Reinitialize table array to reset the list if a table is closed and another opened.
+'    Rev 2.4 - 9 June 2003	  BACHINSKY
+'            - No longer searches large tables that are mappable but have no objects. Already trapped in errorHandler.#23707
+'    Rev 2.5 - 8 Feb 2008	  RAJAN BATRA
+'            - Internationalization of Tool
+'*****************************************************************************
+Include "..\Inc\MapBasic.def"
+Include "CoordinateExtractor.def"
+' Include a file that lets us use the "auto-load" library
+Include "..\Inc\auto_lib.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+Declare Sub Main
+Declare Sub CoordinateExtractor
+Declare Function IsMappable(ByVal sTable As String) As Logical
+Declare Sub TableNameHandler
+Declare Sub ColumnNameHandler
+Declare Sub PickDefaultLatLonColumns
+Declare Sub CreateCoordinateColumns
+Declare Sub CoordExtractorOKButtonHandler
+Declare Sub CreateColumnsOKButtonHandler
+Declare Sub PendingEditsHandler
+Declare Sub TableChoiceHandler
+Declare Sub ChooseProjectionButton
+Declare Sub SetUserProjection
+Declare Sub UpdateStaticText
+Declare Sub ResetNative
+Declare Sub ExtractCoordinates
+Declare Function strGetCoordSysName(ByVal strCoordSysClause as String) as String
+Declare Sub Close_TempCoordSysShell
+Declare Sub Close_TempCoordSys
+Declare Sub About
+Declare Sub EndProgram
+Declare Sub ReSetGlobals
+
+
+'*********************************
+Define AppVersion 2.5
+
+Define IDTableNames 601
+Define IDLatColumnNames 602
+Define IDLonColumnNames 603
+
+
+
+
+Define IDRadioGroup  604
+Define IDSelectProjection 605
+Define IDProjectionName  606
+
+Global iTables, iTable, iColumns, iColumn, iLatColumn, iLonColumn As Integer
+Global sTable, sTables(), sPreviousTable, sColumn, sLatColumn, sLonColumn, sColumns() As String
+Global g_strUserSelectedProjection, gstrNative, g_strUserProjection, gstrPrjName As String
+Global lBrowseResults, g_ON_UserProjection As Logical
+
+
+'********************** START of Sub Main ********************
+'**
+
+'**   This Sub builds Menu and adds to the Tools menu.
+'**   
+'*******
+Sub Main
+
+  OnError Goto HandleError
+
+  If LoadStrings((ApplicationDirectory$() + STR_RES_STR_FILE)) = FALSE Then
+    Note STR_FILE_NOT_ACCESSIBLE + ApplicationDirectory$() + STR_RES_STR_FILE
+    Exit Sub
+  End If
+
+  gsAppFilename = STR_APP_FILE_NAME    '** and set_tools_menu
+  gsAppDescription = GetResString(IDS_APP_DESCRIPTION)     ' short description of MB application
+
+
+  Create Menu GetResString(IDS_MENU_NAME) As
+    GetResString(IDS_MENU_ITEM_NAME) Calling CoordinateExtractor,
+    STR_MENU_ITEM_SEPARATOR,
+    GetResString(IDS_ABOUT_MENU_ITEM_NAME) Calling About,
+    GetResString(IDS_EXIT_MENU_ITEM_NAME) Calling EndProgram
+
+  Call set_tools_menu(GetResString(IDS_MENU_NAME))
+
+  lBrowseResults = TRUE
+  Exit Sub
+
+HandleError:
+  Note STR_FN_MAIN + Error$()
+  Resume Next
+
+End Sub
+
+'********************** START of Sub CoordinateExtractor ********************
+'**
+'**   This Sub determines the number of open tables, builds list box,
+'**   and calls IsMappable Sub.  
+'*******
+
+Sub CoordinateExtractor
+ 
+  OnError Goto HandleError
+
+  Call Close_TempCoordSysShell   '** Cleans up temp tables if left open after a crash.
+  Call Close_TempCoordSys        '** Cleans up temp tables if left open after a crash.
+
+  dim iCounter as Integer     '** Loop Control variable
+  dim iTables as Integer  '** Number of open tables
+  sTable = STR_EMPTY_STR1	'** Reinitialize selected table if user cancels out of program.
+  g_ON_UserProjection = False
+  g_strUserSelectedProjection = STR_EMPTY_STR1
+
+  iTables = 0
+  ReDim sTables(0)
+
+  '** Loop through open tables
+  For iCounter = 1 To NumTables()
+    '** read name of table # iCounter
+    If IsMappable(TableInfo(iCounter, TAB_INFO_NAME)) Then
+      iTables = iTables + 1
+      ReDim sTables(iTables)
+      sTables(iTables) = TableInfo(iCounter, TAB_INFO_NAME)
+    End If
+  Next
+'Note "got to note 1"
+  '** Error Checking for open tables.
+  If iTables = 0 Then
+    Note GetResString(IDS_OPEN_TABLE)
+    Exit Sub    '** Program goes to 'sleep'.
+  End If
+
+  Call ReSetGlobals
+
+    '** Creates Pick Table Dialog
+  Dialog
+    Title GetResString(IDS_APP_DESCRIPTION) + STR_EMPTY_STR2 + STR_OPEN_BRAC + GetResString(IDS_VERSION) + STR_EMPTY_STR2 + Str$(AppVersion) + STR_CLOSE_BRAC
+ '   Width 225
+    Calling TableNameHandler
+    Control StaticText 
+      Title GetResString(IDS_TABLE_NAME) + GetResString(IDS_COLON)
+      Position 10, 12
+    Control PopupMenu
+      Title From Variable sTables  
+      Value iTable
+      Into iTable
+      Position 10, 25
+      Calling TableChoiceHandler
+      ID IDTableNames
+    Control StaticText 
+      Title GetResString(IDS_X_COLUMN) + GetResString(IDS_COLON)
+      Position 10, 50
+    Control StaticText 
+      Title GetResString(IDS_X_COLUMN_EXMPL)
+    Control PopupMenu
+      Title From Variable sColumns
+      Value iLonColumn
+      Into iLonColumn
+      Width 150
+      Position 10, 65
+      ID IDLonColumnNames
+    Control StaticText 
+      Title GetResString(IDS_Y_COLUMN) + GetResString(IDS_COLON)
+      Position 10, 90
+    Control StaticText 
+      Title GetResString(IDS_Y_COLUMN_EXMPL)
+    Control PopupMenu
+      Title From Variable sColumns
+      Value iLatColumn
+      Into iLatColumn
+      Position 10, 105
+      Width 150
+      ID IDLatColumnNames
+    Control Button
+      Title GetResString(IDS_CREATE_NEW_COLUMNS) + GetResString(IDS_SPACE1)
+      Calling CreateCoordinateColumns
+      Position 10,130
+    Control GroupBox
+      Height 45
+      Position 10,155
+    Control radiogroup
+      Title GetResString(IDS_USE_NATIVE_RADIO) + STR_COLON + GetResString(IDS_USE_NON_NATIVE_RADIO) 
+      ID IDRadioGroup
+      Value 1
+      Calling ChooseProjectionButton
+    Control Button
+      Position 10,210
+      Title GetResString(IDS_SELECT_PROJECTION)
+      ID IDSelectProjection
+      Disable
+      Calling SetUserProjection
+    Control StaticText
+      Position 10,235
+      Title GetResString(IDS_COORDINATES_EXTRACTED_IN) + GetResString(IDS_COLON)
+    Control StaticText
+      ID IDProjectionName
+      Position 10,250
+      Width 240
+      Title gstrPrjName
+    Control CheckBox
+      Title GetResString(IDS_BROWSE_RESULTS)
+      Value lBrowseResults
+      Into lBrowseResults
+      Position 10, 275
+    Control OKButton
+      Title GetResString(IDS_OK)               '** After OK is clicked dialog will close.
+      Calling CoordExtractorOKButtonHandler
+    Control CancelButton
+      Title GetResString(IDS_CANCEL)
+    
+  If CommandInfo(CMD_INFO_DLG_OK) then
+    sLatColumn = sColumns(iLatColumn)
+    sLonColumn = sColumns(iLonColumn)
+    Call ExtractCoordinates
+  End If
+  Exit Sub
+
+HandleError:
+  Note STR_FN_COORD_EXTRACTOR + Error$()
+  Resume Next
+  
+End Sub
+
+'**************************** START of Function IsMappable***************
+'*
+'*  This Function determines whether the Table selected is mappable, or if
+'*  there are no objects for some or all of the records in the table.  If the
+'*  table is not mappable program asks user to choose another table or cancel.
+'*  If the table is mappable and there are records with no objects the program warns user.
+'*  Also warns user if table is Query, Raster, Seamless, View, Read-Only or opened through ODBC.
+'*  Also checks for pending edits and prompts user to save changes.
+'***********************
+
+Function IsMappable(ByVal sTable As String) As Logical
+
+  OnError Goto HandleError
+
+  dim iType as SmallInt  '** Holds value to query TAB_INFO_TYPE
+
+  If Not TableInfo(sTable, TAB_INFO_MAPPABLE) Then 
+    IsMappable = FALSE
+    Exit Function
+  End If
+
+  If TableInfo(sTable, TAB_INFO_TEMP) = True Then 
+    IsMappable = FALSE
+    Exit Function
+  End If
+
+  If TableInfo(sTable, TAB_INFO_SEAMLESS) = True Then 
+    IsMappable = FALSE
+    Exit Function
+  End If
+
+  If TableInfo(sTable, TAB_INFO_READONLY) = True Then 
+    IsMappable = FALSE
+    Exit Function
+  End If
+
+  iType = TableInfo(sTable, TAB_INFO_TYPE)
+
+  If iType = 3 Or iType = 4 Or iType = 5 Then
+    IsMappable = FALSE
+    Exit Function
+  End If
+
+			'*****This section commented out because search takes too long on tables with 20,000+ records.
+			'*****Errors for records with no objects are trapped in HandleUpdateError at end of Sub ExtractCoordinates.
+'  Select * from sTable where obj into Objects_Exist NoSelect
+
+  '** Looks for records with no objects.
+'  If TableInfo(Objects_Exist, TAB_INFO_NROWS) = 0 Then
+
+'    IsMappable = FALSE
+'    Exit Function    
+'  End If
+
+'  Close Table Objects_Exist
+
+  IsMappable = TRUE
+  Exit Function
+
+HandleError:
+  Note Error$()
+  Resume Next
+
+End Function
+
+'**************************** START of Sub TableNameHandler***************
+'*
+'***********************
+Sub TableNameHandler
+
+  OnError Goto HandleError
+
+  iTable = ReadControlValue(IDTableNames)
+
+'  If sPreviousTable <> sTables(iTable) Then
+    Call ColumnNameHandler
+'    sPreviousTable = sTables(iTable)
+'  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_FN_TBL_NAME_HANDLER + Error$()
+  Resume Next
+
+End Sub
+
+'**************************** START of Sub ColumnNameHandler***************
+'*
+'***********************
+Sub ColumnNameHandler
+
+  OnError Goto HandleError
+
+  Dim i As Integer
+
+  iColumns = TableInfo(sTables(iTable), TAB_INFO_NCOLS)
+  iColumn = 0
+  ReDim sColumns(iColumn)
+  For i = 1 To iColumns
+    iColumn = iColumn + 1
+    ReDim sColumns(iColumn)
+    sColumns(iColumn) = ColumnInfo(sTables(iTable), STR_COL+Str$(i), COL_INFO_NAME)
+  Next
+  iColumns = iColumn
+  If iColumn > 0 Then
+    iColumn = 1
+  End If
+
+    Alter Control IDLatColumnNames
+      Title From Variable sColumns
+
+    If iColumn > 0 Then
+      Alter Control IDLatColumnNames
+        Value iColumn
+    End If
+    Alter Control IDLonColumnNames
+      Title From Variable sColumns
+
+    If iColumn > 0 Then
+      Alter Control IDLonColumnNames
+        Value iColumn
+    End If
+
+    Call PickDefaultLatLonColumns
+
+  Exit Sub
+
+HandleError:
+  Note STR_FN_COL_NAME_HANDLER + Error$()
+  Resume Next
+
+End Sub
+
+'**************************** START of Sub PickDefaultLatLonColumns***************
+'*
+'***********************
+Sub PickDefaultLatLonColumns
+
+  OnError Goto HandleError
+
+  Dim i As Integer
+
+  For i = 1 To iColumns
+    If InStr(1, UCase$(sColumns(i)), GetResString(IDS_LAT)) Then
+      Alter Control IDLatColumnNames
+        Value i
+      Exit For
+    End If
+  Next
+  If i > iColumns Then
+    For i = 1 To iColumns
+      If InStr(1, UCase$(sColumns(i)), GetResString(IDS_Y)) Then
+        Alter Control IDLatColumnNames
+          Value i
+        Exit For
+      End If
+    Next
+  End If
+  For i = 1 To iColumns
+    If InStr(1, UCase$(sColumns(i)), GetResString(IDS_LON)) Then
+      Alter Control IDLonColumnNames
+        Value i
+      Exit For
+    End If
+  Next
+  If i > iColumns Then
+    For i = 1 To iColumns
+      If InStr(1, UCase$(sColumns(i)), GetResString(IDS_X)) Then
+        Alter Control IDLonColumnNames
+          Value i
+        Exit For
+      End If
+    Next
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_FN_PICK_DEFAULT_LL_COL + Error$()
+  Resume Next
+
+End Sub
+
+'**************************** START of Sub CoodinateExtractorOKButtonHandler***************
+'*
+'***********************
+Sub CoordExtractorOKButtonHandler
+
+  OnError Goto HandleError
+
+  Call PendingEditsHandler
+
+  iLatColumn = ReadControlValue(IDLatColumnNames)
+  iLonColumn = ReadControlValue(IDLonColumnNames)
+  sLatColumn = sColumns(iLatColumn)
+  sLonColumn = sColumns(iLonColumn)
+  If ColumnInfo(sTable, sLatColumn, COL_INFO_TYPE) <> COL_TYPE_FLOAT Or
+     ColumnInfo(sTable, sLonColumn, COL_INFO_TYPE) <> COL_TYPE_FLOAT Then
+    If Ask(GetResString(IDS_NON_FLOAT), GetResString(IDS_CONTINUE), GetResString(IDS_CANCEL)) Then
+    Else
+      Dialog Preserve
+      Exit Sub
+    End If
+  End If
+
+  If ColumnInfo(sTable, sLatColumn, COL_INFO_NAME) = ColumnInfo(sTable, sLonColumn, COL_INFO_NAME) Then
+    If Ask(GetResString(IDS_SAME_COLS), GetResString(IDS_CONTINUE), GetResString(IDS_CANCEL)) Then
+    Else
+      Dialog Preserve
+      Exit Sub
+    End If
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_FN_COORD_EX_OK_HNDLR + Error$()
+  Resume Next
+
+End Sub
+
+'**************************** START of Sub CreateCoordinateColumns***************
+'*
+'***********************
+Sub CreateCoordinateColumns
+
+  OnError Goto HandleError
+
+  Dim sLatColumn, sLonColumn, sError As String
+  Dim i As Integer
+
+  iTable = ReadControlValue(IDTableNames)
+  sLatColumn = GetResString(IDS_LATITUDE)
+  sLonColumn = GetResString(IDS_LONGITUDE)
+
+  Dialog
+    Title GetResString(IDS_CREATE_COORDINATE_COLUMNS)
+    Control StaticText 
+      Title GetResString(IDS_TABLE_NAME) + GetResString(IDS_COLON)
+      Position 10, 12
+    Control PopupMenu
+      Title From Variable sTables
+      Value iTable
+      Into iTable
+      Position 80, 10
+      Width 150
+      ID IDTableNames
+      Disable
+    Control StaticText 
+      Title GetResString(IDS_X_COLUMN) + GetResString(IDS_COLON)
+      Position 10, 32
+    Control StaticText 
+      Title GetResString(IDS_X_COLUMN_EXMPL)
+      Position 10, 40
+    Control EditText
+      Value sLonColumn
+      Into sLonColumn
+      Position 80, 36
+      Width 150
+    Control StaticText 
+      Title GetResString(IDS_Y_COLUMN) + GetResString(IDS_COLON)
+      Position 10, 52
+    Control StaticText 
+      Title GetResString(IDS_Y_COLUMN_EXMPL)
+      Position 10, 60
+    Control EditText
+      Value sLatColumn
+      Into sLatColumn
+      Position 80, 56
+      Width 150
+    Control OKButton
+      Title GetResString(IDS_OK)               '** After OK is clicked dialog will close.
+      Calling CreateColumnsOKButtonHandler
+    Control CancelButton
+      Title GetResString(IDS_CANCEL)
+
+    If CommandInfo(CMD_INFO_DLG_OK) Then
+      If sLatColumn <> STR_EMPTY_STR1 And sLonColumn <> STR_EMPTY_STR1 Then 
+        sTable = sTables(iTable)
+
+        i = InStr(1, sLatColumn, STR_EMPTY_STR2)
+        Do While i <> 0
+          sLatColumn = Left$(sLatColumn, i-1) + STR_UNDER_SCORE + Right$(sLatColumn, Len(sLatColumn)-i)
+          i = InStr(1, sLatColumn, STR_EMPTY_STR2)
+        Loop     
+        i = InStr(1, sLonColumn, STR_EMPTY_STR2)
+        Do While i <> 0
+          sLonColumn = Left$(sLonColumn, i-1) + STR_UNDER_SCORE + Right$(sLonColumn, Len(sLonColumn)-i)
+          i = InStr(1, sLonColumn, STR_EMPTY_STR2)
+        Loop     
+
+        iColumns = UBound(sColumns)
+
+        OnError Goto HandleAddLonError
+
+        Alter Table sTable
+          (Add sLonColumn Float)
+        iColumns = iColumns + 1
+        ReDim sColumns(iColumns)
+        sColumns(iColumns) = sLonColumn
+        iLonColumn = iColumns
+
+        Alter Control IDLonColumnNames Title From Variable sColumns
+        Alter Control IDLonColumnNames Value iLonColumn
+
+AfterAddLon:
+
+        OnError Goto HandleAddLatError
+
+        Alter Table sTable
+          (Add sLatColumn Float)
+        iColumns = iColumns + 1
+        ReDim sColumns(iColumns)
+        sColumns(iColumns) = sLatColumn
+        iLatColumn = iColumns
+
+        Alter Control IDLatColumnNames Title From Variable sColumns
+        Alter Control IDLatColumnNames Value iLatColumn
+
+AfterAddLat:
+
+      End If
+    End If
+
+  Exit Sub
+
+HandleAddLonError:
+  sError = Error$()
+  i = InStr(1, sError, STR_CLOSE_BRAC)
+  If i > 0 Then
+    sError = Mid$(sError, i+1, 255)
+  End If
+  Note sError
+  Resume AfterAddLon
+
+HandleAddLatError:
+  sError = Error$()
+  i = InStr(1, sError, STR_CLOSE_BRAC)
+  If i > 0 Then
+    sError = Mid$(sError, i+1, 255)
+  End If
+  Note sError
+  Resume AfterAddLat
+
+HandleError:
+  Note STR_FN_CREATE_COORD_COL + Error$()
+  Resume Next
+
+End Sub
+
+'**************************** START of Sub CreateColumnsOKButtonHandler***************
+'*
+'***********************
+Sub CreateColumnsOKButtonHandler
+
+  OnError Goto HandleError
+
+  Call PendingEditsHandler
+
+
+  Exit Sub
+
+HandleError:
+  Note STR_FN_CREATE_COL_OK_HNDLR + Error$()
+  Resume Next
+
+End Sub
+
+'**************************** START of Sub PendingEditsHandler***************
+'*
+'***********************
+Sub PendingEditsHandler
+
+  OnError Goto HandleError
+
+  iTable = ReadControlValue(IDTableNames)
+  sTable = sTables(iTable)
+
+  If TableInfo(sTable, TAB_INFO_EDITED) Then
+    If Ask(GetResString(IDS_PENDING_EDITS), GetResString(IDS_SAVE), GetResString(IDS_CANCEL)) Then
+      Commit Table sTable
+    Else
+      Dialog Preserve
+      Exit Sub
+    End If
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_FN_PENDING_EDITS_HNDLR + Error$()
+  Resume Next
+
+End Sub
+'***********************
+
+'**************************** START of Sub TableChoiceHandler***************
+'**    Called from Table PopUp
+'***********************
+
+sub TableChoiceHandler
+	
+	OnError Goto HandleError
+
+	call TableNameHandler
+	call ResetNative
+	call UpdateStaticText
+
+	Exit Sub	
+
+HandleError:
+  Note STR_FN_TBL_CHOICE_HANDLER + Error$()
+  Resume Next	
+
+End Sub
+'***********************
+
+'**************************** START of Sub ChooseProjectionButton***************
+'*		    This Sub enables or disables choose projection button
+'***********************
+
+Sub ChooseProjectionButton
+
+	OnError Goto HandleError
+
+	If ReadControlValue(IDRadioGroup) = 1 Then
+		Alter Control IDSelectProjection Disable	
+		g_ON_UserProjection = False
+		   If strGetCoordSysName(gstrNative) = STR_EMPTY_STR1 Then
+			Alter Control IDProjectionName Title GetResString(IDS_NOT_IN_PRJ_FILE)
+		   Else
+			Alter Control IDProjectionName Title strGetCoordSysName(gstrNative)
+		   End If
+	Else 
+		Alter Control IDSelectProjection Enable
+			If g_strUserSelectedProjection = STR_EMPTY_STR1 Then
+			   If strGetCoordSysName(gstrNative) = STR_EMPTY_STR1 Then
+				Alter Control IDProjectionName Title GetResString(IDS_NOT_IN_PRJ_FILE)
+			   Else
+				Alter Control IDProjectionName Title strGetCoordSysName(gstrNative)
+			   End If
+			Else
+				Alter Control IDProjectionName Title strGetCoordSysName(g_strUserSelectedProjection)
+			End If
+	End If
+
+	Exit Sub
+
+HandleError:
+  Note STR_FN_CHOOSE_PROJECTION_BTN + Error$()
+  Resume Next
+
+End Sub
+'***********************
+
+'**************************** START of Sub SetUserProjection***************
+'**    This stores user selected projection string.
+'***********************
+
+Sub SetUserProjection
+
+	OnError Goto HandleError
+
+Dim strTemp as String
+
+	g_ON_UserProjection = True
+	sTable = TableInfo(ReadControlValue(IDTableNames),TAB_INFO_NAME)
+	gstrNative = TableInfo(sTable,TAB_INFO_COORDSYS_CLAUSE)		'**Stores table's Native projection
+	strTemp = g_strUserSelectedProjection					'**Stores User Selected Projection
+
+	If strTemp = STR_EMPTY_STR1 Then
+		strTemp = gstrNative
+	End If
+
+	g_strUserSelectedProjection = ChooseProjection$(strTemp,True)
+
+	If g_strUserSelectedProjection = STR_EMPTY_STR1 Then
+		g_strUserSelectedProjection = strTemp
+	End If
+
+	Alter Control IDProjectionName Title strGetCoordSysName(g_strUserSelectedProjection)
+
+	g_strUserProjection = STR_SET + g_strUserSelectedProjection	  '**Construct for RunCommand in Sub ExtractCoordinates
+
+	Exit Sub
+
+HandleError:
+  Note STR_FN_SET_USR_PROJ + Error$()
+  Resume Next
+
+End Sub
+'***********************
+
+'**************************** START of Sub UpdateStaticText***************
+'**    This maintains static text for currently chosen table's projection.
+'***********************
+
+Sub UpdateStaticText
+
+	OnError Goto HandleError
+
+	sTable = TableInfo(ReadControlValue(IDTableNames),TAB_INFO_NAME)
+
+   If TableInfo(sTable,TAB_INFO_COORDSYS_NAME)= STR_EMPTY_STR1 Then
+	Alter Control IDProjectionName Title GetResString(IDS_NOT_IN_PRJ_FILE)
+'TableInfo(sTable,TAB_INFO_COORDSYS_CLAUSE)
+'Print TableInfo(sTable,TAB_INFO_COORDSYS_CLAUSE)
+   Else
+	Alter Control IDProjectionName Title TableInfo(sTable,TAB_INFO_COORDSYS_NAME)
+   End If
+
+	Exit Sub
+
+HandleError:
+  Note STR_FN_UPDATE_STATIC_TXT + Error$()
+  Resume Next
+
+End Sub
+'***********************
+
+
+'**************************** START of Sub ResetNative***************
+'**    Changes projection if user chooses a new table from the popup.
+'***********************
+
+Sub ResetNative
+
+	OnError Goto HandleError
+
+	g_strUserSelectedProjection = STR_EMPTY_STR1
+	sTable = TableInfo(ReadControlValue(IDTableNames),TAB_INFO_NAME)
+	gstrNative = TableInfo(sTable,TAB_INFO_COORDSYS_CLAUSE)
+		'** If Table Changes, resets controls to defaults
+	Alter Control IDRadioGroup Value 1
+	Alter Control IDSelectProjection Disable
+	
+	Exit Sub
+
+HandleError:
+  Note STR_FN_RESET_NATIVE + Error$()
+  Resume Next
+
+End Sub
+'***********************
+
+
+'**************** START of Sub ExtractCoordinates ***********************
+'**
+'**    This Sub Changes the default CoordSys to the CoordSys of the table.
+'**    It then add two columns to the table and updates the columns with CentroidX
+'**    and CentroidY respectively.  Then Commits table, Resets default CoordSys,
+'**    and opens a browser.
+'*******************
+
+Sub ExtractCoordinates
+
+  OnError Goto HandleError
+  
+If g_ON_UserProjection = True Then
+  				'**sets user selected Coordinate System.
+  Run Command g_strUserProjection
+
+Else  			'**sets Coordinate System of the selected table
+   Set CoordSys Table sTable	
+
+End If
+
+  '** Update columns with long/lat values.  If user PERSISTS in using a table that
+  '** has no map objects for some or all of the rows, the error is trapped and user is told.
+
+  If ColumnInfo(sTable, sLatColumn, COL_INFO_TYPE) = COL_TYPE_CHAR And 
+     ColumnInfo(sTable, sLonColumn, COL_INFO_TYPE) = COL_TYPE_CHAR Then
+    OnError Goto HandleUpdateError
+    Update sTable Set sLatColumn = Format$(CentroidY(Obj), STR_FORMAT1),
+                      sLonColumn = Format$(CentroidX(Obj), STR_FORMAT1)
+    OnError Goto HandleError
+  ElseIf ColumnInfo(sTable, sLatColumn, COL_INFO_TYPE) = COL_TYPE_CHAR Then
+    OnError Goto HandleUpdateError
+    Update sTable Set sLatColumn = Format$(CentroidY(Obj), STR_FORMAT1),
+                      sLonColumn = CentroidX(Obj)
+    OnError Goto HandleError
+  ElseIf ColumnInfo(sTable, sLonColumn, COL_INFO_TYPE) = COL_TYPE_CHAR Then
+    OnError Goto HandleUpdateError
+    Update sTable Set sLatColumn = CentroidY(Obj),
+                      sLonColumn = Format$(CentroidX(Obj), STR_FORMAT1)
+    OnError Goto HandleError
+  Else
+    OnError Goto HandleUpdateError
+    Update sTable Set sLatColumn = CentroidY(Obj),
+                      sLonColumn = CentroidX(Obj)
+    OnError Goto HandleError
+  End If
+
+  Set CoordSys Earth                             '**Reset Coordinate System to Default Long/Lat
+
+  If lBrowseResults Then
+    Browse * From sTable
+  End If
+
+  Exit Sub
+
+HandleUpdateError:                               '** Error to user that some or all rows have no objects.
+  Note GetResString(IDS_NO_MAP_OBJECTS) + Chr$(13) + GetResString(IDS_NO_X_Y)
+  Resume Next
+
+HandleError:
+  Note STR_FN_EXTRACT_COORDINATES + Error$()
+  Resume Next
+End Sub
+'******************************************************************************
+
+
+'**************************** START Function strGetCoordSysName(ByVal strCoordSysClause as String) as String***********
+'**
+'**    This maintains static text for currently chosen table's projection.
+'**    A selection from the chosen table is saved as a shell in order to create a dummy table with the correct projection.
+'**    This is used to populate the function in order to pass that value where needed and keep the static text populated
+'**    with the correct Name of the chosen coordinate system as listed in the MapInfow.prj file.
+'**
+'***********************
+
+Function strGetCoordSysName(ByVal strCoordSysClause as String) as String
+
+   OnError Goto HandleError
+
+   Dim strTable_Dir as String
+
+	'** This decreases the possibility of creating the temp table in a readonly directory.
+   strTable_Dir = Left$(LocateFile$(LOCATE_PEN_FILE),(Len(LocateFile$(LOCATE_PEN_FILE)) - 12))
+'   sTable = TableInfo(ReadControlValue(IDTableNames),TAB_INFO_NAME)
+
+   Set ProgressBars Off	
+
+'   Select * From sTable Where 1 = 0 into TempCoordSysShell NoSelect
+'   Run Command "Commit Table TempCoordSysShell as """ & strTable_Dir & "\TempCoordSys.tab"" " & strCoordSysClause
+'   Open Table strTable_Dir & "\TempCoordSys.tab"
+
+Create Table TempCoordSys
+	(TestCol Char(1))
+	File strTable_Dir & STR_TMP_COORD_SYS_FILE
+
+	Run Command STR_QRY_CREATE_TEMP_TABLE & strCoordSysClause
+
+   Alter Control IDProjectionName Title TableInfo(TempCoordSys,TAB_INFO_COORDSYS_NAME)
+   strGetCoordSysName = TableInfo(TempCoordSys,TAB_INFO_COORDSYS_NAME)
+'   Drop table TempCoordSysShell
+   Drop table TempCoordSys
+   Set ProgressBars ON
+
+   Exit Sub
+
+HandleError:
+  Note Error$()
+  Resume Next
+
+End Function
+'***********************
+
+'****************** START of Sub Close_TempCoordSysShell ******************************
+'*
+'*  Cleans up temp tables if program crashed.
+'***********
+
+Sub Close_TempCoordSysShell
+
+  OnError Goto HandleError
+
+  dim iCounter as Integer     '** Loop Control variable
+
+  '** Loop through open tables
+  For iCounter = 1 To NumTables()
+    '** read name of table # iCounter
+    If TableInfo(iCounter, TAB_INFO_NAME)= STR_TMP_COORD_SYS_SHELL Then
+        Drop Table TempCoordSysShell
+        Exit Sub	
+    End If
+  Next
+
+  Exit Sub
+
+HandleError:
+  Note STR_FN_CLOSE_TMP_COORD_SHL + Error$()
+  Resume Next
+
+End Sub
+'***********************
+
+'****************** START of Sub Close_TempCoordSys ******************************
+'*
+'*  Cleans up temp tables if program crashed.
+'***********
+
+Sub Close_TempCoordSys
+
+  OnError Goto HandleError
+
+  dim iCounter as Integer     '** Loop Control variable
+
+  '** Loop through open tables
+  For iCounter = 1 To NumTables()
+    '** read name of table # iCounter
+    If TableInfo(iCounter, TAB_INFO_NAME)= STR_TMP_COORD_SYS Then
+        Drop Table TempCoordSys
+        Exit Sub	
+    End If
+  Next
+
+  Exit Sub
+
+HandleError:
+  Note STR_FN_CLOSE_TMP_COORD_SYS + Error$()
+  Resume Next
+
+End Sub
+'***********************
+
+'****************** START of Sub About ******************************
+'**  
+'**  Calls dialog describing what the Program does.
+'***************
+
+Sub About
+
+  OnError Goto HandleError
+
+  Dialog 
+    Title GetResString(IDS_ABOUT) + STR_EMPTY_STR2 + GetResString(IDS_APP_DESCRIPTION) + STR_EMPTY_STR2 + STR_OPEN_BRAC 
+           + GetResString(IDS_VERSION)+ STR_EMPTY_STR2 + AppVersion + STR_CLOSE_BRAC
+
+  Control StaticText
+    Position 10, 10
+     Title GetResString(IDS_ABOUT_1) + Chr$(13) + Chr$(13) +
+           GetResString(IDS_ABOUT_2) + Chr$(13) + Chr$(13) +
+           GetResString(IDS_ABOUT_3) + Chr$(13) + Chr$(13)+
+           GetResString(IDS_ABOUT_4)
+    Width 260
+    Height 130
+    Control OKButton
+    Title GetResString(IDS_OK)
+    'Width 30
+
+  Exit Sub
+
+HandleError:
+  Note STR_FN_ABOUT + Error$()
+  Resume Next
+End Sub
+'***********************
+
+
+'****************** START of Sub EndProgram ******************************
+'*
+'*  Called if User Exits Program from Tool Menu.
+'***********
+
+Sub EndProgram
+  OnError Goto HandleError
+
+  Close Table Selection  '** Cleans up any temporary tables.
+  End Program
+
+  Exit Sub
+
+HandleError:
+  Note STR_FN_END_PROG + Error$()
+  Resume Next
+End Sub
+'*********************************************************
+'*********************************************************
+'*********************************************************
+
+
+'****************** START of Sub ReSetGlobals ******************************
+'*  Initializes globals to default
+'*  
+'***********
+
+Sub ReSetGlobals
+  OnError Goto HandleError
+
+
+
+iTable = 1
+		'** If int(iTable) = 0 this will evaluate to 1 
+gstrPrjName	= TableInfo(sTables(iTable + int(iTable = 0)),TAB_INFO_COORDSYS_NAME)
+
+If gstrPrjName = STR_EMPTY_STR1 Then
+   gstrPrjName = GetResString(IDS_NOT_IN_PRJ_FILE)
+End If
+
+ '  g_strUserSelectedProjection = STR_EMPTY_STR1
+g_strUserSelectedProjection= TableInfo(sTables(1),TAB_INFO_COORDSYS_CLAUSE)
+gstrNative = STR_EMPTY_STR1
+
+  Exit Sub
+
+HandleError:
+  Note  STR_FN_RESET_GLOBALS+ Error$()
+  Resume Next
+End Sub
+'*********************************************************
+'*********************************************************
+'*********************************************************

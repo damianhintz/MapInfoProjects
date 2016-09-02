@@ -1,0 +1,124 @@
+'*************************************************************************************
+'
+' toolapp.mb
+'
+' This file is a template for a MapInfo 4.0 tool application.  MapInfo 4.0 ships
+' with a number of utility applications which enhance product functionality.
+' To make it easier for users to understand and use these applications, all 4.0 
+' tools share a common user interface.
+'
+' The characteristics of a 4.0 tool application include:
+' > The application adds whatever menu options are required 
+'   to a sub-menu of the tools menu
+'
+' > Every tool adds an about box which describes the application and gives the 
+'   user the option of loading the application each time MapInfo is run.
+'
+' This template can be used to create a tool style application which
+' follows these rules.  We encourage you to create tool style applications 
+' where applicable.  Since users will quickly become familiar with the tools concept, 
+' they will find your application easier to use.
+'
+'*************************************************************************************
+
+' The auto_lib library contains the routines needed to support autoloading of your
+' application using an auto_load button in the about box.
+Include "..\Inc\Auto_lib.def"
+
+' The MiStdLib library contains many useful general purpose MapBasic routines.
+' Note that MiStdLib includes MapBasic.def so you don't need to include it here
+Include "..\Inc\MiStdLib.Def"
+
+Declare Sub Main
+Declare Sub tool_app_handler
+Declare Sub exit_toolapp
+Declare Sub about_toolapp
+
+' Note: you don't need all three of these about box routines in your
+' application.  The different sized about boxes are provided so that 
+' you can choose one appropriate to the amount of text you want to 
+' display.
+Declare Sub small_aboutbox
+Declare Sub large_aboutbox
+
+'*****************************************************************************
+Sub Main
+
+  '''''''''''''''''''''''''''''''''''''
+  ' Auto-Load support global variables.
+  gsAppDescription = "Tools App"
+  gsAppFilename = "ToolApp.mbx"
+
+  Create Menu "&ToolApp" as
+  	"&Your apps menus go here..."    Calling tool_app_handler,
+  	"(-",
+  	"&About Toolapp..."		Calling about_toolapp,
+  	"E&xit Toolapp"			  Calling exit_toolapp
+
+  Call set_tools_menu("&ToolApp")
+
+End Sub
+
+
+'******************************************************************************
+Sub tool_app_handler
+	' Implement your applications interface here
+End Sub
+
+
+'******************************************************************************
+Sub exit_toolapp
+	End Program
+End Sub
+
+
+'******************************************************************************
+Sub about_toolapp
+	'Call small_aboutbox
+	Call large_aboutbox
+End Sub
+
+'******************************************************************************
+Sub small_aboutbox
+	Dialog Title "About ToolApp"
+	Height 120
+	Width 150
+
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxx" Position 10, 10
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxx" Position 10, 19
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxx" Position 10, 28
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxx" Position 10, 37
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxx" Position 10, 46
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxx" Position 10, 55
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxx" Position 10, 64
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxx" Position 10, 73
+
+	Control OKButton Position 55, 100
+End Sub     
+
+'******************************************************************************
+Sub large_aboutbox
+	Dialog Title "About ToolApp"
+	Height 180
+	Width 200
+
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" Position 10, 10
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" Position 10, 19
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" Position 10, 28
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" Position 10, 37
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" Position 10, 46
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" Position 10, 55
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" Position 10, 64
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" Position 10, 73
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" Position 10, 82
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" Position 10, 91
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" Position 10, 100
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" Position 10, 109
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" Position 10, 118
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" Position 10, 127
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" Position 10, 136
+	Control StaticText Title "Your Text Here xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" Position 10, 145
+
+	Control OKButton Position 80, 160
+End Sub
+

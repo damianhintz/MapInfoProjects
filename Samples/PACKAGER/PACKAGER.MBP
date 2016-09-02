@@ -1,0 +1,5 @@
+[Link] 
+Application=Packager.mbx 
+Module=Packager.mbo
+Module=WorLayer.mbo
+Module=..\Lib\resstrng.mbo

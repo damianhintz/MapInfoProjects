@@ -1,0 +1,52 @@
+'*****************************************************************************
+'       Copyright © 2009 Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 66276 $
+'
+' Module Description:
+'
+'*****************************************************************************
+
+'make sure Window API library name(dll) is correct
+Declare Function MessageBox Lib "user32" Alias "MessageBoxA" (
+      ByVal hwnd As Integer,
+      ByVal lpText As String,
+      ByVal lpCaption As String,
+      ByVal wType As Integer)
+      As Integer
+' hWnd handle of the Parent Window - should be MapInfo
+' lptext message text
+' lpCaption dialog title
+' wType style flags
+' RETURNS 1=OK
+' 2=CANCEL
+' 3=ABORT
+' 4=RETRY
+' 5=IGNORE
+' 6=YES
+' 7=NO
+
+' BUTTONS
+DEFINE MB_OK &H0
+DEFINE MB_OKCANCEL &H1
+DEFINE MB_ABORTRETRYIGNORE &H2
+DEFINE MB_YESNOCANCEL &H3
+DEFINE MB_YESNO &H4
+DEFINE MB_RETRYCANCEL &H5
+' ICONS
+DEFINE MB_ICONHAND &H10
+DEFINE MB_ICONSTOP &H10
+DEFINE MB_ICONQUESTION &H20
+DEFINE MB_ICONEXCLAMATION &H30
+DEFINE MB_ICONASTERISK &H40
+DEFINE MB_ICONINFORMATION &H40
+' DEFAULT BUTTON
+DEFINE MB_DEFBUTTON1 &H0
+DEFINE MB_DEFBUTTON2 &H100
+DEFINE MB_DEFBUTTON3 &H200
+DEFINE MB_DEFBUTTON4 &H300
+' MODAL SETTINGS
+DEFINE MB_APPLMODAL &H0
+DEFINE MB_SYSTEMMODAL &H1000
+DEFINE MB_TASKMODAL &H2000

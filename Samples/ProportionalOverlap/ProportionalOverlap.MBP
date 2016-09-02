@@ -1,0 +1,5 @@
+[Link]
+Application=ProportionalOverlap.mbx
+Module=ProportionalOverlap.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\Lib\resstrng.mbo

@@ -1,0 +1,782 @@
+'****************************************************************************
+'                             MAPINFO CORPORATION
+'
+' Date:         7/11/96
+'
+' Module:       MIODBCAT.mb
+' For Version:  MapInfo 4.0
+'
+' Overview:
+'    MapInfo MAP CATALOG ADMINISTRATOR  for mapping ODBC tables
+' Allows DBA to create a MapInfo User with the
+' with a MAPINFO_MAPCATALOG table. Also allows the DBA to delete
+' a table from the catalog
+'****************************************************************************
+include "MAPBASIC.DEF"
+include "..\INC\DLSAMP.DEF"
+include "ODBCPLUS.DEF"
+include "..\inc\AUTO_LIB.DEF"
+
+' Function declarations
+DECLARE SUB Main
+DECLARE SUB Go_Dialog
+DECLARE SUB Create_user
+DECLARE SUB Delete_row()
+DECLARE SUB Delete_Dialog
+DECLARE SUB All_Stop
+DECLARE SUB Cat_About
+DECLARE SUB Cat_Auto
+DECLARE SUB Load_Table
+DECLARE SUB Create_Oracle_table
+DECLARE SUB Create_Access_table
+DECLARE SUB Create_Sql_Server_table
+DECLARE SUB Create_SqlBase_table
+DECLARE SUB Create_IUS_table
+DECLARE SUB Create_DB2_table
+DECLARE SUB Create_table
+DECLARE SUB SQLConnect()
+DECLARE FUNCTION BuildSelect_str() AS STRING
+DECLARE Function BuildDelete_str() AS STRING
+DECLARE FUNCTION IsOCI(BYVAL hdbc AS INTEGER) AS LOGICAL
+
+'Global variables
+Dim  demohdbc, demohstmt AS Integer
+Dim TableName, TableOwner AS String
+Dim ListTable(), ListOwners(), List_Table_Owner() AS STRING
+
+'*********************************************************************
+'Sets up the tools menu for the catalog utility
+'*********************************************************************
+SUB Main
+  gsAppDescription = "MapInfo Catalog"
+  gsAppFilename = "MIODBCAT.mbx"
+
+  Create menu "&DBMS Catalog" As
+    "&DBMS Catalog ..." Calling  Go_dialog,
+    "(-",
+    "&About DBMS Catalog..." Calling Cat_About,
+    "E&xit DBMS Catalog" Calling All_Stop
+
+  Call set_tools_menu("&DBMS Catalog")
+
+  IF demohdbc <> 0 THEN
+    Server demohdbc Disconnect
+    demohdbc = 0
+  END IF
+END SUB
+
+
+'*********************************************************************
+'Main dialog
+'*********************************************************************
+SUB Go_Dialog
+  if not IsDBMSInstalled(TRUE) then
+    ' IsDBMSInstalled displayed a message.
+    exit sub
+  end if
+
+  CALL DebugInit("MIODBCAT")
+
+  Dialog
+    Title "DBMS DBA Functions"
+    Width 135
+  Control Button
+    Title "Create Catalog"
+    Position 5,5
+    Width 60
+    CAlling Create_Table
+  Control Button
+    Title "Delete Entry"
+    Position 70,5
+    Width 60
+    Calling Delete_Dialog
+  Control Button
+    Title "New Connection"
+    Position 5,25
+    Width 60
+    Calling SQLConnect
+  Control CancelButton
+    Title "Cancel"
+    Position 70,25
+    Width 60
+END SUB
+
+
+'*********************************************************************
+'Gives a multilistbox dialog of the tables in the MapInfo catalog
+'*********************************************************************
+SUB Delete_Dialog
+  IF dbg THEN
+    Print "Entering the delete dialog"
+  END IF
+
+  If demohdbc = 0 THEN
+    Call SQLConnect()
+    if demohdbc=0 THEN
+      GOTO ALL_DONE
+    end if
+  END IF
+
+  ' get the list of cataloged tables
+  CALL Load_Table()
+  IF UBOUND(List_Table_Owner)=0 THEN
+    NOTE "No entries in the Map Catalog"
+    GOTO ALL_DONE
+  END IF
+
+  Dialog
+    Title "MapInfo Catalog"
+    Control StaticText
+          Title "Delete Tables: "
+    Position 5,5
+    Control MultiListBox
+    Title from Variable List_Table_Owner
+          ID 1
+        Position 5,20
+    Width 150
+    Into TableName
+    Control CancelButton
+          Title "Cancel"
+          Position 77,95
+    Control OKButton
+  Title "OK"
+    Position 30,95
+    CALLING DELETE_ROW
+    GOTO ALL_DONE
+
+ALL_DONE:
+
+END SUB
+
+
+'*********************************************************************
+'Decides which database we are connected to and calls the correct
+'function to create the map catalog table
+'*********************************************************************
+SUB Create_Table
+  ONERROR GOTO Connections_error
+
+  IF demohdbc = 0 THEN
+    Call SQLConnect()
+    IF demohdbc = 0 THEN
+      GOTO ALL_DONE
+    END IF
+  END IF
+
+  Do Case demodb
+    Case DATA_SOURCE_ORACLE
+      Call Create_Oracle_Table
+    Case  DATA_SOURCE_MSACCESS
+      Call Create_Access_table
+    Case DATA_SOURCE_SQLSERVER, DATA_SOURCE_SYBASE, DATA_SOURCE_SQS,DATA_SOURCE_SQLSERVER_SW
+      Call Create_Sql_Server_table
+    Case DATA_SOURCE_SQLBASE
+      Call Create_Sqlbase_table
+    Case DATA_SOURCE_IUS
+      Call Create_IUS_table
+   Case DATA_SOURCE_INFORMIX
+      Call Create_IUS_table
+   Case DATA_SOURCE_DB2
+     Call Create_DB2_table
+
+    Case else
+      NOTE "You have choosen a database that is not supported by the MapInfo Map Catalog utility."+
+           "Please manually create the MapInfo Catalog."
+  END Case
+  GOTO ALL_DONE
+
+  Connections_error:
+   NOTE Error$()
+   RESUME ALL_DONE
+
+  ALL_DONE:
+END SUB
+
+
+'*********************************************************************
+'Loads an array of the records in the map catalog table
+'*********************************************************************
+SUB Load_Table
+  Dim Table,Owner AS String
+  Dim i,TableStat, OwnerStat AS Integer
+  Dim Count, MaxCount, Current_Count AS Integer
+  Dim Select_str As String
+
+  IF dbg THEN
+    PRINT "Entering the Load Table funtion"
+  END IF
+
+  REDIM ListTable(1)
+  REDIM ListOwners(1)
+  REDIM List_Table_Owner(1)
+
+  ONERROR GOTO BAD_LOAD
+  Select_str = BuildSelect_str()
+  demohstmt = Server_Execute(demohdbc, Select_str)
+  Server demohstmt Bind Column 1 to Table, TableStat
+  Server demohstmt Bind Column 2 to Owner, OwnerStat
+
+  Count = 0
+  Server demohstmt Fetch Next
+  While Not Server_Eot(demohstmt)
+    Count = Count + 1
+
+    IF Count > UBOUND(List_Table_Owner) THEN    ' double array sizes
+            REDIM ListTable(UBOUND(List_Table_Owner)*2)
+      REDIM ListOwners(UBOUND(List_Table_Owner)*2)
+      REDIM List_Table_Owner(UBOUND(List_Table_Owner)*2)
+    END IF
+
+    ListTable(Count)  = Table
+    ListOwners(Count) =  Owner
+    List_Table_Owner(Count) = Owner +"."+Table
+
+    Server demohstmt Fetch Next
+  Wend
+
+  Server demohstmt Close
+
+  REDIM ListTable(Count)
+  REDIM ListOwners(Count)
+  REDIM List_Table_Owner(Count)
+
+  GOTO ALL_DONE
+
+  BAD_LOAD:
+    NOTE ERROR$()
+    Resume ALL_DONE
+
+  ALL_DONE:
+END SUB
+
+
+'*********************************************************************
+'Deletes the selected tables from the multi selection table list dialog
+'*********************************************************************
+SUB Delete_row
+  Dim Table_number, Owner_number AS Integer
+  Dim Deletestr As String
+
+  Deletestr = BuildDelete_str()
+
+  ONERROR GOTO DELETE_ERROR
+  Table_number = Readcontrolvalue(1)
+
+  While Table_Number <> 0
+    TableName  = ListTable(Table_number)
+    TableOwner = ListOwners(Table_Number)
+
+    IF dbg THEN
+      print "deleting from catalog where owner="+ TableOwner + " table=" + TableName
+    END IF
+
+    demohstmt  = Server_execute(demohdbc,
+           Deletestr + "'" + TableName + "'" +
+      " AND OWNERNAME = '" + TableOwner + "'")
+    Server demohstmt Close
+
+    Table_number = ReadControlValue(1)
+  Wend
+
+  NOTE "Selected entries deleted from the Map catalog"
+  GOTO ALL_DONE
+
+  DELETE_ERROR:
+    NOTE ERROR$()
+    Resume ALL_DONE
+
+  ALL_DONE:
+
+END SUB
+
+
+'*********************************************************************
+'clears the tools menu and terminates the catalog utility
+'*********************************************************************
+SUB All_Stop
+  End Program
+END SUB
+
+
+'**  Cat_About  *************************************************************
+' The About procedure displays an About dialog box.
+'****************************************************************************
+Sub Cat_About
+  Dialog
+     Title "About the Map Catalog Utility Program..."
+
+     Control StaticText
+        Title "MIODBCAT.mbx is now running."
+        Position 10, 10
+
+     Control StaticText
+        Title "This MapBasic application allows a DBA to create a  "
+        Position 10, 25
+     Control StaticText
+        Title "MapInfo Map Catalog table in a remote database."
+        Position 10, 35
+     Control StaticText
+        Title "The MapInfo Map Catalog is needed for downloading "
+        Position 10, 45
+     Control StaticText
+        Title "coordinate information to MapInfo from the remote database."
+        Position 10, 55
+
+     Control StaticText
+        Title "The application also allows the DBA to delete a record"  Position 10, 70
+     Control StaticText
+        Title "from the MapInfo Map Catalog."  Position 10, 80
+
+     Control OKButton
+        Title "OK"  Position 84, 100
+
+  ' If the user chooses "Auto-Load"  we call a procedure
+  ' from the Auto_Lib library  (HandleInstallation).
+End Sub
+
+
+
+'***************************************************************************
+'* Get a new connection (replace the old one)
+'* Use QELIB DLG=1 option for Windows
+'* Use MB connect dialog for MAC and UNIX
+'***************************************************************************
+SUB SQLConnect()
+  ' get a new connection
+  demohdbc = SQLConnectDialog()
+END SUB
+
+
+'*********************************************************************
+'Build the correct select string for the different databases
+'*********************************************************************
+FUNCTION BuildSelect_str() AS STRING
+  IF demodb= DATA_SOURCE_MSACCESS THEN
+    BuildSelect_Str = "SELECT TABLENAME,OWNERNAME FROM MAPINFO_MAPCATALOG ORDER BY OWNERNAME, TABLENAME"
+  ELSE
+    BuildSelect_Str = "SELECT TABLENAME,OWNERNAME FROM MAPINFO.MAPINFO_MAPCATALOG ORDER BY OWNERNAME, TABLENAME"
+  END IF
+END FUNCTION
+
+
+'*********************************************************************
+'Build the correct delete string for the different databases
+'*********************************************************************
+Function BuildDelete_str AS STRING
+  IF demodb = DATA_SOURCE_MSACCESS THEN
+    BuildDelete_Str = "DELETE FROM MAPINFO_MAPCATALOG WHERE TABLENAME = "
+  ELSE
+    BuildDelete_Str = "DELETE FROM MAPINFO.MAPINFO_MAPCATALOG WHERE TABLENAME = "
+  END IF
+END FUNCTION
+
+
+'****************************************************************************************
+'Create table functions
+'****************************************************************************************
+SUB Create_Sql_Server_table
+'Connect as the user MAPINFO
+  Dim mapdemohdbc,mapdemohstmt AS Integer
+  Dim DBName AS String
+  Dim rc,odbchdbc AS INTEGER
+  Dim outlen as INTEGER
+
+  IF demohdbc <> 0 THEN
+    DBName = GetDB(demohdbc)
+  END IF
+  IF dbg THEN
+    print "dbname = "+dbname
+  END IF
+
+  ONERROR GOTO IGNORE
+  demohstmt = Server_Execute(demohdbc,"exec sp_addlogin 'MAPINFO', 'MAPINFO','" + DBName +"'")
+  Server demohstmt Close
+  'Print "sp_addlogin"
+  demohstmt = Server_Execute(demohdbc,"exec sp_adduser 'MAPINFO', 'MAPINFO'")
+
+  Server demohstmt Close
+  'print "sp_adduser"
+
+  ONERROR GOTO NO_USER
+  demohstmt = Server_Execute(demohdbc,
+    "CREATE TABLE MAPINFO.MAPINFO_MAPCATALOG ("+
+      "SPATIALTYPE      float,"+
+      "TABLENAME        varchar(32),"+
+      "OWNERNAME        varchar(32),"+
+      "SPATIALCOLUMN    varchar(32),"+
+      "DB_X_LL          float,"+
+      "DB_Y_LL          float,"+
+      "DB_X_UR          float,"+
+      "DB_Y_UR          float,"+
+      "COORDINATESYSTEM varchar(254),"+
+      "SYMBOL           varchar(254),"+
+      "XCOLUMNNAME      varchar(32),"+
+      "YCOLUMNNAME      varchar(32),"+
+      "RENDITIONTYPE    integer,"+
+      "RENDITIONCOLUMN  varchar(32),"+
+      "RENDITIONTABLE   varchar(32),"+
+      "NUMBER_ROWS      integer"+
+    ")"
+   )
+
+  Server demohstmt Close
+  'print"mapcatalog"
+
+  demohstmt = Server_execute(demohdbc,
+    "GRANT SELECT,INSERT,UPDATE,DELETE ON MAPINFO.MAPINFO_MAPCATALOG TO PUBLIC")
+  Server demohstmt Close
+
+  demohstmt = Server_execute(demohdbc,
+    "CREATE UNIQUE INDEX MAPINFO_MAPCATALOG_INDEX ON MAPINFO.MAPINFO_MAPCATALOG(TABLENAME,OWNERNAME)")
+  Server demohstmt Close
+
+  NOTE "The table MAPINFO_MAPCATALOG has been created with privileges for select,insert and update granted to"+
+        " public."
+
+  GOTO ALL_DONE
+
+  IGNORE:
+  Resume Next
+
+  NO_USER:
+    NOTE Error$()
+    Resume ALL_DONE
+
+  ALL_DONE:
+END SUB
+
+
+'*********************************************************************
+'Creates a table in Access
+'*********************************************************************
+SUB Create_Access_table
+'Connect as the user MAPINFO
+
+  ONERROR GOTO NO_TABLE
+  demohstmt = Server_Execute(demohdbc,
+    "CREATE TABLE MAPINFO_MAPCATALOG ("+
+      "SPATIALTYPE      DOUBLE,"+
+      "TABLENAME        TEXT(32),"+
+      "OWNERNAME        TEXT(32),"+
+      "SPATIALCOLUMN    TEXT(32),"+
+      "DB_X_LL          DOUBLE,"+
+      "DB_Y_LL          DOUBLE,"+
+      "DB_X_UR          DOUBLE,"+
+      "DB_Y_UR          DOUBLE,"+
+      "COORDINATESYSTEM TEXT(254),"+
+      "SYMBOL           TEXT(254),"+
+      "XCOLUMNNAME      TEXT(32),"+
+      "YCOLUMNNAME      TEXT(32),"+
+      "RENDITIONTYPE    INTEGER,"+
+      "RENDITIONCOLUMN  TEXT(32),"+
+      "RENDITIONTABLE   TEXT(32),"+
+      "NUMBER_ROWS      INTEGER"+
+      ")"
+    )
+  Server demohstmt Close
+
+  demohstmt = Server_execute(demohdbc,
+    "CREATE UNIQUE INDEX `MAPINFO_MAPCATALOG_INDEX` ON "+
+      "`MAPINFO_MAPCATALOG`(`TABLENAME`)")
+  Server demohstmt Close
+
+  NOTE "The table MAPINFO_MAPCATALOG has been created "
+
+  GOTO ALL_DONE
+
+  NO_TABLE:
+    NOTE Error$()
+
+  ALL_DONE:
+
+END SUB
+
+
+'*********************************************************************
+'Creates a MAPINFO user and the MAPINFO catalog in Oracle
+'*********************************************************************
+SUB Create_Oracle_table
+'Connect as the user MAPINFO
+  Dim mapdemohdbc,mapdemohstmt AS Integer
+  Dim rc,odbchdbc AS INTEGER
+  Dim DSName,ServerName AS STRING
+  Dim DriverName as STRING
+  Dim outlen as INTEGER
+
+  ONERROR GOTO WHOCARES     'ALLOWS A table to created even if there already a MAPINFO users
+
+  demohstmt = Server_Execute(demohdbc,"CREATE USER MAPINFO IDENTIFIED BY MAPINFO")
+  Server demohstmt Close
+
+  demohstmt = Server_Execute(demohdbc,"GRANT RESOURCE,CONNECT TO MAPINFO")
+  Server demohstmt Close
+
+  ONERROR GOTO NO_TABLE
+
+  ONERROR GOTO NO_Privileges
+  IF dbg THEN
+    PRINT "demohdbc = " + demohdbc
+  END IF
+  odbchdbc = Server_GetODBCHConn(demohdbc)
+  DSName = GetDSName(demohdbc)
+  ServerName = GetServerName(demohdbc)
+  DriverName = Server_ConnectInfo(demohdbc, SRV_CONNECT_INFO_DRIVER_NAME)
+  IF dbg THEN
+    PRINT "Data Source = " + DSName
+    PRINT "Server Name = " + ServerName
+  END IF
+
+  demohstmt = Server_Execute(demohdbc,
+    "CREATE TABLE MAPINFO.MAPINFO_MAPCATALOG ("+
+      "SPATIALTYPE      NUMBER,"+
+      "TABLENAME        VARCHAR2(32),"+
+      "OWNERNAME        VARCHAR2(32),"+
+      "SPATIALCOLUMN    VARCHAR2(32),"+
+      "DB_X_LL          NUMBER,"+
+      "DB_Y_LL          NUMBER,"+
+      "DB_X_UR          NUMBER,"+
+      "DB_Y_UR          NUMBER,"+
+      "COORDINATESYSTEM VARCHAR2(254),"+
+      "SYMBOL           VARCHAR2(254),"+
+      "XCOLUMNNAME      VARCHAR2(32),"+
+      "YCOLUMNNAME      VARCHAR2(32),"+
+      "RENDITIONTYPE    INTEGER,"+
+      "RENDITIONCOLUMN  VARCHAR2(32),"+
+      "RENDITIONTABLE   VARCHAR2(32),"+
+      "NUMBER_ROWS      INTEGER"+
+      ")"
+    )
+  Server demohstmt Close
+
+  IF IsOCI(demohdbc) THEN
+    mapdemohdbc  = Server_Connect(DriverName,"SRVR="+ServerName+";UID=MAPINFO;PWD=MAPINFO")
+  ELSE
+    mapdemohdbc  = Server_Connect(DriverName,"DLG=2;SRV="+ServerName+";DSN="+DSName+";USR=MAPINFO;PWD=MAPINFO")
+  END IF
+
+  Server mapdemohdbc Begin Transaction
+
+  mapdemohstmt = Server_execute(mapdemohdbc,
+  "GRANT SELECT,UPDATE,INSERT,DELETE ON MAPINFO.MAPINFO_MAPCATALOG TO PUBLIC")
+  Server mapdemohstmt Close
+
+  Mapdemohstmt = Server_execute(mapdemohdbc,
+    "CREATE UNIQUE INDEX MAPINFO_MAPCATALOG_INDEX ON "+
+      "MAPINFO.MAPINFO_MAPCATALOG(TABLENAME,OWNERNAME)")
+  Server mapdemohstmt Close
+  Server mapdemohdbc Commit
+
+  NOTE "The user MAPINFO identified by MAPINFO and the table MAPINFO_MAPCATALOG has been "+
+       "created on "+ServerName+"."
+
+  Server mapdemohdbc Disconnect
+  mapdemohdbc = 0
+
+  GOTO ALL_DONE
+
+  WHOCARES:
+    Resume Next
+
+  NO_TABLE:
+    NOTE  ERROR$()
+    IF mapdemohdbc <> 0 THEN
+      Server mapdemohdbc Disconnect
+      mapdemohdbc = 0
+    END IF
+    Resume ALL_DONE
+
+  NO_Privileges:
+    NOTE ERROR$()
+    IF mapdemohdbc <> 0 then
+      Server mapdemohdbc Disconnect
+    END IF
+    resume ALL_DONE
+ALL_DONE:
+END SUB
+
+'*********************************************************************
+'Creates a MAPINFO catalog in Informix Universal Server
+'*********************************************************************
+SUB Create_IUS_table
+  Dim rc,odbchdbc AS INTEGER
+  Dim outlen as INTEGER
+
+  ONERROR GOTO WHOCARES     'ALLOWS A table to created even if there already a MAPINFO users
+
+  demohstmt = Server_Execute(demohdbc,"grant  resource to mapinfo")
+  Server demohstmt Close
+
+  demohstmt = Server_Execute(demohdbc,"grant  connect  to mapinfo")
+  Server demohstmt Close
+
+
+
+  demohstmt = Server_Execute(demohdbc,
+    "CREATE TABLE mapinfo.MAPINFO_MAPCATALOG ("+
+      "spatialtype      float,"+
+      "tablename        char(32),"+
+      "ownername        char(32),"+
+      "spatialcolumn    char(32),"+
+      "db_x_ll          float,"+
+      "db_y_ll          float,"+
+      "db_x_ur          float,"+
+      "db_y_ur          float,"+
+      "coordinatesystem char(254),"+
+      "symbol           char(254),"+
+      "xcolumnname      char(32),"+
+      "ycolumnname      char(32),"+
+      "renditiontype    integer,"+
+      "renditioncolumn  char(32),"+
+      "renditiontable   char(32),"+
+      "number_rows      integer"+
+      ")"
+    )
+  Server demohstmt Close
+
+
+  demohstmt = Server_Execute(demohdbc,"create unique index mapcatidx on  mapinfo.MAPINFO_MAPCATALOG(tablename , ownername )")
+  Server demohstmt Close
+
+  demohstmt = Server_Execute(demohdbc,"grant select, update, insert, delete on mapinfo.MAPINFO_MAPCATALOG  to public")
+  Server demohstmt Close
+
+  NOTE "The table MAPINFO_MAPCATALOG has been created"
+
+
+
+
+  GOTO ALL_DONE
+
+  WHOCARES:
+    Resume Next
+
+ALL_DONE:
+END SUB
+
+'***************************************************************************
+'Create a MapInfo user and catalog for SQLBase
+'***************************************************************************
+SUB Create_Sqlbase_table
+
+  Dim mapdemohdbc,mapdemohstmt AS Integer
+  Dim DBName AS String
+  Dim rc,odbchdbc AS INTEGER
+  Dim outlen as INTEGER
+
+  IF demohdbc <> 0 THEN
+    DBName= GetDB(demohdbc)
+  END IF
+  IF dbg THEN
+    print "Trying to create MAPINFO"
+  END IF
+  ONERROR GOTO NO_USER
+  demohstmt = Server_Execute(demohdbc,"GRANT CONNECT TO MAPINFO IDENTIFIED BY MAPINFO")
+  Server demohstmt Close
+  IF dbg THEN
+    print "MAPINFO user connected"
+  END IF
+
+  demohstmt = Server_Execute(demohdbc,"GRANT RESOURCE TO MAPINFO")
+  Server demohstmt Close
+  IF dbg THEN
+    print "MAPINFO user resource"
+  END IF
+
+  demohstmt = Server_Execute(demohdbc,
+    "CREATE TABLE MAPINFO.MAPINFO_MAPCATALOG ("+
+      "SPATIALTYPE      float,"+
+      "TABLENAME        varchar(32),"+
+      "OWNERNAME        varchar(32),"+
+      "SPATIALCOLUMN    varchar(32),"+
+      "DB_X_LL          float,"+
+      "DB_Y_LL          float,"+
+      "DB_X_UR          float,"+
+      "DB_Y_UR          float,"+
+      "COORDINATESYSTEM varchar(254),"+
+      "SYMBOL           varchar(254),"+
+      "XCOLUMNNAME      varchar(32),"+
+      "YCOLUMNNAME      varchar(32),"+
+      "RENDITIONTYPE    integer,"+
+      "RENDITIONCOLUMN  varchar(32),"+
+      "RENDITIONTABLE   varchar(32),"+
+      "NUMBER_ROWS      integer"+
+      ")"
+    )
+  Server demohstmt Close
+  IF dbg THEN
+    print "MAPINFO_MAPCATALOG Created"
+  END IF
+
+  demohstmt = Server_execute(demohdbc,
+    "GRANT SELECT,INSERT,UPDATE,DELETE ON MAPINFO.MAPINFO_MAPCATALOG TO PUBLIC")
+  Server demohstmt Close
+
+  IF dbg THEN
+    print "prevleges granted"
+  END IF
+  demohstmt = Server_execute(demohdbc,
+    "CREATE UNIQUE INDEX MAPINFO.MAPINFO_MAPINDEX ON " +
+                                  "MAPINFO.MAPINFO_MAPCATALOG(TABLENAME,OWNERNAME)")
+  Server demohstmt Close
+  IF dbg THEN
+    print "Index created"
+  END IF
+  NOTE "The MAPINFO_MAPCATALOG has been created with privileges for select, insert and update granted to"+
+        " public."
+
+  GOTO ALL_DONE
+
+  NO_USER:
+    NOTE Error$()
+    Resume ALL_DONE
+  ALL_DONE:
+END SUB
+
+'*********************************************************************
+'Creates a MAPINFO catalog in DB2
+'*********************************************************************
+SUB Create_DB2_table
+  Dim rc,odbchdbc AS INTEGER
+  Dim outlen as INTEGER
+
+  ONERROR GOTO WHOCARES
+
+  demohstmt = Server_Execute(demohdbc,
+    "CREATE TABLE MAPINFO.MAPINFO_MAPCATALOG ("+
+      "SPATIALTYPE      FLOAT,"+
+      "TABLENAME        CHAR(32),"+
+      "OWNERNAME        CHAR(32),"+
+      "SPATIALCOLUMN    CHAR(32),"+
+      "DB_X_LL          FLOAT,"+
+      "DB_Y_LL          FLOAT,"+
+      "DB_X_UR          FLOAT,"+
+      "DB_Y_UR          FLOAT,"+
+      "COORDINATESYSTEM CHAR(254),"+
+      "SYMBOL           CHAR(254),"+
+      "XCOLUMNNAME      CHAR(32),"+
+      "YCOLUMNNAME      CHAR(32),"+
+      "RENDITIONTYPE    INTEGER,"+
+      "RENDITIONCOLUMN  CHAR(32),"+
+      "RENDITIONTABLE   CHAR(32),"+
+      "NUMBER_ROWS      INTEGER"+
+      ")"
+    )
+  Server demohstmt Close
+
+
+  demohstmt = Server_Execute(demohdbc,"CREATE UNIQUE INDEX MAPCATAIDX ON MAPINFO.MAPINFO_MAPCATALOG(TABLENAME, OWNERNAME)")
+  Server demohstmt Close
+
+  demohstmt = Server_Execute(demohdbc,"GRANT SELECT, UPDATE, INSERT, DELETE ON MAPINFO.MAPINFO_MAPCATALOG  TO PUBLIC")
+  Server demohstmt Close
+
+  NOTE "The table MAPINFO_MAPCATALOG has been created"
+
+
+  GOTO ALL_DONE
+
+  WHOCARES:
+    Resume Next
+
+ALL_DONE:
+END SUB

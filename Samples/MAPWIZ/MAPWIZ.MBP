@@ -1,0 +1,5 @@
+[Link] 
+Application=mapwiz.mbx
+Module=mapwizMnu.mbo
+Module=..\lib\auto_lib.mbo
+Module=..\lib\MiStdLib.mbo

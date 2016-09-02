@@ -1,0 +1,8 @@
+
+[Link] 
+Application=NorthArrow.mbx 
+Module=NorthArrow.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\Lib\GetPaperSize.mbo
+Module=..\Lib\ResStrng.mbo
+

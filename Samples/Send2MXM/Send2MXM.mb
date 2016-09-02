@@ -1,0 +1,1080 @@
+'*****************************************************************************
+'       Copyright (c) 2002 MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: Send2MXM.mb $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+' Write custom MapX Geoset and associated .TAB files to create a
+'   user-defined subset of a map window's background data for display
+'   on a mobile device.  Uses modules from GEOSET.MBX where applicable.
+'
+' Revision History:
+'
+'    Rev 1.0   22 March 2002           Dave Greene
+'	Modified Geoset.MB where necessary to provide new functionality:
+'		Removed WinFocusChangedHandler and WinClosedHandler
+'			(because Map menu will automatically be hidden);
+'		Sub Main creates Send Map To MapXMobile menu items only;
+'		menu created not in Tools menu but in separate menu;
+'		localization strings are in Send2MXM.str
+'			(a modified Geoset.str with new strings appended at end);
+'		pointers to above are in Send2MXM.def (modified Geoset.def);
+'		included fix to GeosetLayer.MB and GeosetStyle.MB  (bug #15427)
+'		copied and changed CreateGeoset code to SendMapToMapXMobile Sub
+'			to avoid opening resulting file in Notepad
+'		copied and changed LoadGeoset code to SendMapToMapXMobile Sub
+'			to avoid asking the user which file to open (GetGeosetInfo)
+'			and which geoset type to save (assuming 4.5 for MapXMobile)
+'    Rev 1.1 04 April 2002             Dave Greene
+'     Added FileSize.MB module; moved file export to bCloneAndCleanMapWindow
+'      so that file size results could be shown in second dialog box.
+'      (Version 1.0 exported data only after the Finish button was clicked.)
+'    Rev 1.2 09 April 2002             Dave Greene
+'      20 changes [Add bugfixes.txt here when changes are completed]
+'	1)  DONE:  add a Send2MXM.PRF file to remember settings -- mostly the export directory, but might as well throw in the other settings, too.  Format will be "SCREEN=STANDARD/DESKTOP;CLIP=MAP/PPC;WRITEIFEMPTY=TRUE/FALSE;"
+'	2)  DONE:  add an 'Overwrite files' option to second dialog, checked by default 
+'	3)  add an 'Export layers only if marked as VISIBLE in Layer Control' option to the first dialog. 
+'	4)  DONE:  avoid removing the existing cloned window and re-exporting all the files on a Back/Next combination, unless settings actually change. 
+'	5)  DONE:  fix problem with un-resource-string-ed group boxes 
+'	6)  DONE:  fix problem with nonexistent path & infinite loop 
+'	7)  DONE:  fix problem with looking for raster type as 4 rather than 2 (LAYER_INFO_TYPE_IMAGE) 
+'	8)  DONE:  fix problem with width of statictext (must fit inside group box now) (Alicia #5) 
+'	9)  DONE:  fix default size problem (should go to STANDARD not LAPTOP since this will err on the large side.) 
+'	10) DONE:  fix "Back" and "Next" buttons (Alicia #1) 
+'	11) DONE:  remove (close) Cosmetic Layer table in #4 case 
+'	12) DONE:  remove (close) appropriate maps and tables if user clicks 'Cancel' 
+'	13) DONE:  add dialog note saying "To copy files to your Pocket PC device, click "Browse" and choose an ActiveSync folder." (Alicia #2) 
+'	14) DONE: Clear message window a little later in code (just before exporting); also if user clicks 'Cancel'. 
+'	15)  Make sure that tool does actually integrate correctly with Discovery. 
+'	16) DONE:  Make sure that the case(s) where all layers are removed from the map is handled correctly. 
+'	17)  Attempt to close all file handles that may be open, before exiting relevant subroutines. 
+'	18) DONE:  Clear custom labels in the cloned window -- see notes in bCloneAndCleanMapWindow code re. future support for custom labels in geosets.  The # of records in the tables is liable to change radically on export! 
+'	19)  Delete all newly created files out of the TEMP directory if the user clicks 'Cancel'. 
+'	20) DONE:  Deal correctly with duplicate layers (layers pointing to the same layer, but with different settings).  Geoset.MBX now handles this correctly, but I had been writing code under the assumption that every map layer must have a different name (e.g. USA, USA_2).  This is only true for opened tables, not for layers
+'    Rev 1.3 18 Apr 2002               Dave Greene
+'     minor change to menu resource strings to improve integration with Discovery tool:  Send To -> Sen&d To
+'    Rev 1.4 26 Apr 2002               Dave Greene
+'     -- added menu Tools > Send To MapX Mobile > About (this will probably call the same function as the "Help" button on the  tool's first dialog -- with appropriately revised text to tell the user that the tool is called from the Map menu.)
+'     -- added menu Tools > Send To MapX Mobile > Exit, which will unload the tool from the current session of MIPro.
+'     -- revised the "Description" field for the tool, in the Tool Manager, to tell the user where the Send To MapXMobile tool's main menu will appear
+'     -- changed the Map menu option from Pocket PC to MapInfo MapX Mobile (as per Moshe's request)
+'     -- enabled SaveSettingsInPRF error trap, fixed "Close" error, removed .PRF from installed files
+'*****************************************************************************
+Include "MapBasic.def"
+Include "Send2MXM.def"
+Include "GeosetLoad.def"  ' BP 08.06.98
+Include "Service.def"  ' BP 08.06.98
+' Include a file that lets us use the "auto-load" library
+Include "..\Inc\auto_lib.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+Declare Sub Main
+Declare Sub SendToMapXMobileAbout
+Declare Sub SendToMapXMobileDone
+Declare Sub SendMapToMapXMobile
+Declare Sub Step1SetupHandler
+Declare Sub SubsetChoiceHandler
+Declare Sub HelpButtonHandler
+Declare Sub NextButtonHandler
+Declare Sub BackButtonHandler
+Declare Sub FinishButtonHandler
+Declare Sub CancelButtonHandler
+Declare Sub BrowseButtonHandler
+Declare Sub EditGeoset(ByVal strTempGeosetFile as String,
+			     ByVal strOutputGeosetFile as String)
+Declare Sub ResizeMapForPPC(ByVal intWind as Integer)
+Declare Sub SaveSettingsInPRF()
+Declare Sub GetSettingsFromPRF()
+Declare Function bCloneAndCleanMapWindow() as Logical
+Declare Function bRenameTable(ByVal strInputFileName as String,
+					ByVal strOutputFileName as String,
+					ByVal bOverwriteFlag as Logical) as Logical
+Declare Function bGetTabFileSize(ByVal strFileName as String, dblTotalSize as Float) as Logical
+Declare Function strGetAlternateTableName(ByVal strTableName as String) as String
+Declare Function strGetAlternateFileName(ByVal strFileName as String) as String
+Declare Function strMakeSettingsString() as String
+Declare Function strMakeSettingsString2() as String
+Declare Function strGetTagValue(ByVal strSettings as String, ByVal strTag as String) as String
+
+'****************************************************************
+'****************************************************************
+
+' duplicate Declares from GeosetLayer --
+'  (I'm sure there's a nicer-looking way to do this):
+Declare Function ValidTableSourceType(sTableName As String) As Logical
+'Declare Function GetTableSourceType(sTableName As String) As String
+'
+' from FileSize:
+Declare Function dblGetTabFileSize(ByVal strFileName as String) as Float
+Declare Function dblGetFileSize(ByVal strFileName as String) as Float
+
+'****************************************************************
+'****************************************************************
+
+Dim msGeosetPath As String
+Dim g_intCurrentDialog as Integer ' keep record of which dialog to display
+Dim g_intSubsetChoice as Integer
+Dim g_bExportEmptyTables as Logical
+Dim g_intUseOriginalWindow as Integer
+Dim g_strOutputGeosetFile as String
+Dim g_intClonedMap as Integer
+Dim g_strCosmeticLayerName as String
+Dim g_strTempLayerNames() as String
+Dim g_strExportLayerNames() as String
+dim g_dblPPCWidth, g_dblPPCHeight as Float
+dim g_intNumLayersToExport as Integer
+dim g_bExportWarningFlag as Logical
+dim g_bOpenResultingGeoset as Logical
+Dim g_bOverwriteFiles as Logical
+Dim g_bPrintedOverwriteWarning as Logical
+Dim g_strSettingsForClonedMap as String
+Dim g_bSuccessfulCloneAndClean as Logical
+Dim g_dblTotalFileSize as Float
+
+'---------------------------------------
+Sub Main
+  dim strTemp as String, intDPI as Integer
+  
+  OnError Goto HandleError
+
+  If LoadStrings((ApplicationDirectory$() + "Send2MXM.str")) = FALSE Then
+    Note "Unable to access resource string file: " + ApplicationDirectory$() + "Send2MXM.str"
+    Exit Sub
+  End If
+
+  gsAppFilename = "Send2MXM.mbx"    '** and set_tools_menu
+  gsAppDescription = GetResString(IDS_APP_DESCRIPTION)
+
+  gnPath = PATH_FULL
+  
+  Create Menu GetResString(IDS_MENU_NAME) As
+    GetResString(IDS_ABOUT_MENU_ITEM_NAME) Calling SendToMapXMobileAbout,
+    GetResString(IDS_EXIT_MENU_ITEM_NAME) Calling SendToMapXMobileDone
+
+  Call set_tools_menu(GetResString(IDS_MENU_NAME))
+  call GetSettingsFromPRF()
+
+  ' decide what DPI to use to replicate the window that the user will see on a device -- usually
+  '  a monitor is defined internally at 96 dpi, but a laptop LCD screen is set as 120 DPI.
+  '  This application assumes that the code may be run on a laptop, but does not currently
+  '  check this.  To avoid seeing 20% too many pixels in the map window on a laptop LCD
+  '  screen, create a text file called "DPI.TXT" in the same folder as the Send2MXM.MBX
+  '  -- the file can contain a DPI setting (e.g. "120") or the word "LAPTOP".
+  '  Misuse of this DPI.txt file can cause very large or very small resized map windows.
+  
+  if FileExists(ApplicationDirectory$() & "DPI.txt") then
+	intDPI=0
+	Open File ApplicationDirectory$() & "DPI.txt" for Input as #126
+	Line Input #126, strTemp
+	Close File #126
+	intDPI=Val(strTemp)
+	if intDPI=0 then
+		intDPI=DPI_LAPTOP
+	end if
+  else
+	intDPI=DPI_STANDARD
+  end if
+
+  g_dblPPCWidth=PPC_GEOSET_MGR_PIXWIDTH/intDPI
+  g_dblPPCHeight=PPC_GEOSET_MGR_PIXHEIGHT/intDPI
+
+  Set Paper Units "in" ' make sure that window size will be	measured correctly
+
+  OnError goto AddMenuError
+  Alter menu ID 9 remove ID MENU_SEND_MAP_TO ' menu ID 9 is the Map menu
+  Alter menu ID 9 Add GetResString(IDS_MB_MENU_SEND_MAP_TO) ID MENU_SEND_MAP_TO 
+			As GetResString(IDS_MB_MENU_SEND_MAP_TO)
+  OnError Goto HandleError
+  Alter menu GetResString(IDS_MB_MENU_SEND_MAP_TO) Add GetResString(IDS_MB_MENU_PPC)
+			ID MENU_SEND_MAP_TO_PPC calling SendMapToMapXMobile
+  Exit Sub
+
+HandleError:
+  Note "Main: " + Error$()
+  Resume Next
+
+AddMenuError:
+   ' Create the send map menu.
+    Create menu GetResString(IDS_MB_MENU_SEND_MAP_TO) as 
+	GetResString(IDS_MB_MENU_PPC) ID MENU_SEND_MAP_TO_PPC calling SendMapToMapXMobile
+    Alter menu ID 9 Add GetResString(IDS_MB_MENU_SEND_MAP_TO) ID MENU_SEND_MAP_TO 
+			As GetResString(IDS_MB_MENU_SEND_MAP_TO)
+End Sub 'Main
+
+'---------------------------------------
+Sub SendToMapXMobileAbout
+  Dialog
+    Title GetResString(IDS_ABOUT) + " " + GetResString(IDS_APP_DESCRIPTION) + " (" + GetResString(IDS_VERSION) + " " + AppVersion + ")"
+    Control StaticText Position 10, 10 Title GetResString(IDS_ABOUT_1)
+    Control StaticText Position 10, 20 Title GetResString(IDS_ABOUT_2)
+' BP 10.06.98
+    Control StaticText Position 10, 30 Title GetResString(IDS_ABOUT_3)
+    Control StaticText Position 10, 40 Title GetResString(IDS_ABOUT_4)
+' BP 10.06.98
+
+    Control OKButton Title GetResString(IDS_OK) Width 45
+End Sub 'SendToMapXMobileAbout
+
+'---------------------------------------
+Sub SendToMapXMobileDone
+  End Program
+End Sub 'SendToMapXMobileDone
+
+'---------------------------------------
+Sub LoadGeoset
+  Dim bOK         As Logical
+  Dim sGeosetFile As String
+
+  OnError Goto ErrorTrap
+
+      If GetGeosetFileName(sGeosetFile) Then
+          ' Open, read, parse and close GeoSet file
+          If ReadGeoSet(sGeosetFile) Then
+              ' Open MI Tables from GeoSet
+              If OpenGeosetTables(msGeosetPath) Then
+                  ' Interpret information from Geoset file
+                  If InterpretGoeset() Then
+                      Print GetResString(IDS_FINISHED_READING_GEOSET) + """" + GetGeosetName() + """"
+                  End If 'InterpretGoeset
+              End If 'OpenGeosetTables
+          End If 'ReadGeoSet
+      End If 'GetGeosetFileName
+
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "LoadGeoset: " & Error$()
+  Resume Done
+End Sub 'LoadGeoset
+
+'---------------------------------------
+Function GetGeosetFileName(sGeosetFile As String) As Logical
+  OnError Goto ErrorTrap
+
+    sGeosetFile = FileOpenDlg(msGeosetPath, "", "gst", GetResString(IDS_OPEN_GEOSET))
+    If Len(sGeosetFile) > 0 Then
+      msGeosetPath = PathToDirectory$(sGeosetFile)
+      GetGeosetFileName = TRUE
+    End If 'Len
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "GetGeosetFileName: " & Error$()
+  Resume Done
+End Function 'GetGeosetFileName
+
+'---------------------------------------  ' BP 09.06.98
+Function GetGeosetPath() As String
+  OnError Goto ErrorTrap
+    GetGeosetPath = msGeosetPath
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "GetGeosetPath: " & Error$()
+  Resume Done
+End Function 'GetGeosetPath
+
+'---------------------------------------
+' new sub SendMapToMapXMobile called by single menu item
+'---------------------------------------
+Sub SendMapToMapXMobile()
+	Dim bResult As Logical
+	Dim lMapWin As Integer
+	Dim lLayers As Integer
+	Dim i As Integer
+	Dim strPreviousSettings as String
+	Dim sGeosetName As String
+	Dim sGeosetFile As String
+	Dim sTempGeosetFile as String
+	Dim bOverwriteMessageFlag as Logical
+
+  	OnError Goto ErrorTrap
+	Set Event Processing Off
+	Set ProgressBars Off
+ 	g_intCurrentDialog=1
+	g_intClonedMap=-1
+	g_bPrintedOverwriteWarning=0
+
+	Do
+		Do Case g_intCurrentDialog
+		Case 1
+			Dialog
+			   Title GetResString(IDS_STEP_1_TITLE)
+			   Width 300 Height 190
+			   Calling Step1SetupHandler
+				Control GroupBox
+					Width 290 Height 60
+					Position 5,5
+					Title GetResString(IDS_STEP_1_EXPORT_GROUP)
+				Control RadioGroup
+					ID 99
+					Width 280
+					Position 10,15
+					Title GetResString(IDS_STEP_1_RADIO_GROUP_1) & ";"
+						& GetResString(IDS_STEP_1_RADIO_GROUP_2)
+					Value g_intSubsetChoice
+					Into g_intSubsetChoice
+					Calling SubsetChoiceHandler
+				Control StaticText
+					ID 98
+					Width 275 Height 25
+					Position 15, 40
+					Title GetResString(IDS_STEP_1_OPTION_1_DESC)
+					Hide
+				Control StaticText
+					ID 97
+					Width 275 Height 25
+					Position 15, 40
+					Title GetResString(IDS_STEP_1_OPTION_2_DESC)
+					Hide
+				Control GroupBox
+					Width 290 Height 60
+					Position 5,70
+					Title GetResString(IDS_STEP_1_SUBSET_GROUP)
+				Control RadioGroup
+					Title GetResString(IDS_STEP_1_ORIG_WINDOW) & ";"
+						& GetResString(IDS_STEP_1_RESHAPED_WINDOW)
+					ID 96
+					Value g_intUseOriginalWindow
+					Into g_intUseOriginalWindow
+				Control CheckBox
+					Position 5, 135
+					Title GetResString(IDS_STEP_1_EXPORT_EMPTY)
+					ID 95
+					Value g_bExportEmptyTables
+					Into g_bExportEmptyTables
+				Control Button
+					Position 60,170
+					Title GetResString(IDS_STEP_1_HELP_BTN)
+					Calling HelpButtonHandler
+				Control OKButton
+					Position 120,170
+					Title GetResString(IDS_STEP_1_NEXT_BTN)
+					Calling NextButtonHandler
+				Control CancelButton
+					Position 180,170
+					Calling CancelButtonHandler
+		Case 2
+		    if g_intClonedMap>0 then
+				strPreviousSettings=g_strSettingsForClonedMap
+				g_strSettingsForClonedMap=strMakeSettingsString()
+				if strPreviousSettings<>g_strSettingsForClonedMap then
+					' have to re-run the export with the new settings
+					Close Window g_intClonedMap
+					g_intClonedMap=-1
+					' delete the temporary table for the cosmetic layer, if it exists
+					If g_strCosmeticLayerName<>"" then
+						Drop Table g_strCosmeticLayerName
+					end if
+					g_bSuccessfulCloneAndClean=bCloneAndCleanMapWindow()
+				end if
+		    else
+				g_strSettingsForClonedMap=strMakeSettingsString()
+				g_bSuccessfulCloneAndClean=bCloneAndCleanMapWindow()
+		    end if
+		    if not g_bSuccessfulCloneAndClean then
+				g_intCurrentDialog=0 ' no valid layers in map -- cancel
+		    else
+ 			Dialog 
+			   Width 300 Height 190
+			   Title GetResString(IDS_STEP_2_TITLE)
+				Control GroupBox
+					Width 290 Height 25
+					Position 5,5
+					Title GetResString(IDS_STEP_2_EXPORT_SIZE_GROUP)
+				Control StaticText
+					Width 290
+					Position 10, 15
+					Title GetResString(IDS_STEP_2_TOTAL_FILE_SIZE)
+						& int(g_dblTotalFileSize/1024) & GetResString(IDS_KB)
+				Control StaticText
+					Width 280 Height 20
+					Position 5, 40
+					Title GetResString(IDS_STEP_2_INSTR)
+				Control EditText
+					ID 89
+					Width 240
+					Position 5, 60
+					Value g_strOutputGeosetFile
+					Into g_strOutputGeosetFile
+				Control Button
+					Position 250, 60
+					Title GetResString(IDS_STEP_2_BROWSE_BTN)
+					Calling BrowseButtonHandler
+				Control StaticText
+					Width 290 Height 20
+					Title GetResString(IDS_STEP_2_ACTIVESYNC_NOTE)
+				Control GroupBox
+					Width 290 Height 50
+					Title GetResString(IDS_STEP_2_SETTINGS_GROUP)
+				Control Checkbox
+					Title GetResString(IDS_STEP_2_OVERWRITE_FILES)
+					ID 87
+					Value g_bOverwriteFiles
+					Into g_bOverwriteFiles
+				Control CheckBox
+					Title GetResString(IDS_STEP_2_OPEN_GEOSET)
+					ID 88
+					Value g_bOpenResultingGeoset
+					Into g_bOpenResultingGeoset
+				Control Button
+					Title GetResString(IDS_STEP_2_BACK_BTN)
+					Position 60, 170
+
+					Calling BackButtonHandler
+				Control OKButton
+					Position 120,170
+					Title GetResString(IDS_STEP_2_FINISH_BTN)
+					Calling FinishButtonHandler
+				Control CancelButton
+					Position 180, 170
+					Calling CancelButtonHandler
+		    end if
+		Case 0, 3
+			Exit Do
+		End Case
+	Loop
+	'  in future versions, wait until some relevant setting actually changes -- but for now:
+	If g_intCurrentDialog=3 then ' user clicked 'Finish'
+	  Call SaveSettingsInPRF()
+	  ' first preprocess the map window to remove non-supported layers
+	  If g_bSuccessfulCloneAndClean then
+	  ' the above logical value is set when the 'Next' button is clicked
+	    ' currently exporting only 4.5 geosets with no path; user browses
+	    '  in dialog to choose the geoset's filename -- so GeosetInfo() not used
+ 	     msGeosetPath = PathToDirectory$(g_strOutputGeosetFile)
+ 	     sGeosetName = PathToTableName$(g_strOutputGeosetFile)
+	     gsGeosetVersion=GEOSET_VERSION_450
+ 	     gnPath = PATH_NONE
+	     sTempGeosetFile=TempFileName$("")
+           If InitGeoset(g_intClonedMap, sGeosetName, sTempGeosetFile) Then
+              lLayers = MapperInfo(g_intClonedMap, MAPPER_INFO_LAYERS)
+              For i = 1 To lLayers
+                bResult = GeosetLayerInfo(g_intClonedMap, i)
+              Next 'i
+              bResult = CloseGeoset()
+	        Print GetResString(IDS_FINISHED_WRITING_GEOSET)
+              If WriteGeosetOK() And SystemInfo(SYS_INFO_PLATFORM) = PLATFORM_WIN Then
+			Close Window g_intClonedMap
+			g_intClonedMap=-1
+			g_bExportWarningFlag=0
+                  Call EditGeoset(sTempGeosetFile, g_strOutputGeosetFile)
+			if g_bExportWarningFlag then
+				Note GetResString(IDS_WRITE_FAILURE_WARNING)
+			end if
+ 			'Indented code below is copied from ReadGeoset subroutine.
+ 			' It is an optional diagnostic/viewing step -- may be removed.
+			If g_bOpenResultingGeoset=TRUE then
+			  ' Open, read, parse and close GeoSet file
+		          If ReadGeoSet(g_strOutputGeosetFile) Then
+		              ' Open MI Tables from GeoSet
+		              If OpenGeosetTables(msGeosetPath) Then
+		                  ' Interpret information from Geoset file
+		                  If InterpretGoeset() Then
+		                      Print GetResString(IDS_FINISHED_READING_GEOSET) + """" + GetGeosetName() + """"
+					    Call ResizeMapForPPC(FrontWindow())
+					End If 'InterpretGoeset
+		              End If 'OpenGeosetTables
+		          End If 'ReadGeoSet
+			End If ' open resulting geoset
+		  End If 'WriteGeosetOK() and SystemInfo(SYS_INFO_PLATFORM)
+            End If 'InitGeoset
+          'End If 'GetGeosetInfo
+	  End If 'CloneAndCleanMapWindow
+	else	' user pressed 'Cancel'
+		' [should eventually roll all this cleanup into a function with error-checking]
+		' [also delete all the newly-created files out of the TEMP directory]
+		CLS
+		Close Window MESSAGE
+		if g_intClonedMap>0 then
+			Close Window g_intClonedMap
+			g_intClonedMap=0
+		end if
+	
+		' delete the temporary table for the cosmetic layer, if it exists
+		If g_strCosmeticLayerName<>"" then
+			Drop Table g_strCosmeticLayerName
+		end if
+	End If 'dialog 'Finish' button or 'Cancel' button was pressed
+
+Done:
+	Set Event Processing On
+	Set ProgressBars On
+	Exit Sub
+
+ErrorTrap:
+  Print "SendMapToMapXMobile: " + Error$()
+  Resume Done
+
+End Sub
+Sub Step1SetupHandler()
+	if g_intSubsetChoice=1 then
+		Alter Control 98 Show
+		Alter Control 97 Hide
+		Alter Control 96 Disable
+'		Alter Control 95 Disable
+	else
+		Alter Control 97 Show
+		Alter Control 98 Hide
+		Alter Control 96 Enable
+'		Alter Control 95 Enable
+	end if
+End Sub
+
+Sub SubsetChoiceHandler()
+	If ReadControlValue(99) = 1 then
+		Alter Control 98 Show
+		Alter Control 97 Hide
+		Alter Control 96 Disable
+'		Alter Control 95 Disable
+	else
+		Alter Control 97 Show
+		Alter Control 98 Hide
+		Alter Control 96 Enable
+'		Alter Control 95 Enable
+	end if
+End Sub
+
+Sub HelpButtonHandler()
+	Call SendToMapXMobileAbout
+	'Note GetResString(IDS_HELP_MSG)
+End Sub
+
+Sub CancelButtonHandler()
+	g_intCurrentDialog=0
+End Sub
+
+Sub BackButtonHandler()
+	g_intCurrentDialog=1
+	' remember checkbox and EditText settings when moving back to previous dialog
+	g_bOverwriteFiles=ReadControlValue(87)
+	g_bOpenResultingGeoset=ReadControlValue(88)
+	g_strOutputGeosetFile=ReadControlValue(89)
+
+	Dialog Remove
+End Sub
+
+Sub NextButtonHandler()
+	g_intCurrentDialog=2
+End Sub
+
+Sub FinishButtonHandler()
+	dim strCurrentFilename as String
+
+	strCurrentFilename=ReadControlValue(89)
+
+	'make sure filename is valid
+	OnError Goto HandleBadPathError
+	if not FileExists(strCurrentFilename) then
+		Open File strCurrentFilename for Output as #122
+	end if
+	' if execution reaches this point, the filename is valid
+	g_intCurrentDialog=3 ' set flag to escape from dialog loop
+
+Done:
+	OnError Goto IgnoreError
+	Close File #122
+	Exit Sub
+HandleBadPathError:
+	note Err() & " " & Error$()
+	Note GetResString(IDS_STEP_2_INVALID_PATH)
+	Dialog Preserve
+	Exit Sub
+IgnoreError:
+	Resume Next
+End Sub
+
+Sub BrowseButtonHandler()
+	dim strCurrentFilename as string
+
+	OnError Goto ErrorTrap
+
+	strCurrentFilename=ReadControlValue(89)
+	if PathToDirectory$(strCurrentFilename)="" then
+		strCurrentFilename=GetFolderPath$(FOLDER_MI_LOCAL_APPDATA) & strCurrentFilename
+	end if
+	if PathToFilename$(strCurrentFilename)="" then
+		strCurrentFilename=strCurrentFilename & GetResString(IDS_STEP_2_DEFAULT_GST_NAME)
+	end if
+	if ucase$(right$(PathToFilename$(strCurrentFilename),4))<>".GST" then
+		' check to see if there is some other extension
+		if instr(1, right$(PathToFilename$(strCurrentFilename),5),".") then
+			strCurrentFilename=left$(strCurrentFilename, len(strCurrentFilename) - 5
+				+ instr(1, right$(PathToFilename$(strCurrentFilename),5),".")) & "GST"
+		else
+			strCurrentFilename=strCurrentFilename & ".GST"
+		end if
+	end if		
+
+	strCurrentFilename=FileSaveAsDlg(PathToDirectory$(strCurrentFilename),
+		PathToFilename$(strCurrentFilename), 
+		"GST", GetResString(IDS_STEP_2_BROWSE_DLG_TITLE))
+
+	if strCurrentFilename<>"" then
+		' the filename is valid -- FileSaveDlg checks to make sure that the path exists
+		Alter Control 89 Value strCurrentFilename
+	end if
+Done:
+	Exit Sub
+HandleBadPathError:
+	note Err()
+	Note GetResString(IDS_STEP_2_INVALID_PATH)
+	Exit Sub
+ErrorTrap:
+print "BrowseButtonHandler: " & Error$()
+  Resume Done
+IgnoreError:
+  Resume Next
+End Sub
+
+' this function will make (clone) a copy of the map window, remove all layers
+'  that are not supported, change the window size to match a Pocket PC display,
+'  and update the (ByRef) intMapWin pointer to point to the new map window.
+
+Function bCloneAndCleanMapWindow() as Logical
+	dim intLayer as integer
+	dim strCurrentLayer, strCosmeticName as String
+	dim bNameInUse as Logical
+
+	dim intWind, intOriginalMap as Integer
+	dim dblTotalSize as Float
+	Dim rct as object, x1, y1, x2, y2 as Float
+	Dim strObjDesc as String
+	Dim intNumRecsInOverlap as Integer
+	Dim intCurrentLayer as Integer
+	Dim i as Integer
+	Dim bDuplicateLayer as Logical
+	Dim strTemp as String
+	Dim bTableIsValid as Logical
+	Dim dblTableSize as Float
+
+	'OnError Goto ErrorTrap
+
+ 	CLS
+	intOriginalMap=FrontWindow()
+	Run Command WindowInfo(intOriginalMap,15) ' 15=WIN_INFO_CLONEWINDOW
+	g_intClonedMap=FrontWindow()
+	Set Map Window g_intClonedMap Redraw Off
+	Call ResizeMapForPPC(g_intClonedMap)
+	if g_intUseOriginalWindow=1 then
+		intWind=intOriginalMap
+	else
+		intWind=g_intClonedMap
+	end if
+	
+	' coordsys must match current map window
+	Set CoordSys Window intWind
+
+	x1=MapperInfo(intWind, MAPPER_INFO_MINX)
+	y1=MapperInfo(intWind, MAPPER_INFO_MINY)
+	x2=MapperInfo(intWind, MAPPER_INFO_MAXX)
+	y2=MapperInfo(intWind, MAPPER_INFO_MAXY)
+	Create Rect into Variable rct (x1, y1) (x2, y2)
+	rct = ConvertToRegion(rct)
+	
+	print GetResString(IDS_EXPORTING_MSG)
+
+	' first deal with cosmetic layer by converting to a true temporary layer if needed
+	g_strCosmeticLayerName=""
+	strCurrentLayer = LayerInfo(g_intClonedMap, 0, LAYER_INFO_NAME)
+	if g_intSubsetChoice=1 then
+		' currently exporting all undeleted records; for all records, use 
+		' no Where clause; for all mapped records use 'Where obj'
+		Select * from strCurrentLayer where TRUE into Overlap NoSelect
+	else
+		Select * from strCurrentLayer where obj partly within rct into Overlap NoSelect
+	end if
+
+	strCosmeticName=""
+	if TableInfo(Overlap, TAB_INFO_NROWS)>0 then
+		' make sure to get a unique, unused filename
+		Do
+			strCosmeticName=TempFileName$("")
+			strCosmeticName=Left$(strCosmeticName,len(strCosmeticName)-4) & ".TAB"
+		Loop Until Not FileExists(strCosmeticName) ' most likely will exit on first trip through loop
+		Commit Table Overlap as strCosmeticName
+		
+		' create a layer name known to be unique (can't just let MIPro assign a 
+		'  name automatically, because it would be ~MAPxxxx which would puzzle users)
+		g_strCosmeticLayerName=GetResString(IDS_COSMETIC_LAYER_NAME)
+		Do
+		  bNameInUse=FALSE
+		  for intLayer=1 to NumTables() ' loop through all open tables
+		    strCurrentLayer=TableInfo(intLayer,TAB_INFO_NAME)
+		    if strCurrentLayer=g_strCosmeticLayerName then
+			' name already in use.  Try the next '_n' name.
+			bNameInUse=TRUE
+			g_strCosmeticLayerName=strGetAlternateTableName(g_strCosmeticLayerName)
+			exit for
+		    end if
+		  next
+		Loop until bNameInUse=FALSE
+
+		' take cosmetic layer out of cloned map window; replace it with the native table just saved
+		Delete Object From Overlap
+		Open Table strCosmeticName as g_strCosmeticLayerName
+		Add Map Window g_intClonedMap Layer g_strCosmeticLayerName ' add as topmost layer
+	end if
+
+	g_dblTotalFileSize=0
+	intLayer=1
+	g_intNumLayersToExport=MapperInfo(g_intClonedMap, MAPPER_INFO_LAYERS)
+	ReDim g_strTempLayerNames(g_intNumLayersToExport) ' cosmetic layer is now a .TAB layer
+	ReDim g_strExportLayerNames(g_intNumLayersToExport)
+
+	do until intLayer>g_intNumLayersToExport
+		strCurrentLayer = LayerInfo(g_intClonedMap, intLayer, LAYER_INFO_NAME)
+		' first make sure layer is not a thematic layer
+		if LayerInfo(g_intClonedMap, intLayer, LAYER_INFO_DISPLAY)=LAYER_INFO_DISPLAY_VALUE then ' thematic
+			' remove thematic layer -- no need to check if this is the last layer!
+			Remove Map Window g_intClonedMap Layer intLayer
+			g_intNumLayersToExport=g_intNumLayersToExport-1
+		else
+		   ' also remove other layer types that the standard Geoset.MB will choke on
+		   '  (in future versions this may be modified to allow exporting these types --
+		   '   since there's no real reason why _this_ tool should not export queries:
+		   '   a native-TAB copy is being made of everything, and geosets support those...)
+			bTableIsValid = ValidTableSourceType(strCurrentLayer)
+			if LayerInfo(g_intClonedMap, intLayer, LAYER_INFO_TYPE) = LAYER_INFO_TYPE_IMAGE
+			    or TableInfo(strCurrentLayer, TAB_INFO_SEAMLESS)=TRUE
+			    or TableInfo(strCurrentLayer, TAB_INFO_TYPE)=TAB_TYPE_RESULT ' query
+			    or not bTableIsValid then ' old table version, weird table type
+				Remove Map Window g_intClonedMap Layer intLayer
+				if g_intNumLayersToExport>1 then
+					g_intNumLayersToExport=g_intNumLayersToExport-1
+				else
+					Note GetResString(IDS_PREPROCESS_ERROR)
+					g_intClonedMap=-1
+					bCloneAndCleanMapWindow=False
+					Exit Function
+				end if
+			else
+				' clear any custom labels (for display reasons) -- even when Geoset.MBX does this,
+				'   we shouldn't necessarily do it here, because the # of records may have changed.
+				'   (Even if we've exported 'all records in table', any deleted records will be missing!)
+				Set Map Layer intLayer Label Default
+					
+				'**********************************************
+				' currently we must always remove custom labels to match MapX functionality.
+				'  Future versions should check whether 'all records' (not just 'all undeleted
+				'  records') have been selected, or check whether any custom labels will be
+				'  affected by any changes to rowID -- and if possible, correct the problem.
+				' *********************************************
+
+				' export the appropriate subset to the TEMP directory
+				Do
+					strTemp=TempFileName$("")
+					strTemp=Left$(strTemp,len(strTemp)-4) & ".TAB"
+				Loop Until Not FileExists(strTemp) ' most likely will exit on first trip through loop
+				strCurrentLayer = LayerInfo(g_intClonedMap, intLayer, LAYER_INFO_NAME)
+				bDuplicateLayer=FALSE
+				for i=1 to intLayer-1
+					if strCurrentLayer=LayerInfo(g_intClonedMap, i, LAYER_INFO_NAME) then
+						bDuplicateLayer=TRUE
+						exit for
+					end if
+				next
+				if bDuplicateLayer=TRUE then
+					' don't need to export this table again, nor will we need to move it to new location
+					g_strTempLayerNames(intLayer)="*2"
+					g_strExportLayerNames(intLayer)=g_strExportLayerNames(i)
+					print GetResString(IDS_DUPLICATE_LAYER_MSG) & strCurrentLayer
+					intLayer=intLayer+1
+				else
+					if g_intSubsetChoice=1 then
+						' currently exporting all undeleted records; for all records, use 
+						' no Where clause; for all mapped records use 'Where obj'
+						Select * from strCurrentLayer Where TRUE into Overlap NoSelect
+					else
+						Select * from strCurrentLayer where obj partly within rct into Overlap NoSelect
+					end if
+					intNumRecsInOverlap=TableInfo(Overlap, TAB_INFO_NROWS)
+					if g_bExportEmptyTables=FALSE and intNumRecsInOverlap=0 then ' always export if there are records
+						Remove Map Window g_intClonedMap Layer intLayer
+						if g_intNumLayersToExport>1 then
+							g_intNumLayersToExport=g_intNumLayersToExport-1
+						else
+							Note GetResString(IDS_PREPROCESS_ERROR)
+							g_intClonedMap=-1
+							bCloneAndCleanMapWindow=False
+							Exit Function
+						end if
+					else
+						if intNumRecsInOverlap=1 then
+							strObjDesc=GetResString(IDS_EXPORT_OBJECT_SING)
+						else
+							strObjDesc=GetResString(IDS_EXPORT_OBJECTS_PLURAL)
+						end if
+						Commit Table Overlap As strTemp Type NATIVE
+						dblTableSize=dblGetTabFileSize(strTemp)
+						g_dblTotalFileSize=g_dblTotalFileSize + dblTableSize
+						print GetResString(IDS_EXPORT_MSG_PART_1) 
+							& TableInfo(Overlap, TAB_INFO_NROWS) & strObjDesc
+							& GetResString(IDS_EXPORT_MSG_PART_2) & strCurrentLayer
+							& ": " & int(dblTableSize/1024) & GetResString(IDS_KB)
+						g_strTempLayerNames(intLayer)=strTemp
+						g_strExportLayerNames(intLayer)=strCurrentLayer & ".TAB"
+						Close Table Overlap
+	
+						intLayer=intLayer+1 ' iterate through all layers
+	
+					end if ' check to see if the overlap table is empty
+				end if ' check for duplicate layer
+			end if ' check for raster, seamless, query, or invalid type for MapX
+		end if ' check for thematic layer
+	Loop
+
+	Set Map Window g_intClonedMap Redraw On
+	bCloneAndCleanMapWindow=True
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "bCloneAndCleanMapWindow: " + Error$()
+  bCloneAndCleanMapWindow=False
+  Resume Done
+
+End Function
+
+Sub EditGeoset(ByVal strTempGeosetFile as String, ByVal strOutputGeosetFile as String)
+	Dim strCurrentLine as String
+	Dim strTemplate as String
+	Dim intCurrentLayer as Integer
+	Dim strFileName as String
+	Dim strOriginalFileName as String
+	Dim intCountStrikes as Integer
+
+	OnError Goto ErrorTrap
+
+	' now copy temporary geoset file to its final location, replacing filenames when found
+	print GetResString(IDS_MODIFYING_GEOSET)
+	intCurrentLayer=1
+	' file handles 126 and 127 are currently assumed to be not in use:
+	Open File strTempGeosetFile for Input as #126
+	Open File strOutputGeosetFile for Output as #127
+	strTemplate="""\TABLE\1\FILE"""
+	Do
+		Line Input #126, strCurrentLine
+		if EOF(126) then exit do end if
+		if left$(strCurrentLine, len(strTemplate))=strTemplate then
+			if g_strTempLayerNames(intCurrentLayer)="*2" then
+				' duplicate layer -- don't need to move this table (already moved)
+			else
+				' layer is not a duplicate, so we need to move it to its final location
+				if not bRenameTable(g_strTempLayerNames(intCurrentLayer),
+				  PathToDirectory$(g_strOutputGeosetFile) & g_strExportLayerNames(intCurrentLayer),
+				  g_bOverwriteFiles) then
+					' failed to move a table to its final location
+					Print GetResString(IDS_ERROR_MOVING_TABLE) 
+						& g_strTempLayerNames(intCurrentLayer)
+						& " -> " & g_strExportLayerNames(intCurrentLayer)
+					
+					' try renaming to alternate filenames -- but ten strikes and you're out!
+					strOriginalFileName=g_strExportLayerNames(intCurrentLayer)
+					intCountStrikes=0
+					Do while intCountStrikes<10
+						intCountStrikes=intCountStrikes+1
+						g_strExportLayerNames(intCurrentLayer)
+						 = strGetAlternateFileName(g_strExportLayerNames(intCurrentLayer))
+						if bRenameTable(g_strTempLayerNames(intCurrentLayer),
+						  PathToDirectory$(g_strOutputGeosetFile) & g_strExportLayerNames(intCurrentLayer),
+						  g_bOverwriteFiles) then
+							' successfully renamed/moved the table.  Use this name in geoset!
+							Print GetResString(IDS_USED_ALTERNATE_NAME) 
+								& g_strExportLayerNames(intCurrentLayer)
+							Exit Do
+						end if
+					Loop
+					if intCountStrikes=10 then
+						Print GetResString(IDS_FAILED_TEN_TRIES) & strOriginalFileName
+						g_strExportLayerNames(intCurrentLayer)=strOriginalFileName
+						g_bExportWarningFlag=TRUE
+					end if
+				end if ' check whether original rename attempt worked
+			end if
+			print #127, strTemplate & " = """ & g_strExportLayerNames(intCurrentLayer) & """"
+			intCurrentLayer=intCurrentLayer+1
+			strTemplate="""\TABLE\" & str$(intCurrentLayer) & "\FILE"""
+		else
+			print #127, strCurrentLine
+		end if
+	Loop
+	Close File #126
+
+	OnError Goto IgnoreErrors
+
+	' delete the template geoset file in the Windows TEMP directory
+	Kill strTempGeosetFile
+
+	' also delete the temporary table for the cosmetic layer, if it exists
+
+	If g_strCosmeticLayerName<>"" then
+		Drop Table g_strCosmeticLayerName
+	end if
+Done:
+  Close File #127
+  print GetResString(IDS_COMPLETED_EXPORT) & strOutputGeosetFile
+  Exit Sub
+
+ErrorTrap:
+  Print "EditGeoset: " + Error$()
+  Resume Done
+IgnoreErrors:
+	Resume Next
+End Sub
+
+Sub ResizeMapForPPC(ByVal intWind as Integer)
+	Dim dblMapZoom, dblMapCtrX, dblMapCtrY as Float
+
+	dblMapZoom=MapperInfo(intWind,MAPPER_INFO_ZOOM)
+	dblMapCtrX=MapperInfo(intWind,MAPPER_INFO_CENTERX)
+	dblMapCtrY=MapperInfo(intWind,MAPPER_INFO_CENTERY)
+	Set Window intWind Width g_dblPPCWidth Height g_dblPPCHeight
+
+	' fit old window contents (as defined by width/zoom) into new window size
+	Set Map Window intWind Center (dblMapCtrX, dblMapCtrY)
+	Set Map Window intWind Zoom dblMapZoom
+End Sub
+
+Function strGetAlternateTableName(ByVal strTableName as String) as String
+	Dim intLast, intUnderscore, intCurrentNum as Integer
+	Dim strNextNum as String
+	intLast=0
+	Do
+		intUnderscore=instr(intLast+1,strTableName, "_")
+		if intUnderscore=0 then	exit do end if
+		intLast=intUnderscore
+	Loop 
+	if intLast=0 then
+		strGetAlternateTableName=Left$(strTableName, 25) & "_2" ' could be 28
+	else
+		intCurrentNum=val(mid$(strTableName, intLast+1,99)) ' get numeric postfix
+		if intCurrentNum=0 then
+			strGetAlternateTableName=Left$(strTableName, 25) & "_2" ' 25 is standard
+		else
+			strNextNum=str$(intCurrentNum+1)
+			if intLast + len(strNextNum)>30 then
+				strGetAlternateTableName=Left$(strTableName, 29-len(strNextNum)) & "_" & strNextNum
+			else	 
+				strGetAlternateTableName=Left$(strTableName, intLast) & strNextNum
+			end if
+		end if
+	end if
+End Function
+
+' special-purpose function calling strGetAlternateTableName -- only for .TAB files
+Function strGetAlternateFileName(ByVal strFileName as String) as String
+	Dim strTemp as String
+
+	strTemp=PathToFileName$(strFileName)
+	if ucase$(right$(strTemp, 4))=".TAB" then
+		strTemp=left$(strTemp, len(strTemp)-4)
+	end if
+	strGetAlternateFileName=PathToDirectory$(strFileName)
+			& strGetAlternateTableName(strTemp) & ".TAB"
+End Function
+
+Function strMakeSettingsString() as String
+	strMakeSettingsString="SubsetChoice=" & str$(g_intSubsetChoice) & ";"
+					& "WindowChoice=" & str$(g_intUseOriginalWindow) & ";"
+					& "ExportEmptyTables=" & str$(g_bExportEmptyTables) & ";"
+End Function
+
+Function strMakeSettingsString2() as String
+	strMakeSettingsString2="OutputFile=" & g_strOutputGeosetFile & ";"
+		& "OverwriteFiles=" & str$(g_bOverwriteFiles) & ";"
+		& "OpenResultingGeoset=" & str$(g_bOpenResultingGeoset) & ";"
+End Function
+
+Function strGetTagValue(ByVal strSettings as String, ByVal strTag as String) as String
+	dim s as string
+	' adding the searched-for string to the end of the string being searched
+	'  in the code below simply insures that INSTR will never return 0
+	s=mid$(strSettings, instr(1, strSettings & strTag, strTag), 32767)
+	s=left$(s, instr(1, s & ";", ";")-1)
+	strGetTagValue=mid$(s, instr(1, s & "=", "=")+1, 32767)
+End Function
+
+Sub SaveSettingsInPRF()
+	OnError Goto ErrorTrap
+	Open File ApplicationDirectory$() & "send2mxm.prf" for Output as #123
+	print #123, strMakeSettingsString()
+	print #123, strMakeSettingsString2()
+Done:
+	OnError Goto IgnoreErrors
+	Close File #123
+	Exit Sub
+ErrorTrap:
+	print GetResString(IDS_CANT_WRITE_PRF) & ApplicationDirectory$() &
+"send2mxm.prf."
+	Resume Done
+IgnoreErrors:
+	Resume Next
+End Sub
+
+Sub GetSettingsFromPRF()
+	Dim strSettings, strSettings2, strTemp as String, intTemp as Integer
+
+	g_intSubsetChoice=1
+	g_bExportEmptyTables=1
+	g_intUseOriginalWindow=1
+	g_bOpenResultingGeoset=0
+	g_bOverwriteFiles=1
+	g_strOutputGeosetFile=GetFolderPath$(FOLDER_MI_LOCAL_APPDATA)
+	g_strOutputGeosetFile=g_strOutputGeosetFile
+		& Left$("\", int(Right$(g_strOutputGeosetFile,1)<>"\"))
+		& GetResString(IDS_STEP_2_DEFAULT_GST_NAME)
+
+	OnError Goto UseDefaults
+	Open File ApplicationDirectory$() & "send2mxm.prf" for Input as #124
+	Line Input #124, strSettings
+	Line Input #124, strSettings2
+	OnError Goto ErrorTrap
+
+	intTemp=val(strGetTagValue(strSettings, "SubsetChoice"))
+	if intTemp=1 or intTemp=2 then g_intSubsetChoice=intTemp end if
+	intTemp=val(strGetTagValue(strSettings, "WindowChoice"))
+	if intTemp=1 or intTemp=2 then g_intUseOriginalWindow=intTemp end if
+	' automatic type conversion to Logical in the next line:
+	g_bExportEmptyTables=strGetTagValue(strSettings, "ExportEmptyTables")
+
+	strTemp=strGetTagValue(strSettings2, "OutputFile")
+	' should also check that this is a valid filename -- make function
+	'  (could be a problem when moving send2mxm folder to another machine)
+	OnError Goto HandleBadPathError ' set strTemp to "" if not a valid filename
+	if not FileExists(strTemp) then
+		Open File strTemp for Output as #122
+	end if
+	OnError Goto ErrorTrap
+
+	if strTemp<>"" then g_strOutputGeosetFile=strTemp end if
+	g_bOpenResultingGeoset=strGetTagValue(strSettings2, "OverwriteFiles")
+	g_bOverwriteFiles=strGetTagValue(strSettings2, "OpenResultingGeoset")
+
+Done:
+	OnError Goto IgnoreErrors
+	Close File #122
+	Close File #124
+	Exit Sub
+HandleBadPathError:
+	strTemp="" ' filename from .PRF was no good -- use default instead
+	Resume Next
+UseDefaults:
+	Resume Done
+IgnoreErrors:
+	Resume Next
+ErrorTrap:
+  Print "GetSettingsFromPRF: " + Error$()
+  Resume Done
+
+End Sub

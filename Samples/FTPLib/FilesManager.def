@@ -1,0 +1,24 @@
+'*****************************************************************************
+'       Copyright © 2009 Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 66276 $
+'
+' Module Description:
+'
+' A MapBasic sample program to demonstate the usage of MapInfo HTTP/FTP
+' library API to receive/send/search files from/to FTP server.
+'
+'*****************************************************************************
+Define STRING_LEN 1024
+
+Declare Sub Init
+Declare Sub CleanUp
+Declare Sub FTPConnectDLG
+Declare Sub FTPGetFileDLG
+Declare Sub Connect
+Declare Sub ListFiles
+
+Global strFTP, strUser, strPWD As String
+Global hSession As  CInternetSession
+Global hConnect As  CFtpConnection

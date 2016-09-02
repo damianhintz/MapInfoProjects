@@ -1,0 +1,101 @@
+' Resource String Ids
+Define IDS_STR_RES_RANGE_ERR             1
+Define IDS_APP_DESCRIPTION               2
+Define IDS_MENU_NAME                     3
+Define IDS_MENU_ITEM_NAME                4
+Define IDS_ABOUT_MENU_ITEM_NAME          5
+Define IDS_EXIT_MENU_ITEM_NAME           6
+Define IDS_TOOLS                         7
+Define IDS_TOOL_HELP_MSG                 8
+Define IDS_DEFAULT_FILE_NAME             9
+Define IDS_TO_CREATE_GRID                10
+Define IDS_CANNOT_MAKE_NON_EARTH         11
+Define IDS_AREA_TOO_SMALL                12
+Define IDS_VERSION                       13
+Define IDS_OBJECT_TYPES                  14
+Define IDS_REGIONS_OR_POLYLINES          15
+Define IDS_OBJECT_STYLES                 16
+Define IDS_REGIONS                       17
+Define IDS_POLYLINES                     18
+Define IDS_SPACING                       19
+Define IDS_DEGREES_FEET_METERS           20
+Define IDS_SMOOTHNESS                    21
+Define IDS_EXTRA_NODES                   22
+Define IDS_EXTENTS                       23
+Define IDS_NORTH                         24
+Define IDS_SOUTH                         25
+Define IDS_EAST                          26
+Define IDS_WEST                          27
+Define IDS_ROUND_EXTENTS                 28
+Define IDS_NEW_TABLE                     29
+Define IDS_BROWSE                        30
+Define IDS_PROJECTION                    31
+Define IDS_OK                            32
+Define IDS_CANCEL                        33
+Define IDS_NEW_TABLE_PROMPT              34
+Define IDS_COULD_NOT_USE_NAME            35
+Define IDS_PLEASE_ENTER_DIFFERENT        36
+Define IDS_DEGREE_SPACING_MUST           37
+Define IDS_SPACING_CANNOT_BE_NEGATIVE    38
+Define IDS_SMOOTHNESS_CANNOT_BE          39
+Define IDS_TOO_MANY_CELLS                40
+Define IDS_REQUESTED_BECAUSE             41
+Define IDS_MAXIMUM_NUMBER_IS             42
+Define IDS_CONFIRM_CREATING              43
+Define IDS_CELLS                         44
+Define IDS_W                             45
+Define IDS_E                             46
+Define IDS_S                             47
+Define IDS_N                             48
+Define IDS_ABOUT                         49
+Define IDS_ABOUT_1                       50
+Define IDS_ABOUT_2                       51
+Define IDS_ABOUT_3                       52
+
+'Strings Not to be localized
+Define STR_RES_STR_FILE                  "gridmakr.str"
+Define STR_FILE_NOT_ACCESSIBLE           "Unable to access resource string file: "
+Define STR_APP_FILE_NAME                 "GridMakr.mbx"
+Define STR_COORDSYS_EARTH                "CoordSys Earth"
+Define STR_DEGREES                       "degrees"
+Define STR_SUB_MAIN                      "Main: "
+Define STR_SUB_START_FROM_MENU           "StartFromMenu: "
+Define STR_SUB_START_FROM_MOUSE          "StartFromMouse: "
+Define STR_SUB_MAIN_DIALOG               "MainDialog: "
+Define STR_SUB_BROWSE_TABLE_NAME         "BrowseTableName: "
+Define STR_SUB_NAME_NEW_TABLE            "name_new_table: "
+Define STR_SUB_MAIN_DIALOG_HANDLER       "MainDialogHandler: "
+Define STR_SUB_PREPARE_COORDINATES       "PrepareCoordinates: "
+Define STR_SUB_CAL_WHOLE_FROM_PARTS      "calculate_whole_from_parts: "
+Define STR_SUB_CAL_PARTS_FROM_WHOLE      "calculate_parts_from_whole: "
+Define STR_SUB_CREATE_REGION_GRID        "create_region_grid: "
+Define STR_SUB_CREATE_POLYLINE_GRID      "create_polyline_grid: "
+Define STR_SUB_RECTANGULAR_REGION        "rectangular_region: "
+Define STR_SUB_STRAIGHT_POLYLINE         "straight_polyline: "
+Define STR_SUB_BUILD_DESCRIPTION         "build_description$: "
+Define STR_SUB_BUILD_CELLNAME            "build_cellname$: "
+Define STR_SUB_SET_PROJECTION            "SetProjection: "
+Define STR_SUB_SET_EXTENT_UNITS          "SetExtentUnits: "
+Define STR_SUB_GOOD_BYE                  "GoodBye: "
+Define STR_SUB_ABOUT                     "About: "
+Define STR_FORMAT_PATTERN1               "00"
+Define STR_NON_EARTH                     "NonEarth"
+Define STR_SET                           "Set "
+Define STR_MENU_ITEM_SEPERATOR           "(-"
+Define STR_EMPTY_STR1                    ""
+Define STR_EMPTY_STR2                    " "
+Define STR_EMPTY_STR3                    """ "
+Define STR_EMPTY_STR4                    """"
+Define STR_QUOTE                         "' " 
+Define STR_OPEN_BRAC                     "("
+Define STR_CLOSE_BRAC                    ")"
+Define STR_XXXXXXXXXXXXXXX               "xxxxxxxxxxxxxxx"
+Define STR_CREATE_MAP_FOR                "Create Map For "
+Define STR_TAB                           "TAB"
+Define STR_DOT                           "."
+Define STR_DEGREE_SYMBOL                 "°"
+Define STR_METERS                        "meters"
+Define STR_FEET                          "feet"
+Define STR_US_SURVEY_FEET                "US Survey Feet"
+
+

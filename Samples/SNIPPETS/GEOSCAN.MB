@@ -1,0 +1,312 @@
+'****************************************************************************
+' Program: GEOSCAN
+'
+' This program scans a table to estimate how many records will successfully
+' Geocode.  It prompts the user for the table to scan.  It then opens the
+' table and presents a list of the column names in a dialog ListBox.  After
+' the user selects the column containing the address information, the program
+' loops through the table using the ProgressBar to show the progress of the
+' operation.
+'
+' Address validity is based on the first item in the address string.  If this
+' item is not a number, the program reports the address as probably bad.
+' Run this program on a table before geocoding to get an idea of how many
+' records can be expected to successfully geocode.
+'
+' MapBasic commands, procedures and statements featured:
+'    Dialog
+'    ProgressBar
+'    TableInfo()
+'
+'****************************************************************************
+
+'****************************************************************************
+'
+' Include files and Define statements
+'
+'****************************************************************************
+Include "mapbasic.def" 
+Define COL_ListBox 100 
+
+'****************************************************************************
+'
+' Declare sub procedures
+'
+'****************************************************************************
+
+Declare Sub Main
+Declare Sub scanner
+Declare Sub extract( ByVal goal As Integer, ByVal s As string, rval As string )
+
+'****************************************************************************
+'
+' Declare Global variables
+'
+'****************************************************************************
+
+Global bCont                As Logical
+Global iNG, iTot, iPGCtr    As Integer
+Global sColname, sTblname   As String
+Global rows                 As SmallInt
+
+'****************************************************************************
+' Sub procedure: Main
+'
+' This program uses MapBasic's built-in File Open dialog box to prompt the
+' user for the name of a table to scan.  It then uses the TableInfo and 
+' ColumnInfo tools to construct a list of the columns in the table. 
+'
+' The user-defined Extract() function returns the name of the column 
+' selected in the Dialog Box.
+'****************************************************************************
+        
+Sub Main
+
+  ' Declare local variables.
+  Dim sInput,scols,sc,stmp,sext   As string
+  Dim aCol                        As Alias
+  Dim fstart,fStop                As Float
+  Dim icols, i, idot              As Integer
+
+  ' Clear the Message window.
+  Print chr$(12)                             
+  sInput = ""
+
+  ' Prompt user for table to scan.
+  sInput = FileOpenDlg( "", "", "TAB", "Table To scan" )
+  If sInput = " " Then 
+    End Program
+  End If
+
+  ' On the Macintosh we don't care about file extensions
+  ' so we don't do this check
+  If SystemInfo(SYS_INFO_PLATFORM) <> PLATFORM_MAC Then
+    ' Get the extension of the chosen file.
+    idot = InStr( 1, sInput, "." )
+    sext = Mid$( sInput, idot+1, 4 )
+
+      ' Register non-MapInfo files before using them.
+    Do Case UCase$( sext )
+      Case "TAB"
+            
+      Case "DBF"
+        Register Table sInput
+          Type "DBF"
+      Case "WKS"
+        Register Table sInput
+         Type "WKS"
+      Case "ASC"
+       Register Table sInput
+         Type "ASCII"
+      Case "XLS"
+        Register Table sInput
+          Type "XLS"
+      Case Else
+        Note "Unknown File Type; Must be DBF, WKS, XLS, or TAB; Geoscan ending."
+        End Program
+    End Case
+    
+    sInput = Mid$( sInput, 1, idot )
+    sInput = sInput+"TAB"
+  End If
+
+  Open Table sInput Interactive
+
+  ' Use the TableInfo() function to determine name, #rows, and #columns
+  ' in the most recently opened table.
+  sTblName = TableInfo(0, TAB_INFO_NAME)          
+  rows = TableInfo( 0, TAB_INFO_NROWS )         
+  icols = TableInfo( 0, TAB_INFO_NCOLS )       
+  Print "Rows = "+ rows                       
+
+  ' This loop uses ColumnInfo() to extract all the column names and
+  ' store them in the string variable scols which will be used as the
+  ' title of the Dialog ListBox.
+  ' Note that the 2nd parameter passed to ColumnInfo must be a string 
+  ' which contains "COL" and the integer number of the desired column. 
+  ' ("COL1", "COL2", etc.)   
+  scols = ""
+  For i = 1 To icols
+    sc = "COL"+Str$(i)
+    stmp = ColumnInfo(sTblName, sc, COL_INFO_NAME )
+    scols = scols + stmp + ";"
+  Next
+
+
+  ' Now display the Dialog Box.  If the user accepts it, CommandInfo(1)
+  ' is TRUE and
+  '  -- extract() is called to get the name of the column
+  '     selected in the list box;
+  '  -- the timer is started;
+  '  -- and scanning of the table begins.
+  ' Otherwise the program is aborted.
+  ' Note: To determine if the user accepted or escaped from the dialog,
+  ' check CommandInfo(1) immediately after the dialog goes down.
+  Dialog Title "Column To Scan"
+
+    Control StaticText
+      Title "Column With address info:"
+      Position 10, 10
+      Height 12
+
+    ' icols is an integer index to the selected item
+    Control ListBox
+      Title scols
+      Position 10, 34
+      Width 64
+      Into icols                 
+      Value 1
+      ID COL_ListBox
+
+    ' CommandInfo(1) is TRUE if this button is clicked
+    Control OKButton          
+      Title "OK"
+
+    ' CommandInfo(1) is FALSE if this button is clicked or user hits ESC.
+    Control CancelButton            
+      Title "Cancel"              
+
+  ' Check to see if user wants to quit.
+  If NOT CommandInfo( 1 ) Then        
+    End Program
+  End If
+    
+  ' Extract the column name from the list.                                   
+  Call extract( icols, scols, sColname )  
+
+  ' Position cursor at the first record in the table.
+  Fetch First From sTblName                 
+                                        
+  ' Note the use of the ProgressBar below.  The ProgressBar uses the
+  ' Calling clause to run the sub procedure that validates the records.
+  ' The Range clause dimensions the ProgressBar.
+
+  ' Starting time.
+  fstart = Timer()                  
+  iPGCtr = 0      
+  ' Call the scan routine under ProgressBar control.               
+  ProgressBar "Scanning addresses..."   
+    Calling scanner
+    Range rows
+  ' Ending time.
+  fStop = Timer()  
+
+
+  ' After using ProgressBar, CommandInfo(1) returns whether the process
+  ' completed or was canceled by the user. 
+  ' If CommandInfo(1) is TRUE, the ProgressBar and the procedure it is
+  ' controlling completed. 
+  If CommandInfo( 1 ) Then            
+    Print "Scan completed; "
+  Else 
+    Print "Scan Stopped before finishing;"
+  End If 
+
+  ' Report the results.
+  Print "Probably OK: "+Str$(iTot - iNG)  
+  Print "Probably No Good: "+Str$(iNG)
+
+  ' Calculate and report elapsed time.
+  If (fStop - fstart) < 60 Then       
+    Print "Time To scan "+Str$(iTot)+" records: "+str$( (fStop - fstart) )+" seconds"
+  Else
+    Print "Time To scan "+Str$(iTot)+" records: "+str$( (fStop - fstart)/60 )+" minutes"
+  End If 
+
+  ' Close table if user desires.
+  If (Ask( "Close Table "+sTblName+"?", "Yes", "No" )) Then
+    Close Table sTblName              
+  End If
+
+  ' End the program.
+  End Program                        
+
+End Sub 
+
+
+'****************************************************************************
+'
+' Sub procedure: Scanner
+'
+' Scanner is called by the ProgressBar routine.
+' 
+' This procedure loops through the table checking each record. Every 100 
+' records the loop ends, the ProgressBar variable is incremented, and
+' control returns to the ProgressBar itself so the screen can be updated. 
+'
+' The validation process then repeats, resuming where it left off, until the
+' entire table has been checked.
+'
+'****************************************************************************
+Sub Scanner
+  ' Declare local variables.
+  Dim ictr As Integer
+  Dim acol As Alias
+
+  ' Initialize loop counter and column name.
+  ictr = 0 
+  aCol = sTblName+"."+ sColname                  
+
+  ' The cursor is moved through the table by this procedure.  Each record
+
+
+  ' is validated and if it fails, the variable iNG is incremented.  
+  ' The cursor position is not reset when the ProgressBar is updated.
+  While (not EOT( sTblName )) and (ictr < Maximum( (rows\100), 10 ))
+    If Val( aCol ) < 1 then
+      iNG = iNG + 1
+    End If 
+    
+    iTot = iTot + 1
+    
+    Fetch Next From sTblName
+    ictr = ictr + 1
+  Wend
+
+  ' When EOT is TRUE, set the ProgressBar variable to -1 to exit the
+  ' ProgressBar routine.    
+  If EOT( sTblName ) Then
+    ProgressBar = -1
+  Else
+    ' Set the ProgressBar variable.  Note iPGCtr is declared as Global
+    ' to keep its value between calls to this sub procedure.
+    iPGCtr = iPGCtr + ictr      
+    ProgressBar = iPGCtr                                        
+  End If                          
+                                 
+End Sub 
+
+
+'****************************************************************************
+' Sub procedure: Extract()
+'
+' Extract() uses the integer index value set by selecting an item from a 
+' ListBox to return the name of the item in a string variable. 
+'
+' Parameters:
+'  goal -- integer index of the string item we want to extract
+'  s    -- ';'-delimited string of items in the list box
+'  rval -- string variable to contain the item we extract from s
+'
+'****************************************************************************
+Sub Extract( ByVal goal As Integer, ByVal s As string, rval As string )
+
+  Dim iBeg, iEnd, r  As Integer
+  Dim tmpVar      As Integer
+
+  iBeg = 1
+  iEnd = InStr( iBeg, s, ";" )
+
+  For r = 2 To goal
+    iBeg = iEnd + 1
+    iEnd = InStr( iBeg, s, ";" )
+  Next
+
+  If iEnd = 0 Then
+    iEnd = 99
+  End If
+
+  rval = Mid$( s, iBeg, iEnd - iBeg )
+
+End Sub 
+

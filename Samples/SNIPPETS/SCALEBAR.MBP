@@ -1,0 +1,6 @@
+[Link] 
+Application=ScaleBar.mbx 
+Module=ScaleBar.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\Lib\resstrng.mbo
+Module=..\Lib\GetPaperSize.mbo

@@ -1,0 +1,6 @@
+[Link] 
+Application=RotateMapWindow.mbx 
+Module=RotateMapWindow.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\Lib\resstrng.mbo
+

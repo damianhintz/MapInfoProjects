@@ -1,0 +1,360 @@
+Include "MapBasic.def"
+Include "Service.def"
+
+'---------------------------------------
+' Open File for given filename in sequential mode
+'---------------------------------------
+Function OpenFile( lFileNumber As Integer, ByVal sPathName As String ) As Logical
+  OnError Goto ErrorTrap 
+
+    lFileNumber = 1
+
+    Open File sPathName For Input Access Read As lFileNumber
+
+    OpenFile = TRUE
+Done:
+    Exit Function 
+
+ErrorTrap:
+    If Err() = 672 Then
+      lFileNumber = lFileNumber + 1 
+      Resume 0
+    Else
+      Print "OpenFile: " & Error$()
+      Resume Done
+    End If
+End Function 'OpenFile
+
+'---------------------------------------
+' Close File with given number
+'---------------------------------------
+Sub CloseFile( ByVal lFileNumber As Integer )
+  OnError Goto ErrorTrap
+
+    Close File #lFileNumber
+ 
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "CloseFile: " & Error$()
+  Resume Done
+End Sub 'CloseFile
+
+'---------------------------------------
+' Check whether the path is relative 
+'---------------------------------------
+Function IsRelativePath( sPath As String ) As Logical
+  OnError Goto ErrorTrap
+  Dim sDirName   As String
+    
+    sDirName = PathToDirectory$( sPath )
+    If sDirName = "" Then
+        IsRelativePath = TRUE   
+    ElseIf Left$( sDirName, 1 ) = "." Then
+        IsRelativePath = TRUE   
+    End If
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "IsRelativePath: " & Error$()
+  Resume Done
+End Function 'IsRelativePath
+
+
+'---------------------------------------
+' Get Dir Separator character 
+'---------------------------------------
+Function DirSeparatorChar() As String
+  OnError Goto ErrorTrap
+
+    Do Case SystemInfo(SYS_INFO_PLATFORM)
+        Case PLATFORM_MAC
+            DirSeparatorChar = ":"
+
+        Case PLATFORM_X11, PLATFORM_MOTIF, PLATFORM_XOL
+            DirSeparatorChar = "/"
+
+        Case PLATFORM_WIN
+            DirSeparatorChar = "\"
+
+        Case Else
+            DirSeparatorChar = "/"
+        End Case
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "DirSeparatorChar: " & Error$()
+  Resume Done
+End Function 'DirSeparatorChar
+
+'---------------------------------------
+' Make Full path of Prefix and suffix paths
+'---------------------------------------
+Function MakeFullPath( ByVal sPrefix As String, ByVal sSuffix  As String ) As String
+  OnError Goto ErrorTrap
+  Dim sFullPath, sSubDirName     As String
+  Dim sFileName                  As String
+  Dim sDirSep                    As String
+  Dim lPos, lLen                 As Integer
+
+    sDirSep = DirSeparatorChar()
+
+    sSubDirName = PathToDirectory$( sSuffix )
+    sFileName = PathToFileName$( sSuffix )
+    If sPrefix = "" Then
+        sPrefix = sSubDirName
+        sSubDirName = ""
+    End If
+
+    If Left$( sPrefix, 2 ) = "\\" Then ' UNC Path
+        sFullPath = "\\" 
+        lLen = Len( sPrefix )
+        If lLen > 2 Then
+            sPrefix = Right$( sPrefix, lLen - 2 )
+        Else
+            sPrefix = ""
+        End If
+    End If
+    
+    sFullPath = ConcatenatePath( sFullPath, sPrefix, sDirSep )
+    sFullPath = ConcatenatePath( sFullPath, sSubDirName, sDirSep )
+    sFullPath = sFullPath & sFileName
+    MakeFullPath = sFullPath 
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "MakeFullPath: " & Error$()
+  Resume Done
+End Function 'MakeFullPath
+
+'---------------------------------------
+' Remove Last Dir Name form Path
+'---------------------------------------
+Function RemoveLastDirName( ByVal sPath As String, ByVal sDirSep  As String ) As String
+  OnError Goto ErrorTrap
+
+    If Right$( sPath, 1 ) = sDirSep Then
+        sPath = Left$( sPath, Abs( Len( sPath ) - 1 ) )
+    End If
+    RemoveLastDirName = PathToDirectory$( sPath )
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "RemoveLastDirName: " & Error$()
+  Resume Done
+End Function 'RemoveLastDirName
+
+'---------------------------------------
+' Get First Sub Dir Name form Path
+'---------------------------------------
+Function GetSubDirName( sPath As String, ByVal sDirSep  As String ) As String
+  OnError Goto ErrorTrap
+  Dim lPos        As Integer
+
+    lPos = InStr( 1, sPath, sDirSep )
+    If lPos > 0 Then
+        GetSubDirName = Left$( sPath, lPos - 1 )
+        sPath = Right$( sPath, Len( sPath ) - lPos )
+    Else
+        GetSubDirName = sPath
+        sPath =""
+    End If
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "GetSubDirName: " & Error$()
+  Resume Done
+End Function 'GetSubDirName
+
+'---------------------------------------
+' Concatenate Init Path and Suffix Path
+'---------------------------------------
+Function ConcatenatePath( sInitPath As String, sSuffix As String, ByVal sDirSep  As String ) As String
+  OnError Goto ErrorTrap
+  Dim sFullPath, sSubDirName     As String
+
+    sFullPath = sInitPath
+    Do While Len( sSuffix ) > 1
+        sSubDirName = GetSubDirName( sSuffix, sDirSep )
+        Do Case sSubDirName
+            Case PARENT_DIR 
+                sFullPath = RemoveLastDirName( sFullPath, sDirSep )
+            Case CURRENT_DIR
+            Case ""
+            Case Else
+                sFullPath = sFullPath & sSubDirName & sDirSep
+        End Case
+    Loop
+
+    ConcatenatePath = sFullPath
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "ConcatenatePath: " & Error$()
+  Resume Done
+End Function 'ConcatenatePath
+
+
+Function GetRegKeyValue( ByVal lKeyRoot As Integer, ByVal sKeyName As String, 
+                     ByVal sValueName As String, sKeyValue As String) As Logical
+  Dim i As Integer                 ' Loop Counter
+  Dim rc As Integer                ' Return Code
+  Dim hKey As Integer              ' Handle To An Open Registry Key
+  Dim hDepth As Integer            '
+  Dim lKeyValType As Integer       ' Data Type Of A Registry Key
+  Dim tmpVal As String             ' Tempory Storage For A Registry Key Value
+  Dim lKeyValSize As Integer       ' Size Of Registry Key Variable
+  
+    ' Open Registry Key
+    rc = RegOpenKeyEx(lKeyRoot, sKeyName, 0, KEY_ALL_ACCESS, hKey)
+    ' Handle Error...
+    If (rc <> ERROR_SUCCESS) Then 
+         GoTo GetKeyError 
+    End If
+    
+    tmpVal = Space$(1024)   ' Allocate Variable Space
+    lKeyValSize = 1024          ' Mark Variable Size
+  
+    ' Get Key Value
+    rc = RegQueryValueEx(hKey, sValueName, 0, lKeyValType, tmpVal, lKeyValSize)
+    ' Handle Error...
+    If (rc <> ERROR_SUCCESS) Then 
+         GoTo GetKeyError 
+    End If
+  
+    If (Asc(Mid$(tmpVal, lKeyValSize, 1)) = 0) Then  ' Win95 Adds Null Terminated String...
+        tmpVal = Left$(tmpVal, lKeyValSize - 1)      ' Null Found, Extract From String
+    Else                                             ' WinNT Does NOT Null Terminate String...
+        tmpVal = Left$(tmpVal, lKeyValSize)          ' Null Not Found, Extract String Only
+    End If
+  
+    ' Determine Key Value Type For Conversion...
+    Do Case lKeyValType                            ' Search Data Types...
+        Case REG_SZ                                ' String Registry Key Data Type
+            sKeyValue = tmpVal                     ' Copy String Value
+    End Case
+    
+    GetRegKeyValue = True          ' Return Success
+    rc = RegCloseKey(hKey)      ' Close Registry Key
+    Exit Function               ' Exit
+  
+GetKeyError:    ' Cleanup After An Error Has Occured...
+    sKeyValue = ""              ' Set Return Val To Empty String
+    GetRegKeyValue = False      ' Return Failure
+    rc = RegCloseKey(hKey)      ' Close Registry Key
+End Function
+
+Function UnitNumberToUnitAbbr( ByVal lUnitNumber As Integer ) As String
+  Do Case lUnitNumber
+    Case miUnitChain
+      UnitNumberToUnitAbbr = "ch" 
+    Case miUnitCentimeter
+      UnitNumberToUnitAbbr = "cm"
+    Case miUnitFoot
+      UnitNumberToUnitAbbr= "ft"
+    Case miUnitInch
+      UnitNumberToUnitAbbr = "in"
+    Case miUnitKilometer
+      UnitNumberToUnitAbbr = "km"
+    Case miUnitLink
+      UnitNumberToUnitAbbr = "li"
+    Case miUnitMeter
+      UnitNumberToUnitAbbr = "m"
+    Case miUnitMile
+      UnitNumberToUnitAbbr = "mi"
+    Case miUnitMillimeter
+      UnitNumberToUnitAbbr = "mm"
+    Case miUnitNauticalMile
+      UnitNumberToUnitAbbr = "nmi"
+    Case miUnitRod
+      UnitNumberToUnitAbbr = "rd"
+    Case miUnitSurveyFoot
+      UnitNumberToUnitAbbr = "survey ft"
+    Case miUnitYard
+      UnitNumberToUnitAbbr = "yd"
+'    Case miUnitTwip            
+'    Case miUnitPoint           
+'    Case miUnitPica            
+'    Case miUnitDegree         
+    Case Else
+      UnitNumberToUnitAbbr = "mi"
+  End Case 'lUnitNumber
+End Function 'UnitNumberToUnitAbbr
+
+'---------------------------------------
+' Try to remove prefix part from path and make relative path  
+'---------------------------------------
+Function MakeRelativePath( sDirName As String, sPath As String ) As String
+  OnError Goto ErrorTrap
+  Dim sDir       As String
+  Dim lPos       As Integer
+
+    MakeRelativePath = sPath
+
+    sDir = PathToDirectory$( sPath )    
+    If sDirName <> "" Then
+        lPos = InStr( 1, sDir, sDirName )
+        If lPos = 1 Then
+' BP 12.06.98
+            If sDirName = sDir Then 
+                MakeRelativePath = PathToFileName$( sPath )
+            Else
+                MakeRelativePath = CURRENT_DIR & 
+                                   Right$( sPath, Len( sPath ) - Len( sDirName ) + 1 ) 
+            End If
+' BP 12.06.98                               
+        End If
+    End If
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "MakeRelativePath: " & Error$()
+  Resume Done
+End Function 'MakeRelativePath
+
+'---------------------------------------
+' Convert Geoset Name to File Name  
+' Replace prohibit characters in GeoSet Name
+'---------------------------------------
+Function GeoSetNameToFileName( ByVal sGeosetName As String ) As String
+  OnError Goto ErrorTrap
+  Dim sWorkName  As String
+  Dim sNewName   As String
+  Dim sChar      As String
+  Dim i          As Integer
+
+
+      sWorkName = Left$( LTrim$( RTrim$( sGeosetName ) ), 256 )
+
+      For i = 1 To Len( sWorkName )
+        sChar = Mid$( sWorkName, i, 1 )
+        If InStr( 1, "\/:*?""<>|", sChar ) <> 0 Then 
+           sNewName = sNewName & "_"
+        Else
+           sNewName = sNewName & sChar 
+        End If
+      Next 
+
+      GeoSetNameToFileName = sNewName
+      Exit Function
+ 
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "GeoSetNameToFileName: " & Error$()
+  Resume Done
+End Function 'GeoSetNameToFileName

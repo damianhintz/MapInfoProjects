@@ -1,0 +1,5 @@
+[Link]
+Application=WorkspaceResolver.mbx
+Module=WorkspaceResolver.mbo
+Module=..\lib\auto_lib.mbo
+Module=..\lib\resstrng.mbo

@@ -1,0 +1,717 @@
+'/*****************************************************************************
+'*       Copyright © 2011 Pitney Bowes Software Inc.
+'*       All rights reserved.
+'*****************************************************************************/
+Include "TableManager.def"
+
+Define TAB1 STR_EMPTY_STR5
+
+
+'THIS IS THE TYPE DEFINITION THAT WILL HOLD THE 
+'DEFINITION TABLE OF THE TAB FILE
+
+Type def_holder
+      field_name As String      'STORES THE FIELD NAME
+      field_type As String      'STORES THE FILED TYPE
+      field_length As String    'THIS HOLDS THE LENGTH OF THE FILED, POSSIBLY ZERO
+End Type
+
+Type array_2d                   'TYPE NAME FOR A 2 DIMENSIONAL ARRAY
+      hi_parsed() As String     'STORES THE PARSED KEYNAME INTO THE PROPER HIERARCHICAL POSITION
+      link() As Integer         'INDEX TO LINK THE PREVIOUSLY STORED HIERARCHY
+      final_value() As String   'STORES THE KEYVALUE OF THE SPECIFIC METADATA KEY
+End Type
+
+Global definition_table() As def_holder
+Global hierarchy_num() As array_2d
+Global s_keyname(), s_keyvalue(), parsed(), temp1, temp2, line_info As String
+Global definition_fields(), s_compare, type_of_set As String
+Global temp_space, temp_space2, temp_space3, temp_space4 As String
+Global i_traversal, z, q, x, i_traversal2, y, num_of_keys, slashes() As Integer
+Global num_of_slashes, max_slashes, slash_index, num_of_hierarchies As Integer
+Global index(), num_of_fields, completed, first_space, second_space As Integer
+Global right_paren, left_paren As Integer
+Global how_many_spaces, cancel_flag As Integer
+
+'****************************************************************************
+' Sub procedure: ExportMetaData
+'****************************************************************************
+Sub ExportMetaData
+
+  OnError Goto HandleError
+
+  Call ExportFGDCMetaData(gsCurTable)
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_EXPORT_META_DATA + Error$()
+  Resume Next
+End Sub
+'****************************************************************************
+' Sub procedure: ExportFGDCMetaData
+'****************************************************************************
+Sub ExportFGDCMetaData(sTableName As String)
+
+  OnError Goto HandleError
+
+  Dim sFileName, sDir, sFileSpec As String
+  Dim temp, pos, periodpos As Integer
+
+  max_slashes = 0
+  cancel_flag=0
+
+  sFileName = TableInfo(sTableName, TAB_INFO_TABFILE)
+  If sFileName <> STR_EMPTY_STR Then
+
+    Open File sFileName For Input As #2
+
+    sDir = PathToDirectory$(sFileName)
+    sFileName = PathToFileName$(sFileName)        'INFILE CONTAINS THE FILENAME WITH PERIOD EXTENSION If ANY
+    periodpos = instr(1,sFileName,STR_DOT)            'FIND THE POSITION OF THE PERIOD
+    sFileName = left$(sFileName,periodpos-1)      'INFILE NOW CONTAINS THE FILENAME WITHOUT THE PERIOD OR EXTENSION
+    sFileSpec = FileSaveAsDlg (sDir, sFileName, STR_MET, GetResString(IDS_SPECIFY_OUTPUT)) 
+    If sFileSpec <> STR_EMPTY_STR Then
+
+      Open File sFileSpec For Output As #1
+
+      q=0
+
+      Call ReadMetaData (sTableName)
+      If num_of_keys<>0 Then                        'PROGRAM WILL EXIT If THERE WAS NO METADATA FOUND.
+
+'LET THE USER KNOW PERCENTAGE COMPLETE...PROGRAM WILL EXIT IMMEDIATELY IF
+'USER CHOOSES TO CANCEL ACTION AT ANY GIVEN TIME
+
+        x=1
+        ProgressBar GetResString(IDS_PARSING_AND_STORING)
+          Calling ParseAndStoreMetaData
+          Range num_of_keys
+
+
+        If not(commandinfo(CMD_INFO_STATUS)) Then
+          cancel_flag=1
+          Note GetResString(IDS_OPERATION_CANCELED)
+        End If
+
+'ONLY CONTINUE If USER DID NOT CANCEL
+
+        If cancel_flag=0 Then
+          Print #1, GetResString(IDS_METADATA_SUMMARY) + STR_EMPTY_STR1 + sFileName
+
+'LET THE USER KNOW PERCENTAGE COMPLETE...PROGRAM WILL EXIT IMMEDIATELY IF
+'USER CHOOSES TO CANCEL ACTION AT ANY GIVEN TIME
+
+          x=1
+          ProgressBar GetResString(IDS_PRINTING_METADATA) + STR_EMPTY_STR1 + sFileSpec
+            Calling CallPrintOut
+            Range num_of_hierarchies
+
+          If not(commandinfo(CMD_INFO_STATUS)) Then
+            cancel_flag=1
+            Note GetResString(IDS_OPERATION_CANCELED)
+          End If
+
+'ONLY CONTINUE If USER DID NOT CANCEL
+
+          If cancel_flag=0 Then
+            Print #1, STR_EMPTY_STR
+            Print #1, STR_EMPTY_STR
+
+            Call FindNumberOfFIelds()
+
+'LET THE USER KNOW PERCENTAGE COMPLETE...PROGRAM WILL EXIT IMMEDIATELY IF
+'USER CHOOSES TO CANCEL ACTION AT ANY GIVEN TIME
+
+            z=1
+            ProgressBar GetResString(IDS_READING_DEFINITION)
+              Calling ReadDefinitionTable
+              Range num_of_fields
+
+            If not(commandinfo(CMD_INFO_STATUS)) Then
+              cancel_flag=1
+              Note GetResString(IDS_OPERATION_CANCELED)
+            End If
+
+'ONLY CONTINUE If USER DID NOT CANCEL
+
+            If cancel_flag=0 Then
+              Print #1, TAB1+TAB1+TAB1+TAB1+ GetResString(IDS_ENTITY_AND_ATTRIBUTE)
+              If type_of_set=STR_NATIVE Then
+                type_of_set=GetResString(IDS_MAPINFO_NATIVE)
+              End If
+              Print #1, GetResString(IDS_ENTITY_TYPE) + STR_EMPTY_STR1 + type_of_set
+              Print #1, GetResString(IDS_ENTITY_TYPE_DEFINITION)
+              Print #1, STR_EMPTY_STR
+              Print #1, GetResString(IDS_FIELD)+TAB1+GetResString(IDS_FIELD)+STR_EMPTY_STR2+TAB1+TAB1+TAB1+TAB1+TAB1+STR_EMPTY_STR2+GetResString(IDS_FIELD)+TAB1+TAB1+TAB1+GetResString(IDS_FIELD)
+              Print #1, GetResString(IDS_FIELD)+STR_EMPTY_STR4 +GetResString(IDS_NAME)+STR_EMPTY_STR2+TAB1+TAB1+TAB1+TAB1+TAB1+STR_EMPTY_STR2+STR_EMPTY_STR1+GetResString(IDS_TYPE)+TAB1+TAB1+TAB1+STR_EMPTY_STR1+GetResString(IDS_LENGTH)
+
+'LET THE USER KNOW PERCENTAGE COMPLETE...PROGRAM WILL EXIT IMMEDIATELY IF
+'USER CHOOSES TO CANCEL ACTION AT ANY GIVEN TIME
+
+              x=1
+              ProgressBar GetResString(IDS_PRINTING_DEFINITION) + STR_EMPTY_STR1 + sFileSpec
+                Calling DefinitionPrintOut
+                Range num_of_fields
+
+              If not(commandinfo(CMD_INFO_STATUS)) Then
+                cancel_flag=1
+                Note GetResString(IDS_OPERATION_CANCELED)
+              End If
+            End If
+          End If
+        End If
+      Else
+        Note GetResString(IDS_NO_METADATA_FOUND) + STR_EMPTY_STR1 + sFileName
+      End If
+
+      Close File #1
+
+    End If
+    Close File #2
+
+    If cancel_flag<>1 and num_of_keys<>0 Then
+      Note GetResString(IDS_FINISHED_WRITING) + STR_EMPTY_STR1 + sFileSpec
+    End If
+  Else
+    Note GetResString(IDS_UNABLE_TO_OPEN_TAB) + STR_EMPTY_STR1 + sFileSpec
+  End If
+
+  Exit Sub
+HandleError:
+  Note Error$()
+  Resume Next
+
+End Sub   'ExportFGDCMetaData
+
+'******************************PRINT METADATA SUB FUNCTION*****************************************
+Sub ParseAndStoreMetaData()
+  Dim iLoopChecker as Integer
+  OnError Goto HandleError
+
+  If q=0 Then 
+    For q=1 To max_slashes + 1     'INITIALIZE ALL INDICES TO 1
+      index(q)=1
+    Next
+  End If
+'  Print "Parse and store Metadata, Slashes array: " + ubound(slashes)
+  For y=1 To max_slashes
+    slashes(y)=0               'CLEAR ALL CURRENT POSITIONS OF SLASHES FOUND IN PREVIOUS KEYWORD      
+  Next
+      
+  slashes(1)=instr(2,s_keyname(x),STR_BACK_SLASH) 'FIND NEXT SLASH, NOT INCLUDING THE FIRST
+  If slashes(1)<>0 Then                'CONTINUE TO LOOK FOR SLASHES POSITION, IF THERE WAS ONE FOUND
+    For y=2 to max_slashes             'LOOK FOR AS MANY SLASHES ASSUMING KEYWORD CONTAINS THE MAX
+                                       'NUMBER OF SLASHES
+
+      slashes(y)=instr(slashes(y-1)+1,s_keyname(x),STR_BACK_SLASH)  'STORE POSITION OF SLASH
+      If slashes(y)=0 Then
+        y=max_slashes
+      End If                           'IF NO SLASH WAS FOUND, THIS WILL EXIT LOOP
+    Next 
+  End If
+'*****************************PARSE OUT THE KEYWORDS*********************************************
+  For y=1 To max_slashes+1             'INITIALIZE THE PARSING ARRAY TO ALL BLANKS FOR EACH PASS
+    parsed(y)=STR_EMPTY_STR 
+  Next
+
+  y=0                                  'ACTUAL PARSING STARTS HERE
+  Do 
+    y=y+1 
+'    print "In Loop y = " + y
+' THIS NEXT LINE PARSES IN THE CASE THAT IT IS A NON HIERARCHICHAL KEYWORD
+
+    If slashes(y)=0 And y=1 Then
+      parsed(y)=mid$(s_keyname(x),2,len(s_keyname(x))-1)
+    End If
+
+' THIS NEXT LINE PARSES OUT THE FIRST IN THE HIERARCHY
+
+    If slashes(y)<>0 And y=1 Then
+      parsed(y)=mid$(s_keyname(x),2,slashes(y)-2)
+    End If
+
+' THIS NEXT LINE PARSES OUT THE LAST ITEM IN THE HIERARCHY
+
+    If slashes(y)=0 And y<>1 Then
+      parsed(y)=mid$(s_keyname(x),slashes(y-1)+1,len(s_keyname(x))-slashes(y-1))
+    End If
+
+' THIS NEXT LINE PARSES OUT THE IN-BETWEENS
+
+    If y>1 Then
+      If slashes(y)<>0 And slashes(y-1)<>0 Then
+        parsed(y)=mid$(s_keyname(x),slashes(y-1)+1,slashes(y)-slashes(y-1)-1)
+      End If
+    End If
+
+  iLoopChecker = slashes(y)
+  Loop Until iLoopChecker=0 Or y=max_slashes
+
+' THIS NEXT LINE WILL PARSE OUT THE VERY LAST KEYWORD If THE KEYWORD CONTAINS MAX_SLASHES HIERARCHIES
+  
+  ' In an expression where two condition have And operator in between map basic still evaluates second condition 
+  ' even if the first condition is false. If the mzx_slashes = 0 and y ! = max_slashes then also it was trying to 
+  ' evaluate slashes(max_slashes), which means accessing the array element by specifying index value = 0.
+  ' This was throwing the error. 
+  ' To solve it broke the IF conditions into two if statements.
+  If y=max_slashes Then
+    If slashes(max_slashes)<>0 Then 
+      parsed(max_slashes+1)=mid$(s_keyname(x),slashes(y)+1,len(s_keyname(x))-slashes(y))
+    End If
+  End If
+
+'**************************************************************************************************
+'***********************NOW THAT THE KEYWORD IS PARSED, LINK IT INTO AN ARRAY**********************
+  
+  For z=1 To max_slashes+1   'THIS WILL LOOP THROUGH AS MANY TIMES AS THERE ARE HIERARCHIES
+    s_compare=parsed(z)
+      
+      
+'SINCE WE DON'T CARE ABOUT THE "ISREADONLY" KEYWORD, CHECK TO MAKE SURE THAT IS NOT THE CURRENT
+'VALUE BEING LOOKED AT.  If IT ISN'T, THEN DETERMINE WHAT POSITION THIS VALUE IS TO BE LINKED 
+'BACK TO       
+      
+    If s_compare<>STR_IS_READ_ONLY Then
+
+      If s_compare<>STR_EMPTY_STR Then
+        If z<>1 Then
+          hierarchy_num(z).link(index(z))=index(z-1)-1
+        End If
+
+'THIS LINE STORES THE KEYVALUE INTO THE PROPER LOCATION If THE KEYNAME IS THE LAST PART OF THE
+'HIERARCHY
+
+        If z=max_slashes+1 Then
+          hierarchy_num(z).final_value(index(z))=s_keyvalue(x)
+        End If
+
+        If index(z)<>1 and z<>max_slashes+1 Then
+          If hierarchy_num(z).final_value(index(z)-1)=STR_EMPTY_STR and
+             s_compare=hierarchy_num(z).hi_parsed(index(z)-1) and
+             parsed(z+1)=STR_EMPTY_STR Then
+            hierarchy_num(z).final_value(index(z)-1)=s_keyvalue(x)
+          End If
+        End If
+                         
+'IF THE YOU ARE LOOKING AT THE FIRST POSITION, STORE IT.  THEN CHECK TO SEE If THAT WAS THE LAST
+'SECTION OF THE HIERARCHY, If IT WAS, STORE IT'S FINAL VALUE INTO THE PROPER SPOT
+                  
+        If index(z)=1 Then      
+          hierarchy_num(z).hi_parsed(index(z))=s_compare
+          If z<>max_slashes+1 Then
+            If parsed(z+1)=STR_EMPTY_STR Then
+              hierarchy_num(z).final_value(index(z))=s_keyvalue(x) 
+            End If
+          End If
+      
+'NOW INCREMENT THE INDEX FOR THIS LEVEL, SO IT DOESN'T TRY TO STORE SOMETHING IN S POSITION THAT
+'ALREADY CONTAINS A VALUE
+
+          index(z)=index(z)+1
+
+'IF YOU ARE NOT LOOKING AT THE FIRST POSITION, SEE If WHAT YOU ARE LOOKING TO STORE HAS ALREADY BEEN
+'STORED, AND If NOT, STORE IT NOW
+
+        Else
+          If s_compare<>hierarchy_num(z).hi_parsed(index(z)-1) Then
+            hierarchy_num(z).hi_parsed(index(z))=s_compare
+            If z<>max_slashes+1 Then
+              If parsed(z+1)=STR_EMPTY_STR Then
+                hierarchy_num(z).final_value(index(z))=s_keyvalue(x) 
+              End If
+            End If
+
+'NOW INCREMENT THE INDEX FOR THIS LEVEL, SO IT DOESN'T TRY TO STORE SOMETHING IN S POSITION THAT
+'ALREADY CONTAINS A VALUE
+
+            index(z)=index(z)+1
+
+          Else
+            
+'IF THE WORD YOU ARE LOOKING TO STORE IS THE SAME AS THE WORD STORED BEFORE IT ON THE SAME LEVEL,
+'CHECK TO SEE If THEY ARE LINKED BACK TO THE SAME PLACE.  If NOT, THEN THEY ARE DISTINCT AND WILL
+'BE STORED
+   
+            If s_compare=hierarchy_num(z).hi_parsed(index(z)-1) Then
+              If hierarchy_num(z).link(index(z))<>hierarchy_num(z).link(index(z)-1) Then 
+                hierarchy_num(z).hi_parsed(index(z))=s_compare
+                If z<>max_slashes+1 Then
+                  If parsed(z+1)=STR_EMPTY_STR Then
+                    hierarchy_num(z).final_value(index(z))=s_keyvalue(x) 
+                  End If
+                End If
+                        
+'NOW INCREMENT THE INDEX FOR THIS LEVEL, SO IT DOESN'T TRY TO STORE SOMETHING IN S POSITION THAT
+'ALREADY CONTAINS A VALUE
+                      
+                index(z)=index(z)+1
+              End If
+            End If 
+          End If
+        End If
+      End If
+    End If                'END If S_COMPARE<>"ISREADONLY" THEN...
+
+
+'IF THERE IS NO HIERARCHY STORED, BUT IT IS LINKED TO SOMETHING 
+'INCORRECTLY, REMOVE THAT LINK BY SETTING IT TO ZERO
+
+    If hierarchy_num(z).hi_parsed(index(z))=STR_EMPTY_STR and hierarchy_num(z).link(index(z))<>0 Then
+      hierarchy_num(z).link(index(z))=0
+    End If
+
+  Next
+
+  x=x+1
+  If x>num_of_keys Then
+    progressbar=-1
+  Else
+    progressbar=x
+  End If
+
+'THIS WILL COUNT HOW MANY HIERACHIES THERE ARE
+   num_of_hierarchies=num_of_keys - 1
+
+  Exit Sub
+HandleError:
+  Note Error$()
+  Resume Next
+
+End Sub
+
+Sub ReadMetaData(sTableName As String)
+  OnError Goto HandleError
+
+'  THIS WILL GRAB ALL THE METADATA AND STORE THE KEYNAMES AND KEY VALUES IN AN ARRAY'''''''''''''
+
+  x=1
+
+  metadata table sTableName
+      settraverse STR_BACK_SLASH hierarchical into ID i_traversal
+
+  metadata traverse i_traversal
+      Next into key temp1  into value temp2
+
+  Do While temp1<>STR_EMPTY_STR
+    y=0
+    num_of_slashes=0 
+    x=x+1                                  'X IS KEEPING TRACK OF THE NUMBER OF KEYS READ IN
+    y=instr(2,temp1,STR_BACK_SLASH)
+    Do While y<>0
+      num_of_slashes=num_of_slashes+1      'KEEPS TRACK OF THE NUMBER OF SLASHES COUNTED IN EACH KEYWORD
+      y=instr(y+1,temp1,STR_BACK_SLASH)               'NOT COUNTING THE FIRST SLASH            
+    loop
+
+    If num_of_slashes>max_slashes Then
+      max_slashes=num_of_slashes
+    End If
+
+'SINCE MAX_SLASHES IS CURRENTLY EQUAL TO THE NUMBER OF SLASHES *NOT* INCLUDING THE FIRST ONE
+'MAX_SLASHES+1 WILL REFER TO THE MAXIMUM NUMBER OF HIERARCHY LEVELS FOUND IN ANY OF THE KEYWORDS
+
+    metadata traverse i_traversal
+      Next into key temp1 into value temp2
+
+  loop
+
+  num_of_keys=x-1                    'X WAS INCREMENTED ONCE TOO MANY, SO TOTAL NUM OF KEYS IS X-1
+
+  Redim  s_keyname(num_of_keys)
+  Redim  s_keyvalue(num_of_keys)
+  Redim  slashes(max_slashes+1)      'THESE NEXT LINES WILL ADJUST THE SIZE OF THE ARRAYS
+  Redim  parsed(max_slashes+1)       'THERE WILL BE EXTRA SPACE ALLOCATED, BUT THIS WILL ALLOCATE
+  Redim  index(max_slashes+1)          'EXACTLY ENOUGH IF EACH KEYWORD HAS MAX_SLASHES+1 HIERARCHIES
+  Redim  hierarchy_num(max_slashes+1)
+
+  For x=1 to max_slashes+1
+    Redim  hierarchy_num(x).hi_parsed(num_of_keys)    'THIS WILL ALLOCATE ENOUGH ROOM FOR ALL THE
+    Redim  hierarchy_num(x).link(num_of_keys)         'PARSED OUT KEYWORDS AND THEIR RESPECTIVE LINKS
+    Redim  hierarchy_num(x).final_value(num_of_keys)  'AND THE KEYVALUE FOR THE CURRENT KEYWORD
+  Next
+
+  metadata table sTableName
+      settraverse STR_BACK_SLASH hierarchical into ID i_traversal2
+
+  For x=1 to num_of_keys                            'THIS LOOP WILL STORE THE ACTUAL KEYWORDS
+    metadata traverse i_traversal2                  'AND VALUES INTO SEPERATE ARRAYS
+      Next into key s_keyname(x)  into value s_keyvalue(x)
+  Next
+
+  metadata traverse i_traversal destroy
+  metadata traverse i_traversal2 destroy
+
+  Exit Sub
+HandleError:
+  Note Error$()
+  Resume Next
+
+End Sub
+
+'***************************PRINT METADATA FUNCTION**********************************************
+Sub PrintMetaData(ByVal level, ByVal position, ByVal linked As Integer)  'THIS PROCEDURE WILL PRINTOUT THE FORMATTED REPORT
+
+  OnError Goto HandleError
+
+  dim temp_space As String, temp As Integer
+
+
+'THIS FOR..NEXT LOOP FIGURES OUT THE AMOUNT OF SPACING NEED TO FORMAT
+'THE PRINTOUT EACH TIME THROUGH.
+
+  For temp=1 to level-2
+    temp_space=temp_space+TAB1
+  Next
+
+  If level=1 Then
+    If hierarchy_num(level).final_value(position)<>STR_EMPTY_STR Then 
+      Print #1, STR_EMPTY_STR
+      Print #1, STR_EMPTY_STR
+      Print #1, hierarchy_num(level).hi_parsed(position)+TAB1+hierarchy_num(level).final_value(position)
+
+      'Check added, otherwise it was incrementing the level more than the array size.
+      If level<max_slashes+1 Then
+        Call PrintMetaData(level+1,1,position)
+      End If      
+    Else
+      Print #1, STR_EMPTY_STR
+      Print #1, STR_EMPTY_STR
+      Print #1, hierarchy_num(level).hi_parsed(position)
+
+      'Check added, otherwise it was incrementing the level more than the array size.
+	   If level<max_slashes+1 Then
+        Call PrintMetaData(level+1,1,position)
+      End If
+
+      'Check added, otherwise when no keyword entered it was incrementing the position more than the array size.
+	   If position<num_of_keys Then
+        If hierarchy_num(level).link(position+1)=linked Then
+          Call PrintMetaData(level,position+1,linked)
+        End If
+      End If
+    End If
+  End If
+      
+  Do While hierarchy_num(level).link(position)<linked and hierarchy_num(level).link(position)<>0
+    position=position+1
+  loop
+
+  If hierarchy_num(level).link(position)=linked Then
+    If hierarchy_num(level).final_value(position)<>STR_EMPTY_STR Then
+      If level=2 Then
+        Print #1, STR_EMPTY_STR
+      End If
+      Print #1, temp_space+hierarchy_num(level).hi_parsed(position)+
+                STR_COLON+TAB1+hierarchy_num(level).final_value(position)
+      If level<max_slashes+1 Then
+        Call PrintMetaData(level+1,1,position)
+      End If
+      
+      Call PrintMetaData(level,position+1,linked)
+            
+    Else
+      If level=2 Then
+        Print #1,STR_EMPTY_STR
+      End If
+      Print #1, temp_space+hierarchy_num(level).hi_parsed(position)+STR_COLON
+
+      'Check added, otherwise when no keyword entered it was incrementing the level more than the array size.
+	   If level<max_slashes+1 Then
+        Call PrintMetaData(level+1,1,position)
+      End If
+
+      'Check added, otherwise when no keyword entered it was incrementing the position more than the array size.
+      If position<num_of_keys Then    
+        If hierarchy_num(level).link(position+1)=linked Then
+          Call PrintMetaData(level,position+1,linked)
+        End If
+      End If
+    End If
+  End If
+
+  Exit Sub
+HandleError:
+  Note Error$()
+  Resume Next
+
+End Sub
+
+'****************DEFINITION TABLE PRINTOUT FUNCTION*********************************************
+Sub FindNumberOfFIelds()
+
+  OnError Goto HandleError
+
+  temp_space3=STR_EMPTY_STR
+  For z=1 to 19
+    temp_space3=temp_space3+STR_EMPTY_STR1
+  Next
+
+  z=0
+  completed=0
+
+  Do While completed=0
+    Line Input #2, line_info
+    If line_info like STR_LIKE_TYPE Then
+      Do 
+        z=z+1
+        first_space=instr(z,line_info,STR_EMPTY_STR1)
+      Loop Until first_space>z 
+      second_space=instr(first_space+1,line_info,STR_EMPTY_STR1)
+      If second_space=0 Then
+        type_of_set=right$(line_info,len(line_info)-first_space)
+      Else
+        type_of_set=mid$(line_info,first_space+1,second_space-first_space-1)
+      End If
+      completed=1
+    End If
+  loop
+
+  z=0
+  completed=0
+
+  Do While completed=0
+    Line Input #2, line_info
+    If line_info like STR_LIKE_FIELDS Then
+      Do
+        z=z+1
+        first_space=instr(z,line_info,STR_EMPTY_STR1)
+      Loop Until first_space>z
+      second_space=instr(first_space+1,line_info,STR_EMPTY_STR1)
+      If second_space=0 Then
+        num_of_fields=right$(line_info,len(line_info)-first_space)
+      Else
+        num_of_fields=val(mid$(line_info,first_space+1,second_space-first_space-1))
+      End If
+      completed=1
+    End If
+  Loop
+
+  Redim definition_fields(num_of_fields)
+  Redim definition_table(num_of_fields)
+
+  Exit Sub
+HandleError:
+  Note Error$()
+  Resume Next
+
+End Sub
+
+'**************************CALL TO PRINT_METADATA FUNCTION MADE IN THIS FUNCTION*******************
+Sub CallPrintOut()
+
+  OnError Goto HandleError
+
+  Call PrintMetaData(1,x,x)
+  x=x+1
+  If x>num_of_hierarchies Then
+    progressbar=-1
+  Else
+    progressbar=x
+  End If
+
+  Exit Sub
+HandleError:
+  Note Error$()
+  Resume Next
+
+End Sub
+
+'***************DEFINITION PRINTOUT STARTS HERE*************************************************8
+Sub DefinitionPrintOut()
+
+  OnError Goto HandleError
+
+  temp_space4=STR_EMPTY_STR3
+  temp_space=STR_EMPTY_STR
+  temp_space2=STR_EMPTY_STR
+
+  how_many_spaces=34-(len(definition_table(x).field_name))
+
+  If x>=100 Then 
+    temp_space4=STR_EMPTY_STR2
+  End If
+
+  For y=1 to how_many_spaces
+    temp_space2=temp_space2+STR_EMPTY_STR1
+  Next
+
+  If x<10 Then temp_space=STR_EMPTY_STR1 
+    If num_of_fields>=100 Then
+      temp_space=STR_EMPTY_STR2
+      temp_space4=STR_EMPTY_STR2 
+    End If
+  End If
+
+  If x>=10 and num_of_fields>=100 Then 
+    temp_space=STR_EMPTY_STR1
+    temp_space4=STR_EMPTY_STR2
+  End If
+
+  If x>=100 Then
+    temp_space=STR_EMPTY_STR
+    temp_space4=STR_EMPTY_STR2
+  End If
+
+  If definition_table(x).field_length<>STR_ZERO Then
+    Print #1, temp_space+x+TAB1+temp_space4+definition_table(x).field_name+temp_space2+definition_table(x).field_type+temp_space3+definition_table(x).field_length
+  Else
+    Print #1, temp_space+x+TAB1+temp_space4+definition_table(x).field_name+temp_space2+definition_table(x).field_type
+  End If
+
+  x=x+1
+  If x>num_of_fields Then
+    progressbar=-1
+  Else
+    progressbar=x
+  End If
+
+  Exit Sub
+HandleError:
+  Note Error$()
+  Resume Next
+
+End Sub
+
+Sub ReadDefinitionTable()
+
+  OnError Goto HandleError
+
+  y=0
+  Line Input #2, definition_fields(z)
+
+  Do 
+    y=y+1
+    first_space=instr(y,definition_fields(z),STR_EMPTY_STR1)
+  Loop Until first_space>y
+
+  second_space=instr(first_space+1,definition_fields(z),STR_EMPTY_STR1)
+  left_paren=instr(1,definition_fields(z),STR_OPEN_BRAC)
+  right_paren=instr(1,definition_fields(z),STR_CLOSE_BRAC)
+  definition_table(z).field_name=mid$(definition_fields(z),y,first_space-y)
+
+  If second_space=0 Then
+    definition_table(z).field_type=ucase$(left$(right$(definition_fields(z),len(definition_fields(z))-first_space),1))
+  Else
+    definition_table(z).field_type=ucase$(left$(mid$(definition_fields(z),first_space+1,second_space-first_space-1),1))
+  End If
+
+  If right_paren<>0 and left_paren<>0 Then
+    definition_table(z).field_length=mid$(definition_fields(z),left_paren+1,right_paren-left_paren-1)
+  Else
+    definition_table(z).field_length=0
+  End If
+
+  z=z+1
+
+  If z>num_of_fields Then
+    progressbar=-1
+  Else
+    progressbar=z
+  End If
+
+  Exit Sub
+HandleError:
+  Note Error$()
+  Resume Next
+
+End Sub

@@ -1,0 +1,10 @@
+[Link]
+Application=SQLVIEW.MBX
+module=sqlview.mbo 
+module=picktab.mbo 
+module=dlsutil.mbo 
+module=sqlutil.mbo
+module=sqlpvw.mbo
+module=connect.mbo
+module=desctab.mbo
+module=..\LIB\AUTO_LIB.MBO

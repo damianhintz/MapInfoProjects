@@ -1,0 +1,7 @@
+[Link] 
+Application=sw_spatialize_tab.mbx 
+Module=sw_spatialize_tab.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\Lib\MiStdLib.mbo
+Module=..\Lib\ResStrng.mbo
+

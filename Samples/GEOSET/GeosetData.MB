@@ -1,0 +1,620 @@
+Include "MapBasic.def"
+Include "Geoset.def"
+Include "GeosetLoad.def"
+Include "Error.def"
+Include "Service.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+Dim gtGeoSet           As tGeoSet
+Dim gatGeoSetTable(0)  As tGeoSetTable
+
+'---------------------------------------
+' Get Name of Current Geoset
+'---------------------------------------
+Function GetGeosetName() As String
+  OnError Goto ErrorTrap
+
+    GetGeosetName = gtGeoSet.sName
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "GetGeosetName: " & Error$()
+  Resume Done
+End Function 'GetGeosetName
+
+'---------------------------------------
+' Reset global array of Geoset Table and Geoset Settings
+'---------------------------------------
+Sub ResetGeoset()
+  OnError Goto ErrorTrap
+
+    ReDim gatGeoSetTable(0)
+
+    gtGeoSet.sAutoLayer = ""
+    gtGeoSet.sCenter = ""
+    gtGeoSet.sCenter_User = ""
+    gtGeoSet.sMapUnit = ""
+    gtGeoSet.vtMBR.sLowerLeft = ""
+    gtGeoSet.vtMBR.sUpperRight = ""
+    gtGeoSet.sName = ""
+    gtGeoSet.sProjection = ""
+    gtGeoSet.sZoomLevel = ""
+
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "ResetGeoset: " & Error$()
+  Resume Done
+End Sub 'ResetGeoset
+
+'---------------------------------------
+' Search for Geoset Table by given name in global array
+'---------------------------------------
+Function SearchForGeosetTable(sTableName As String) As Integer
+  OnError Goto ErrorTrap
+  Dim i   As Integer
+
+    For i = 1 To UBound(gatGeoSetTable)
+        If gatGeoSetTable(i).sTableName = sTableName Then 
+            SearchForGeosetTable = i
+            Exit Function
+        End If 
+    Next
+    
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "SearchForGeosetTable: " & Error$()
+  Resume Done
+End Function 'SearchForGeosetTable
+
+'---------------------------------------
+' Add New Geoset Table by given name to global array
+'---------------------------------------
+Function AddGeosetTable(sTableName As String) As Integer
+  OnError Goto ErrorTrap
+  Dim lTableNumber   As Integer
+
+    lTableNumber = SearchForGeosetTable(sTableName)
+    If lTableNumber = 0 Then
+        lTableNumber = UBound(gatGeoSetTable) + 1
+        ReDim gatGeoSetTable(lTableNumber)
+        gatGeoSetTable(lTableNumber).sTableName = sTableName 
+    End If    
+    AddGeosetTable = lTableNumber
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "AddGeosetTable: " & Error$()
+  Resume Done
+End Function 'AddGeosetTable
+
+
+'---------------------------------------
+' Memorize Geoset Value appropriately, depending on Geoset Key
+'---------------------------------------
+Function MemorizeGeosetValue(sGKey As String, sGValue As String) As Logical
+  OnError Goto ErrorTrap
+  Dim sSubKey        As String
+  Dim lTableNumber   As Integer 
+  Dim lResultCode    As Integer
+  Dim sKey, sValue   As String
+
+    sKey = sGKey
+    sValue = sGValue
+
+    sSubKey = GetSubKey(sKey)
+
+    Do Case sSubKey
+        Case KEY_GEOSET
+            ' Analyze GEOSET subkeys
+            Do Case ParseGeosetKey(sKey, sValue)
+                Case CODE_OK
+                    MemorizeGeosetValue = TRUE
+                Case CODE_ERROR
+                    MemorizeGeosetValue = FALSE
+                Case CODE_UNKNOWN_KEY
+                    If sValue <> "" Then
+                        Call PrintErrMsg(SVRT_WARNING, ERR_AREA_PARSING_GEOSET, sGKey)
+                    End If
+                    MemorizeGeosetValue = TRUE
+            End Case
+
+        Case KEY_TABLE
+            ' Extract Table "Name"
+            sSubKey = GetSubKey(sKey)
+            If sSubKey = "" Then 
+                MemorizeGeosetValue = TRUE
+            Else
+                ' Search for and/or Add new Geoset Table to global store
+                lTableNumber = AddGeosetTable(sSubKey)
+                If lTableNumber > 0 Then
+                    ' Parse TABLE subkey and memorize Value
+                    Do Case ParseTableKey(lTableNumber, sKey, sValue)
+                        Case CODE_OK
+                            MemorizeGeosetValue = TRUE
+                        Case CODE_ERROR
+                            MemorizeGeosetValue = FALSE
+                        Case CODE_UNKNOWN_KEY
+                            If sValue <> "" Then
+                                Print "  " + GetResString(IDS_UNKNOWN_KEY) + " " + sGKey
+'                               Call PrintErrMsg(SVRT_WARNING, ERR_AREA_PARSING_TABLE, sGKey)
+                            End If
+                            MemorizeGeosetValue = TRUE
+                    End Case
+                End If
+            End If
+
+        Case Else
+            MemorizeGeosetValue = TRUE
+    End Case
+
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "MemorizeGeosetValue: " & Error$()
+  Resume Done
+End Function 'MemorizeGeosetValue
+
+'---------------------------------------
+' Parse Subkey of "GEOSET" Keys and Memorize Geoset Value
+'---------------------------------------
+Function ParseGeosetKey(sKey As String, sValue As String) As Integer
+  OnError Goto ErrorTrap
+  Dim sSubKey  As String
+
+    ParseGeosetKey = CODE_OK
+
+    sSubKey = GetSubKey(sKey)
+    Do Case sSubKey
+        Case KEY_AUTOLAYER
+            gtGeoSet.sAutoLayer = sValue
+        Case KEY_CENTER
+            gtGeoSet.sCenter = sValue
+        Case KEY_CENTER_USER
+            gtGeoSet.sCenter_User = sValue
+        Case KEY_MAPUNIT
+            gtGeoSet.sMapUnit = sValue
+        Case KEY_MBR
+            sSubKey = GetSubKey(sKey)
+            Do Case sSubKey
+                Case KEY_LOWERLEFT
+                    gtGeoSet.vtMBR.sLowerLeft = sValue
+                Case KEY_UPPERRIGHT
+                    gtGeoSet.vtMBR.sUpperRight = sValue
+                Case Else
+                    ParseGeosetKey = CODE_UNKNOWN_KEY
+            End Case
+        Case KEY_NAME
+            gtGeoSet.sName = sValue
+        Case KEY_PROJECTION
+            gtGeoSet.sProjection = sValue
+        Case KEY_ZOOMLEVEL
+            gtGeoSet.sZoomLevel = sValue
+        Case KEY_ROTATION
+        Case Else
+            ParseGeosetKey = CODE_UNKNOWN_KEY
+    End Case
+Done:
+  Exit Function
+
+ErrorTrap:
+  ParseGeosetKey = CODE_ERROR
+  Print "ParseGeosetKey: " & Error$()
+  Resume Done
+End Function 'ParseGeosetKey
+
+'---------------------------------------
+' Parse Subkey of "TABLE\table_name" Keys and Memorize Geoset Value 
+'---------------------------------------
+Function ParseTableKey(lTableNumber As Integer, sKey As String, sValue As String) As Integer
+  OnError Goto ErrorTrap
+  Dim sSubKey  As String
+
+    ParseTableKey = CODE_OK
+
+    sSubKey = GetSubKey(sKey)
+    Do Case sSubKey
+        Case KEY_AUTOLABEL
+            gatGeoSetTable(lTableNumber).sAutoLabel = sValue
+
+        Case KEY_DRAWLABELSAFTER
+            gatGeoSetTable(lTableNumber).sDrawLabelsAfter = sValue
+
+        Case KEY_DISPLAY
+            ParseTableKey = 
+                ParseDisplayKey(gatGeoSetTable(lTableNumber).vtDisplay, sKey, sValue)
+
+        Case KEY_FILE
+            gatGeoSetTable(lTableNumber).sFile = sValue
+
+        Case KEY_SHOWLINEDIRECTION
+            gatGeoSetTable(lTableNumber).sShowLineDirection = sValue
+
+        Case KEY_SHOWNODES
+            gatGeoSetTable(lTableNumber).sShowNodes = sValue
+
+        Case KEY_SHOWCENTROIDS
+            gatGeoSetTable(lTableNumber).sShowCentroids = sValue
+
+        Case KEY_ISVISIBLE
+            gatGeoSetTable(lTableNumber).sIsVisible = sValue
+
+        Case KEY_LABEL
+            ParseTableKey = 
+                ParseLabelKey(gatGeoSetTable(lTableNumber).vtLabel, sKey, sValue)
+
+        Case KEY_SELECTABLE
+            gatGeoSetTable(lTableNumber).sSelectable = sValue
+
+        Case KEY_EDITABLE
+            gatGeoSetTable(lTableNumber).sEditable = sValue
+
+        Case KEY_ZOOM
+            ParseTableKey = 
+                ParseZoomKey(gatGeoSetTable(lTableNumber).vtZoom, sKey, sValue)
+
+        Case KEY_DESCRIPTION
+
+        Case KEY_REGISTERINGEOODICT
+
+        Case Else
+            ParseTableKey = CODE_UNKNOWN_KEY
+    End Case
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  ParseTableKey = CODE_ERROR
+  Print "ParseTableKey: " & Error$()
+  Resume Done
+End Function 'ParseTableKey
+
+'---------------------------------------
+' Open MI Tables from GeoSet 
+'---------------------------------------
+Function OpenGeosetTables(sGeosetPath As String) As Logical
+  OnError Goto ErrorTrap
+  Dim i            As Integer
+  Dim sDirName     As String
+  Dim sFullPath    As String
+  Dim sSubDirName, sFileName    As String
+
+    For i = 1 To UBound(gatGeoSetTable)
+        If gatGeoSetTable(i).sFile = "" Then
+            ' Path name of current table isn't known. Skip current table
+            Call PrintErrMsg(SVRT_WARNING, ERR_AREA_OPENING_TABLE,     ' BP 12.06.98
+                              GetResString(IDS_ERR_MSG_MISS_FILENAME1) & " """ +         ' BP 12.06.98
+                              gatGeoSetTable(i).sTableName & """ " +   ' BP 12.06.98
+                              GetResString(IDS_ERR_MSG_MISS_FILENAME2))                  ' BP 12.06.98
+        Else
+            If IsRelativePath(gatGeoSetTable(i).sFile) Then
+                ' Search Table in GeoDictionary Dir     
+                If SystemInfo(SYS_INFO_MIPLATFORM) = MIPLATFORM_WIN32 Then
+                    ' Try to find Mapx GeoDictionary Path
+                    If GetRegKeyValue(HKEY_LOCAL_MACHINE, RGKEY_MAPX_40, 
+                                    RGVAL_GEODICTIONARY, sDirName) Then
+                        sDirName = PathToDirectory$(sDirName)
+                        sFullPath = MakeFullPath(sDirName, gatGeoSetTable(i).sFile)
+                        ' Is Table Exist?
+                        If Not FileExists(sFullPath) Then
+                            ' Try to use GeoSet Path
+                            sFullPath = MakeFullPath(sGeoSetPath, gatGeoSetTable(i).sFile)
+                        End If
+                    ElseIf GetRegKeyValue(HKEY_LOCAL_MACHINE, RGKEY_MAPX_30, 
+                                    RGVAL_GEODICTIONARY, sDirName) Then
+                        sDirName = PathToDirectory$(sDirName)
+                        sFullPath = MakeFullPath(sDirName, gatGeoSetTable(i).sFile)
+                        ' Is Table Exist?
+                        If Not FileExists(sFullPath) Then
+                            ' Try to use GeoSet Path
+                            sFullPath = MakeFullPath(sGeoSetPath, gatGeoSetTable(i).sFile)
+                        End If
+                    Else
+                        sFullPath = MakeFullPath(sGeoSetPath, gatGeoSetTable(i).sFile)
+                    End If
+                Else
+                    ' Use GeoSet Path
+                    sFullPath = MakeFullPath(sGeosetPath, gatGeoSetTable(i).sFile)
+                End If
+            Else
+                sFullPath = MakeFullPath("", gatGeoSetTable(i).sFile)
+            End If
+    
+' BP 12.06.98
+            If FileExists(sFullPath) Then
+                ' Try to open GeoSet Table
+                OnError GoTo UnableToOpen
+                Open Table sFullPath
+                gatGeoSetTable(i).sRealName = TableInfo(0, TAB_INFO_NAME)
+                Print "  " + GetResString(IDS_OPENING_TABLE) + " " + sFullPath + " " + GetResString(IDS_AS) + " " + gatGeoSetTable(i).sRealName
+SkipTableInfoOnUnableToOpen:
+                OnError GoTo ErrorTrap
+            Else
+                ' GeoSet Table isn't found. Stop processsing of Geoset.
+                Call PrintErrMsg(SVRT_ERROR, ERR_AREA_OPENING_TABLE, 
+                                             GetResString(IDS_ERR_MSG_CANT_OPEN_TABLE1) & " """ +
+                                             PathToFileName$(sFullPath) & """ " +
+                                             GetResString(IDS_ERR_MSG_CANT_OPEN_TABLE2) & " """ +
+                                             gatGeoSetTable(i).sTableName & """ " +
+                                             GetResString(IDS_ERR_MSG_CANT_OPEN_TABLE3))
+                Exit Function
+            End If
+' BP 12.06.98
+        End If
+    Next
+
+       OpenGeosetTables = TRUE
+Done:
+  Exit Function
+
+UnableToOpen:
+  Print "  " + GetResString(IDS_SKIPPING_TABLE) + " " + sFullPath
+  Print "    " + GetResString(IDS_PERHAPS_A_DRILL_DOWN_TABLE)
+  Resume SkipTableInfoOnUnableToOpen
+
+ErrorTrap:
+  Print "OpenGeosetTables: " & Error$()
+  Resume Done
+End Function 'OpenGeosetTables
+
+
+'---------------------------------------
+' Interpret Information from GeoSet File
+'---------------------------------------
+Function InterpretGoeset() As Logical
+  OnError Goto ErrorTrap
+  Dim lWndID  As Integer
+
+    ' Interpret Geoset Distance units                   ' BP 30.09.98
+    Call InterpretGeosetMapUnits(gtGeoSet.sMapUnit)   ' BP 30.09.98
+
+    ' Create Mapper Window with Geoset maps
+    If Not OpenMappperWnd(lWndID) Then
+        Exit Function
+    End If
+'Note "About to SetMapUnits()"
+    ' Set Distance units
+    Call SetMapUnits(lWndID, gtGeoSet.sMapUnit)
+'Note "About to SetProjection()"
+    ' Set projection
+    Call SetGeosetProjection(lWndID, gtGeoSet.sProjection)
+'Note "About to SetMapCenter()"
+    ' Set Map Center property
+    Call SetMapCenterProperty(lWndID, gtGeoSet)
+'Note "About to SetZoomLevel()"
+    ' Set Zoom level property
+    Call SetZoomLevelProperty(lWndID, gtGeoSet.sZoomLevel)
+'Note "Back from SetZoomLevel()"
+    InterpretGoeset = TRUE
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "InterpretGoeset: " & Error$()
+  Resume Done
+End Function 'InterpretGoeset
+
+'---------------------------------------
+' Create Mapper Window with Geoset maps
+'---------------------------------------
+Function OpenMappperWnd(lWndID As Integer) As Logical
+  OnError Goto ErrorTrap
+  Dim bAutoLayer           As Logical
+  Dim i, lFirstTable       As Integer
+
+    ' Look for MI opened table
+    For i = UBound(gatGeoSetTable) To 1 Step -1
+        If gatGeoSetTable(i).sRealName <> "" Then
+            lFirstTable = i
+            Exit For
+        End If
+    Next
+
+    If lFirstTable = 0 Then
+        ' There isn't any opened table
+        Exit Function
+    End If
+
+
+    Map From gatGeoSetTable(lFirstTable).sRealName ' BP 12.06.98 'AED
+'    Map From gatGeoSetTable(1).sRealName          ' BP 12.06.98 'AED
+    lWndID = FrontWindow()
+    Set Map Window lWndID Redraw Off 
+
+    ' set Layer properties and drowing styles
+    Call SetLayerProperties(lWndID, gatGeoSetTable(lFirstTable)) ' BP 12.06.98 'AED
+'    Call SetLayerProperties(lWndID, gatGeoSetTable(1))          ' BP 12.06.98 'AED
+
+   
+    If gtGeoSet.sAutoLayer = "TRUE" Then                      ' BP 12.06.98
+        bAutoLayer = gtGeoSet.sAutoLayer ' order layers automatically or not ' BP 12.06.98
+    Else                                                   ' BP 12.06.98
+        bAutoLayer = FALSE  ' order layers automatically    ' BP 12.06.98
+    End If                                                 ' BP 12.06.98
+
+    If bAutoLayer Then
+        For i = lFirstTable - 1 To 1 Step -1 ' BP 12.06.98 'AED
+'        For i = 2 To lFirstTable 'AED       ' BP 12.06.98 
+            If gatGeoSetTable(i).sRealName <> "" Then
+                Add Map Window lWndID 
+                    Auto
+                    Layer gatGeoSetTable(i).sRealName
+
+                ' set Layer properties and drowing styles
+'Print "Setting layer properties for layer " + i
+                Call SetLayerProperties(lWndID, gatGeoSetTable(i))
+            End If
+        Next
+    Else
+        For i = lFirstTable - 1 To 1 Step -1 ' BP 12.06.98 'AED
+'        For i = 2 To lFirstTable            ' BP 12.06.98 'AED
+            If gatGeoSetTable(i).sRealName <> "" Then
+                Add Map Window lWndID 
+                    Layer gatGeoSetTable(i).sRealName
+
+                ' set Layer properties and drowing styles
+'Print "Setting layer properties for layer " + i
+                Call SetLayerProperties(lWndID, gatGeoSetTable(i))
+            End If
+        Next
+    End If
+
+    OpenMappperWnd = TRUE
+Done:
+  If lWndID <> 0 Then
+    Set Map Window lWndID Redraw On 
+  End If
+'Note "At the end of OpenMapperWnd"
+  Exit Function
+
+ErrorTrap:
+  Print "OpenMappperWnd: " & Error$()
+  Resume Done
+End Function 'OpenMappperWnd
+
+'---------------------------------------
+' Set Geoset projection
+'---------------------------------------
+Sub SetGeosetProjection(ByVal lWndID As Integer, sProjection As String)
+  OnError Goto ErrorTrap
+  Dim sCoordSys     As String
+  Dim lCoordSysID   As Integer
+
+    If sProjection <> "" Then
+        sCoordSys = sProjection
+'Print "  " & sCoordSys 'AED
+' BP 12.06.98
+        lCoordSysID = Int(GetListString$(sCoordSys, 1, ","))
+  
+        Do Case lCoordSysID
+            Case 0     ' Nonearth projection
+                sCoordSys = "Set Map Window " & lWndID &  
+                            " CoordSys Nonearth  Units """ & 
+                            UnitNumberToUnitAbbr(GetListString$(sCoordSys, 2, ",")) & """"
+                Run Command sCoordSys
+            Case 1     ' Lat/Lon projection
+                sCoordSys = "Set Map Window " & lWndID &  
+                            " CoordSys Earth Projection " & sCoordSys
+                Run Command sCoordSys
+            Case Else  ' Other Earth projections
+                If NumListItems(sCoordSys, ",") >= 3 Then 'AED
+                    sCoordSys = ReplaceListString$(sCoordSys, 3, ",", 
+                                " """ & 
+                                UnitNumberToUnitAbbr(GetListString$(sCoordSys, 3, ",")) & 
+                                """")
+                End If 'NumListItems
+                sCoordSys = "Set Map Window " & lWndID &  
+                            " CoordSys Earth Projection " & sCoordSys
+                Run Command sCoordSys
+        End Case
+
+'Print "  " & sCoordSys 'AED
+
+'        If Int(GetListString$(sCoordSys, 1, ",")) = 0 Then
+'            ' CoordSys Nonearth 
+'        Else
+'            If NumListItems(sCoordSys, ",") = 3 Then 'AED
+'                 sCoordSys = GetListString$(sCoordSys, 1, ",") & ", " & GetListString$(sCoordSys, 2, ",") 'AED
+'            End If 'NumListItems 'AED
+'            If NumListItems(sCoordSys, ",") > 3 Then 'AED
+'                 sCoordSys = 
+'                      ReplaceListString$(sCoordSys, 3, ",", " """ & 
+'                          UnitNumberToUnitAbbr(GetListString$(sCoordSys, 3, ",")) & """")
+'            End If 'NumListItems
+'            sCoordSys = "Set Map Window " & lWndID &  
+'                        " CoordSys Earth Projection " & sCoordSys
+'Print "  " & sCoordSys 'AED
+'            Run Command sCoordSys
+'        End If
+' BP 12.06.98
+    End If
+
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "SetGeosetProjection: " & Error$()
+  Resume Done
+End Sub 'SetGeosetProjection
+
+
+'---------------------------------------
+' Set Zoom level property
+'---------------------------------------
+Sub SetZoomLevelProperty(ByVal lWndID As Integer, sZoomLevel As String)
+  OnError Goto ErrorTrap
+  Dim lfZoomLevel   As Float
+  Dim sDistUnits    As String                   ' BP 30.09.98
+
+    If sZoomLevel <> "" Then
+        lfZoomLevel = Val(sZoomLevel)
+        sDistUnits = GetMapUnits()               ' BP 30.09.98
+        Set Map Window lWndID
+            Zoom lfZoomLevel Units sDistUnits    ' BP 30.09.98
+'            Zoom lfZoomLevel Units "mi"         ' BP 30.09.98
+'Print "  Set Map WIndow " + lWndID + " Zoom " + lfZoomLevel + " Units """ & sDistUnits & """"
+    Else                                    ' BP 16.06.98
+        Set Map Window lWndID Zoom Entire   ' BP 16.06.98
+    End If
+
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "SetZoomLevelProperty: " & Error$()
+  Resume Done
+End Sub 'SetZoomLevelProperty
+
+'---------------------------------------
+' Set Map Center property
+'---------------------------------------
+Sub SetMapCenterProperty(ByVal lWndID As Integer, vtGeoSet As tGeoSet)
+  OnError Goto ErrorTrap
+  Dim lfLat, lfLong    As Float
+  Dim lfLeft, lfRight  As Float
+  Dim lfUpper, lfLower As Float
+
+    If vtGeoSet.sCenter_User <> "" Then
+        lfLong = Val(GetListString$(vtGeoSet.sCenter_User, 1, ","))
+        lfLat  = Val(GetListString$(vtGeoSet.sCenter_User, 2, ","))
+        Set Map Window lWndID
+            Center (lfLong, lfLat)
+'Print "  Set Map Window " + lWndID + " Center (" + Str$(lfLong) + ", " + Str$(lfLat) + ")"
+    ElseIf vtGeoSet.sCenter <> "" Then
+        lfLong = Val(GetListString$(vtGeoSet.sCenter, 1, ","))
+        lfLat  = Val(GetListString$(vtGeoSet.sCenter, 2, ","))
+        Set Map Window lWndID
+            Center (lfLong, lfLat)
+    Else
+        Set Map Window lWndID Zoom Entire
+'Print "  Set Map Window " + lWndID + " Zoom Entire"
+'AED don't do this because MBR isn't in lat/lon but center must be
+'        If vtGeoSet.vtMBR.sLowerLeft <> "" And vtGeoSet.vtMBR.sUpperRight <> "" Then
+'            lfLower = Val(GetListString$(vtGeoSet.vtMBR.sLowerLeft, 1, ","))
+'            lfLeft  = Val(GetListString$(vtGeoSet.vtMBR.sLowerLeft, 2, ","))
+'            lfUpper = Val(GetListString$(vtGeoSet.vtMBR.sUpperRight, 1, ","))
+'            lfRight  = Val(GetListString$(vtGeoSet.vtMBR.sUpperRight, 2, ","))
+'
+'            Set Map Window lWndID
+'                Center ((lfLeft + lfRight) * 0.5, (lfLower + lfUpper) * 0.5)
+'Print "  Set Map Window " + lWndID + " Center (" + Str$((lfLeft + lfRight) * 0.5) + ", " + Str$((lfLower + lfUpper) * 0.5) + ")"
+'        End If
+    End If
+
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "SetMapCenterProperty: " & Error$()
+  Resume Done
+End Sub 'SetMapCenterProperty

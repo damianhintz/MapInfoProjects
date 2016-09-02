@@ -1,0 +1,315 @@
+'****************************************************************************
+'                             MAPINFO CORPORATION
+'
+' Date:         12/00          
+'
+' Module:       MIRowCnt.mb
+' For Version:  MapInfo 6.5
+' 
+' Overview:
+'
+'   This is the main source file for the MICntRow mapbasic application.
+' MIRowCnt lets you connect to DBMS databases and run a count(*) against
+' tables, updating the mapcatalog with the results
+'****************************************************************************
+INCLUDE "MAPBASIC.DEF"
+INCLUDE "..\inc\DLSAMP.DEF"
+INCLUDE "..\inc\AUTO_LIB.DEF" 
+
+' Defines
+DEFINE OWNERNAME_ID             1
+DEFINE TABLENAME_ID             2
+
+DEFINE TBLNAME_ID               7
+
+DEFINE CONNECTION_NAME_ID       9
+DEFINE CONNECTION_BUTTON_ID    10
+
+' External
+DECLARE SUB MAIN
+
+' The SQL Runner and its dialog handlers
+DECLARE SUB SQLRunnerDialog()
+DECLARE Sub RunSQL()
+DECLARE Sub SQLDone()
+DECLARE Sub SQLAbout()
+
+' The SQL Builder and its dialog handlers
+DECLARE SUB SQLBuilderDialog()
+
+' SQL Utilities
+DECLARE Sub ExecuteSQL(BYVAL SQLString AS STRING, rc AS INTEGER)
+
+DECLARE SUB SQLConnect()
+
+' Local Globals
+DIM TabOwner, TabName, TabFullName as STRING
+DIM SQLString, OwnerName, DBName, TableName AS STRING
+
+'****************************************************************************
+'* Main program
+'****************************************************************************
+SUB Main
+  'Set the globals used by auto_lib
+  gsAppDescription = "SQL DataLink Runner/Builder"
+  gsAppFilename    = "MIRowCnt.MBX"
+  Create menu "DBMS &MIRowCnt" As 
+    "DBMS &MIRowCnt ..." Calling  SQLRunnerDialog,
+    "(-",
+    "&About DBMS MIRowCnt..." Calling SQLAbout,
+    "E&xit DBMS MIRowCnt" Calling SQLDone
+
+  Call set_tools_menu("DBMS &MIRowCnt")  
+
+End Sub
+
+'******************************************************
+'******************************************************
+'******************************************************
+Sub SQLRunnerDialog
+  if not IsDBMSInstalled(TRUE) then
+    ' IsDBMSInstalled displayed a message.
+    exit sub
+  end if
+
+  CALL DebugInit("MIRowCnt")  
+
+  IF demohdbc = 0 THEN
+    ' Get a connection before starting
+    CALL SQLConnect()
+  END IF
+
+  OwnerName = Server_ConnectInfo(demohdbc, SRV_CONNECT_INFO_SQL_USER_ID)
+  DBName = Server_ConnectInfo(demohdbc, SRV_CONNECT_INFO_DB_NAME)
+  
+  if DBName = "ACCESS" THEN
+    OwnerName = ""
+  END IF
+  
+  DIALOG
+
+    TITLE "MapInfo DBMS Count Rows"
+    
+    '-------------------------------------------------
+    ' Connection maintenance
+    Control StaticText
+      Title "Database Connection:"
+      Position 8, 8
+
+'    CONTROL CHECKBOX 
+'      ID DEBUG_CHECKBOX_ID
+'      TITLE "Debug" VALUE FALSE CALLING SetDebug 
+'      Position 168, 2
+             
+    Control EditText
+      Value    democonnname
+      Position 8, 22
+      Width 120
+      Id CONNECTION_NAME_ID
+      Disable
+
+    Control Button
+      Title "Connection..."
+      Position 134, 21
+      Calling SQLConnect
+      Id CONNECTION_BUTTON_ID
+
+    '-------------------------------------------------
+    ' SQL maintenance
+    Control StaticText
+      Title "Owner Name:"
+      Position 8, 40
+
+    CONTROL EDITTEXT
+      VALUE OwnerName   ' prime from global persistent value
+      ID OWNERNAME_ID
+      Position 8, 54
+      Width 120
+      Height 10
+
+    Control StaticText
+      Title "Table Name:  (Case Sensitive)"
+      Position 8, 68
+
+    CONTROL EDITTEXT
+      VALUE TableName   ' prime from global persistent value
+      ID TABLENAME_ID
+      Position 8, 82
+      Width 120
+      Height 10
+
+    ' Button row 2
+    CONTROL OKBUTTON
+      Title "OK"
+      Calling RunSQL
+      POSITION 40, 102
+      WIDTH  55
+    CONTROL CANCELBUTTON
+      POSITION 101, 102
+      WIDTH  55
+
+  ' Leave connection open for future use
+END SUB
+
+
+'********************************************
+Sub SQLDone
+  END PROGRAM
+END SUB
+
+'**********************************************************************
+'**********************************************************************
+'  Dialog handlers for the MIRowCnt 
+'**********************************************************************
+'**********************************************************************
+Sub RunSQL()
+  DIM SQLOut,RowCnt as STRING
+  DIM Owner, qualifier AS STRING
+  DIM rc AS INTEGER
+
+  ' Get the latest value of the SQLString
+  TableName=READCONTROLVALUE(TABLENAME_ID)
+  OwnerName=READCONTROLVALUE(OWNERNAME_ID)
+
+  ' Presrve dialog though OKBUTTON was pressed
+  DIALOG PRESERVE
+
+  if Len(TableName) < 1 THEN
+    GOTO ERREXIT
+  END IF
+
+  if Len(OwnerName) > 0 THEN
+    Owner = demoquotechar + OwnerName + demoquotechar + "."
+  ELSE
+    Owner = " "
+  END IF
+  	
+  ' Execute the SQL statement
+  SQLString = "Select count(*) from " + Owner + demoquotechar + TableName + demoquotechar
+
+  rc = 0
+  Call ExecuteSQL(SQLString, rc)
+  if rc = 1 THEN
+    GOTO ALLDONE
+  END IF
+
+  RowCnt = Server_ColumnInfo(demohstmnt, 1, SRV_COL_INFO_VALUE)
+
+  if DBName <> "ACCESS" THEN
+    qualifier = "MAPINFO."
+  ELSE
+    OwnerName = "OWNER"
+    qualifier = ""
+  END IF
+
+  SQLString = "Update " + qualifier + "MAPINFO_MAPCATALOG set NUMBER_ROWS = " + RowCnt
+  SQLString = SQLString + " where TABLENAME = '" + TableName + "' and OWNERNAME = '" + OwnerName + "'"
+
+  rc = 0
+  ONERROR GOTO ALLDONE
+  Call ExecuteSQL(SQLString, rc)
+  Note "The Rowcount has been updated"  
+
+  GOTO ALLDONE
+
+ERREXIT:
+  Note "Table Name is missing "
+
+ALLDONE:
+End Sub
+
+'**********************************************************************
+'  End of Dialog handlers for the MIRowCnt
+'**********************************************************************
+
+'**********************************************************************
+'**********************************************************************
+'*  Utility functions
+'**********************************************************************
+
+'*******************************************
+Sub ExecuteSQL(BYVAL SQLStr AS STRING, rc AS INTEGER)
+  DIM colcnt AS INTEGER   
+
+  ONERROR GOTO EXECUTE_ERROR
+  demohstmnt = SERVER_EXECUTE(demohdbc, SQLStr)
+
+  ONERROR GOTO NONSELECT
+  colcnt = SERVER_NUMCOLS(demohstmnt)
+
+  FETCHING:
+  ONERROR GOTO 0
+
+  IF colcnt = 0 THEN
+    ' Assume Non Query since no result set was built
+    ' show OK not
+    SERVER demohstmnt CLOSE
+  Else                           
+    ' Query result set exists - provide fetch options dialog
+    Server demohstmnt Fetch Next
+  End If
+  GOTO ALLDONE
+
+  NONSELECT:
+    IF dbg THEN
+      PRINT "SERVER_NUMCOLS FAILED: " + ERROR$()
+    END IF
+    colcnt=0
+    RESUME FETCHING 
+
+  EXECUTE_ERROR:
+    rc = 1
+    NOTE ERROR$()
+    RESUME ALLDONE     
+
+  ALLDONE:
+End Sub
+
+'***************************************************************************
+'* Get a new connection 
+'* Use QELIB DLG=1 option to get an DBMS connection dialog
+'***************************************************************************
+SUB SQLConnect()
+
+  ' get a new connection
+  demohdbc = SQLConnectDialog() 
+
+  ONERROR GOTO WHOCARES
+
+  ' Set dialog connection control to display connection name
+  ALTER CONTROL CONNECTION_NAME_ID VALUE democonnname
+
+  OwnerName = Server_ConnectInfo(demohdbc, SRV_CONNECT_INFO_SQL_USER_ID)
+  GOTO ALLDONE
+
+  WHOCARES:
+    RESUME NEXT
+
+  ALLDONE:
+END SUB
+
+
+'**  SQLAbout ***************************************************************
+' The About procedure displays a brief explanatory blurb.
+'****************************************************************************
+Sub SQLAbout
+  Dialog 
+    Title "About MapInfo DBMS MIRowCnt"
+    Width 204
+    Control StaticText Position 10, 10 Title"Now running MIRowCnt.Mbx"    
+    
+    Control StaticText Position 10, 30 Title "This will update an entry for a table in the Mapcatalog,"
+    Control StaticText Position 10, 40 Title "correctly setting the number of rows for that table."
+
+    Control StaticText Position 10, 60 Title "This is used to optimize opening up Large Tables"
+    Control StaticText Position 10, 70 Title "with the Live Access method. (Not Linked Tables)"
+
+    Control StaticText Position 10, 90 Title "Warning:  If this number of rows in the table changes"
+    Control StaticText Position 10, 100 Title "and is not updated in the mapcatalog, it can cause "
+    Control StaticText Position 10, 110 Title "unpredictable results within MiPro."
+
+    Control OKButton
+      Title  "OK"   
+      Position 83, 140
+
+End Sub

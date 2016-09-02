@@ -1,0 +1,410 @@
+'*****************************************************************************
+'       Copyright (c) 2000, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: RotateLabels.MB $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+' MapBasic program to rotate labels.
+'
+' Revision History:
+'
+'    Rev 1.0   September 21 1999 16:14:56   DRESSEL
+'    Rev 1.1   2 Mar 2000            DRESSEL
+'            - Extract strings for localization
+'    Rev 1.2   9 Apr 2000            DRESSEL
+'            - Support rotation based on value in column
+'            - Fix typo in about box #12442
+'    Rev 1.3   21 Apr 2000           DRESSEL
+'            - Don't allow rotation of labels on layers without labels #13119
+'    Rev 1.4   10 Jan 2001           DRESSEL
+'            - add support for labels in layout windows #12507
+'*****************************************************************************
+Include "MapBasic.def"
+Include "Menu.def"
+Include "RotateLabels.def"
+' Include a file that lets us use the "auto-load" library                 
+Include "..\Inc\auto_lib.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"                                          
+
+Declare Sub Main
+Declare Sub RotateLabels
+Declare Sub TableNameHandler
+Declare Sub ColumnNameHandler
+Declare Sub OKButtonHandler
+Declare Sub RotationTypeHandler
+Declare Sub DialogHandler
+Declare Sub About
+Declare Sub GoodBye
+
+Define IDTableNames 601
+Define IDRotationType 602
+Define IDColumnNames 603
+Define IDFixedRotation 604
+
+Define RotationTypeColumn 1
+Define RotationTypeFixed 2
+
+Define AppVersion 1.4
+
+Global iTables, iTable, iColumns, iColumn, iLayers(), iLayer As Integer
+Global sTable, sTables(), sColumn, sColumns() As String
+Global iDirection, iRotationType As SmallInt
+Global fFixedRotation As Float
+Global lLayout As Logical
+
+Sub Main
+
+  OnError Goto HandleError
+
+  If LoadStrings((ApplicationDirectory$() + "RotateLabels.str")) = FALSE Then
+    Note "Unable to access resource string file: " + ApplicationDirectory$() + "RotateLabels.str"
+    Exit Sub
+  End If
+
+  gsAppDescription = GetResString(IDS_APP_DESCRIPTION)
+  gsAppFilename = "RotateLabels.mbx"                                            
+
+  Create Menu GetResString(IDS_MENU_NAME) As                                                
+    GetResString(IDS_MENU_ITEM_NAME)  Calling RotateLabels,
+    "(-",                                      
+    GetResString(IDS_ABOUT_MENU_ITEM_NAME)  Calling About,        
+    GetResString(IDS_EXIT_MENU_ITEM_NAME) Calling Goodbye             
+
+  If SystemInfo(SYS_INFO_MIVERSION) >= 450 Then
+    Call set_tools_menu(GetResString(IDS_MENU_NAME))                                          
+  Else
+    Create Menu GetResString(IDS_TOOLS_MENU) As
+      GetResString(IDS_MENU_NAME) As GetResString(IDS_MENU_NAME)
+    Alter Menu Bar Add GetResString(IDS_TOOLS_MENU)
+  End If
+
+  iDirection = 1
+  iRotationType = RotationTypeColumn
+  fFixedRotation = 0
+  iTable = 1
+
+  Exit Sub
+
+HandleError:
+  Note "Main: " + Error$()
+  Resume Next
+
+End Sub                                                                   
+
+Sub RotateLabels
+
+  OnError Goto HandleError
+
+  Dim i As Integer
+  Dim aColumn, aObj, aRowID As Alias
+  Dim sFixedRotation As String
+  Dim iRowID, iMapID As Integer 
+  Dim X, Y As Float
+  Dim lMoreLabels As Logical
+
+  iMapID = FrontWindow()
+
+  If iMapID <> 0 Then
+    If WindowInfo(iMapID, WIN_INFO_TYPE) = WIN_MAPPER Then
+      If MapperInfo(iMapID, MAPPER_INFO_LAYERS) > 0 Then
+        iTables = 0
+        ReDim sTables(iTables)
+        ReDim iLayers(iTables)
+        For i = 1 To MapperInfo(iMapID, MAPPER_INFO_LAYERS)
+          If LayerInfo(iMapID, i, LAYER_INFO_TYPE) = LAYER_INFO_TYPE_NORMAL And
+             LayerInfo(iMapID, i, LAYER_INFO_DISPLAY) <> LAYER_INFO_DISPLAY_OFF And
+             LayerInfo(iMapID, i, LAYER_INFO_LBL_VISIBILITY) <> LAYER_INFO_LBL_VIS_OFF Then
+            iTables = iTables + 1
+            ReDim sTables(iTables)
+            ReDim iLayers(iTables)
+            sTables(iTables) = LayerInfo(iMapID, i, LAYER_INFO_NAME)
+            iLayers(iTables) = i
+          End If
+        Next
+        If iTables > 0 Then
+          If iTable < 1 Or iTable > iTables Then
+            iTable = 1
+          End If
+
+          sFixedRotation = FormatNumber$(fFixedRotation)
+
+          Dialog  
+            Title GetResString(IDS_APP_DESCRIPTION) + " (" + GetResString(IDS_VERSION) + " " + Str$(AppVersion) + ")"
+            Calling DialogHandler
+          Control StaticText 
+            Title GetResString(IDS_LAYER)
+            Position 10,12
+          Control PopupMenu
+            Title From Variable sTables
+            Value iTable
+            Into iTable
+            Position 40,10
+            Width 170
+            Calling TableNameHandler
+            ID IDTableNames
+          Control GroupBox
+            Title GetResString(IDS_ROTATION)
+            Position 10, 30
+            Height 75
+            Width 200
+          Control RadioGroup 
+            Title GetResString(IDS_COLUMN) + ";" + GetResString(IDS_FIXED)
+            Value iRotationType
+            Into iRotationType
+            Position 15,42
+            ID IDRotationType
+            Calling RotationTypeHandler
+          Control PopupMenu
+            Title From Variable sColumns
+            Value iColumn
+            Into iColumn
+            Position 55,40
+            Width 150
+            ID IDColumnNames
+          Control EditText
+            Value sFixedRotation
+            Into sFixedRotation
+            Position 55,55
+            Width 50
+            ID IDFixedRotation
+          Control StaticText
+            Title GetResString(IDS_DEGREES)
+            Position 112,57
+          Control RadioGroup
+            Title GetResString(IDS_COUNTER_CLOCKWISE) + ";" + GetResString(IDS_CLOCKWISE)
+            Value iDirection
+            Into iDirection
+            Position 15, 77
+          Control CheckBox
+            Title GetResString(IDS_LAYOUT_WINDOW)
+            Value lLayout
+            Into lLayout
+            Position 10, 110
+          Control OKButton
+            Title GetResString(IDS_OK)
+            Calling OKButtonHandler
+          Control CancelButton
+            Title GetResString(IDS_CANCEL)
+
+          If CommandInfo(CMD_INFO_DLG_OK) Then 
+
+            sTable = sTables(iTable)
+            iLayer = iLayers(iTable)
+
+            If iRotationType = RotationTypeColumn Then
+              sColumn = sColumns(iColumn)
+              aColumn = sTable + "." + sColumn
+            End If
+
+            fFixedRotation = Val(sFixedRotation)
+
+            aObj = sTable + ".Obj"
+            aRowID = sTable + ".RowID"
+
+            If iDirection = 2 Then
+              iDirection = -1
+            End If
+
+            lMoreLabels = LabelFindFirst(iMapID, iLayer, Not lLayout) 
+            Do While  lMoreLabels 
+              X = LabelInfo(iMapID, iLayer, LABEL_INFO_ANCHORX)
+              Y = LabelInfo(iMapID, iLayer, LABEL_INFO_ANCHORY)
+              iRowID = LabelInfo(iMapID, iLayer, LABEL_INFO_ROWID)
+              If iRotationType = RotationTypeColumn Then
+                Fetch Rec iRowID From sTable
+                Set Map Layer iLayer Label Object iRowID Anchor (X, Y) Angle aColumn*iDirection
+              Else
+                Set Map Layer iLayer Label Object iRowID Anchor (X, Y) Angle fFixedRotation*iDirection
+              End If
+              lMoreLabels = LabelFindNext(iMapID, iLayer) 
+            Loop 
+
+            If iDirection = -1 Then
+              iDirection = 2
+            End If
+          End If 
+        Else
+          Note GetResString(IDS_NO_LAYERS)
+        End If
+      End If
+    Else
+      Note GetResString(IDS_SELECT_MAP)
+    End If
+  Else
+    Note GetResString(IDS_OPEN_MAP)
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "RotateSymbols: " + Error$()
+  Resume Next
+
+End Sub
+
+Sub TableNameHandler
+
+  OnError Goto HandleError
+
+  Dim i As Integer
+
+  iTable = ReadControlValue(IDTableNames)
+
+  Call ColumnNameHandler
+
+  Exit Sub
+
+HandleError:
+  Note "TableNameHandler: " + Error$()
+  Resume Next
+
+End Sub
+
+Sub ColumnNameHandler
+
+  OnError Goto HandleError
+
+  Dim i As Integer
+
+  iColumns = TableInfo(sTables(iTable), TAB_INFO_NCOLS)
+  iColumn = 0
+  ReDim sColumns(iColumn)
+  For i = 1 To iColumns
+    Do Case ColumnInfo(sTables(iTable), "COL"+Str$(i), COL_INFO_TYPE)
+      Case COL_TYPE_DECIMAL, COL_TYPE_FLOAT, COL_TYPE_INTEGER, COL_TYPE_SMALLINT
+        iColumn = iColumn + 1
+        ReDim sColumns(iColumn)
+        sColumns(iColumn) = ColumnInfo(sTables(iTable), "COL"+Str$(i), COL_INFO_NAME)
+    End Case
+  Next
+  iColumns = iColumn
+
+  Alter Control IDColumnNames
+    Title From Variable sColumns
+
+  If iColumn > 0 Then
+    iColumn = 1
+    Alter Control IDColumnNames
+      Value iColumn
+    Alter Control IDRotationType Enable
+  Else
+    Alter Control IDRotationType Value RotationTypeFixed
+    Call RotationTypeHandler
+    Alter Control IDRotationType Disable
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "ColumnNameHandler: " + Error$()
+  Resume Next
+
+End Sub
+
+Sub OKButtonHandler
+
+  OnError Goto HandleError
+
+  Dim i As Integer
+
+  iRotationType = ReadControlValue(IDRotationType)
+  If iRotationType = RotationTypeColumn Then
+    If iColumns < 1 Then
+      Note GetResString(IDS_NEED_NUMERIC)
+      Dialog Preserve
+    End If
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "OKButtonHandler: " + Error$()
+  Resume Next
+
+End Sub
+
+Sub RotationTypeHandler
+
+  OnError Goto HandleError
+
+  iRotationType = ReadControlValue(IDRotationType)
+  If iRotationType = RotationTypeColumn Then
+    Alter Control IDColumnNames Enable
+    Alter Control IDFixedRotation Disable
+  Else
+    Alter Control IDColumnNames Disable
+    Alter Control IDFixedRotation Enable
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "RotationTypeHandler: " + Error$()
+  Resume Next
+
+End Sub
+
+Sub DialogHandler
+
+  OnError Goto HandleError
+
+  Call ColumnNameHandler
+  Call RotationTypeHandler
+
+  Exit Sub
+
+HandleError:
+  Note "DialogHandler: " + Error$()
+  Resume Next
+
+End Sub
+
+Sub About                                                                  
+
+  OnError Goto HandleError
+
+  Dialog                                                                   
+    Title GetResString(IDS_ABOUT) + " (" + GetResString(IDS_VERSION) + " " + Str$(AppVersion) + ")"                                   
+    Width 160
+    Control StaticText Title GetResString(IDS_ABOUT_1) Position 10, 10
+    Control StaticText Title GetResString(IDS_ABOUT_2) Position 10, 26         
+    Control StaticText Title GetResString(IDS_ABOUT_3) Position 10, 34         
+    Control StaticText Title GetResString(IDS_ABOUT_4) Position 10, 50 
+    Control StaticText Title GetResString(IDS_ABOUT_5) Position 10, 58 
+    Control StaticText Title GetResString(IDS_ABOUT_6) Position 10, 66 
+    Control Button Title GetResString(IDS_AUTO_LOAD) Calling HandleInstallation Position 45, 88 Width 45
+    Control OKButton Title GetResString(IDS_OK) Position 95, 88 Width 45                
+
+  Exit Sub
+
+HandleError:
+  Note "About: " + Error$()
+  Resume Next
+
+End Sub                                                                    
+
+Sub GoodBye                                                                
+
+  OnError Goto HandleError
+
+  End Program                                                              
+
+  Exit Sub
+
+HandleError:
+  Note "GoodBye: " + Error$()
+  Resume Next
+
+End Sub                                                                    
+
+' End of File
+
+
+
+

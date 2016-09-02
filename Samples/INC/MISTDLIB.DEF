@@ -1,0 +1,108 @@
+' NOTE! This library is provided as is and cannot be supported by MapInfo
+' Technical support.  These routines have been tested, but in some cases there
+' are specific assumptions that may not be evident from the prototypes.  If you
+' use these routines, test your code thoroughly.  If in doubt, review the source
+' code in the Lib directory.
+'
+' Prototypes and defintions for routines in the MapBasic standard library.
+' Include this file in any program where you want to use these routines.
+'
+' The interfaces to the routines are documented below.
+' Version 1.0
+
+'------------------------------------------------------------------------------
+' Given a path and table name, this routine creates a MapInfo table (.TAB file)
+' that can be used to open an unregistered raster table.
+'------------------------------------------------------------------------------
+Declare Function CreateRastTab(ByVal sFileName As String) As Logical
+
+'------------------------------------------------------------------------------
+' Wrapper for RemoveThematics which removes all thematic layers.
+'------------------------------------------------------------------------------
+Declare Sub RemoveAllThematics()
+
+'------------------------------------------------------------------------------
+' Given a window id and the name of a thematic layer in the window,
+' this routine removes the layer from the mapper.
+'
+' Pass a null string as sTabName to remove all thematic layers.
+' Returns the number of themes removed.
+'
+' Note: When you remove a theme by name, you must use the MapInfo internal
+' name for the theme, not the name that is displayed in the layer control
+' dialog.  Internal names are the name of the base layer with (x) appended
+' where x is the number of thematic layers created for that layer during
+' that MapInfo session.
+'------------------------------------------------------------------------------
+Declare Function RemoveThematics(ByVal nMapWinID As Integer,
+  ByVal sTabName As String) As SmallInt
+
+'------------------------------------------------------------------------------
+' Given the name of an open table, a column name, and a column type, returns
+' true if the column exists and is of the expected type.  Column types are the
+' standard column type constants found in MapBasic.def.
+'------------------------------------------------------------------------------
+Declare Function ColumnExists(ByVal sTabName As String,
+  ByVal sColName As String, ByVal iColType As smallint) As Logical
+
+'------------------------------------------------------------------------------
+' Returns a string containing a list of all open StreetInfo style street files.
+' Does not return the name of StreetWorks tables.
+'------------------------------------------------------------------------------
+Declare Function OpenStreets() as String
+
+'------------------------------------------------------------------------------
+' Given a time in seconds, returns a string containing the time formatted
+' with hours, minutes, and seconds.
+'------------------------------------------------------------------------------
+Declare Function ConvTime$(ByVal fElapsedTime As Float) As String
+
+'------------------------------------------------------------------------------
+' Clear the cosmetic layer of the front map window.
+'------------------------------------------------------------------------------
+Declare Sub ClearCosmetic
+
+'------------------------------------------------------------------------------
+' Close all temporary tables
+'------------------------------------------------------------------------------
+Declare Sub CloseTempTabs
+
+'------------------------------------------------------------------------------
+' Returns a string containing a semi-colon delimited list of all open tables.
+' If OnlyMappable is TRUE, the list contains only mappable tables.
+'------------------------------------------------------------------------------
+Declare Function MakeOpenTabsList$(ByVal OnlyMappable As Logical) As String
+
+'------------------------------------------------------------------------------
+' Given a window ID, Returns a list of the layers in a map window.
+'------------------------------------------------------------------------------
+Declare Function MakeLayList$(ByVal WinID as Integer) as String
+
+'------------------------------------------------------------------------------
+' Given the name of a table, return a list of all the columns in that table.
+'------------------------------------------------------------------------------
+Declare Function MakeColList$(byval table as string) as String
+
+'------------------------------------------------------------------------------
+' Given the name of an open table and the name of a column in that table,
+' returns a semi-colon delimited string containing the values in that col.
+'------------------------------------------------------------------------------
+Declare Function MakeValueList$(byval table as string, byval colname as string) as string
+
+'------------------------------------------------------------------------------
+' This function checks the table metadata to determine if the table is of type
+' seamless.  This is opposed to calling TableInfo which tells you the seamless 
+' state is on or off.
+'------------------------------------------------------------------------------
+Declare Function IsTableSeamless(byVal tableName as String) as Logical
+
+'*****************************************************************************
+' This routine returns true if there is a mappable selection.  You can verify 
+' that at least one object of a specific type is selected by passing the type 
+' object as the objType param.  You can also verify that only one object is 
+' is selected by passing true as oneObjOnly.
+'
+' EX: To verify that only a single point is selected:
+' CheckForSelection("point", TRUE)
+'*****************************************************************************
+Declare Function CheckForSelection(byVal objtype as String, byVal oneObjOnly as Logical) as Logical

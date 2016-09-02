@@ -1,0 +1,489 @@
+'****************************************************************************
+'* MapInfo SQL DataLink application - Fetch Preview routines
+'****************************************************************************
+include "mapbasic.def"
+include "..\INC\DLSAMP.DEF"
+
+Declare Sub Pvw_GetRow ( ByVal cmd as Integer )
+Declare Sub Pvw_FirstRec
+Declare Sub Pvw_PrevRec
+Declare Sub Pvw_NextRec
+Declare Sub Pvw_LastRec
+Declare Sub Pvw_ResetSub
+
+Define FIRSTRECORD 0
+Define NEXTRECORD  1
+Define PREVRECORD  2
+Define LASTRECORD  3
+
+Global Pvw_ColName(255) As String
+Global Pvw_DataRec As String
+
+Define PD1_ResultHeight 140
+Define PD1_ButtonRow    170
+
+
+'****************************************************************************
+'*
+'****************************************************************************
+Sub SQLPreview
+  dim coln as SmallInt
+  dim errstr as String
+
+  If dbg Then
+    Print "IN Sub Pvw_PreviewSelectResults"
+    print "Number of columns: " + Server_NumCols(demohstmnt)
+  End If
+
+  ' Remove fetch options dialog if it existed
+  ONERROR GOTO IGNORE
+  DIALOG REMOVE
+  ONERROR GOTO 0
+
+  '* remove fetch options dialog
+'  Dialog Remove    
+  '* Get column names of result set for preview column titles
+  For coln = 1 to Server_NumCols(demohstmnt)
+    Pvw_ColName(coln) = Server_ColumnInfo(demohstmnt, coln, SRV_COL_INFO_NAME)
+  Next
+
+  ' clear datarec buffer of any stale data
+  Pvw_DataRec = ""
+
+  '*****************************************************************************
+  ' Prime initial display
+  '*****************************************************************************
+  OnError Goto NEXT_ONLY_DIALOG
+  Server demohstmnt Fetch First
+
+  OnError Goto FETCHERROR
+  call Pvw_GetRow(FIRSTRECORD)
+  If Server_EOT(demohstmnt) Then
+    Goto End_Dialog
+  End If
+
+  '*****************************************************************************
+  '* Full SCROLLABLE fetch options dialog
+  '*****************************************************************************
+  Dialog
+    title "SQL Query Results Viewer"
+    width 255
+    height 190
+    Control StaticText
+      Title "Database Record:"
+      Position  8, 8
+    Control ListBox
+      Title Pvw_DataRec
+      Position 8, 24
+      Height PD1_ResultHeight
+      Width 239
+      ID 1
+    Control Button
+      Title "&First"
+      Calling Pvw_FirstRec
+      Position 8, PD1_ButtonRow
+    Control Button
+      Title "&Prev"
+      Calling Pvw_PrevRec
+      Position 53, PD1_ButtonRow
+    Control OKButton
+      Title "&Next"
+      Calling Pvw_NextRec
+      Position 98, PD1_ButtonRow
+    Control Button
+      Title "&Last"
+      Calling Pvw_LastRec
+      Position 143, PD1_ButtonRow
+    Control CancelButton
+      Title "Cancel"
+      Position 209, PD1_ButtonRow
+      Goto End_Dialog
+
+NEXT_ONLY_DIALOG:
+  RESUME NOD
+NOD:
+  OnError Goto FETCHERROR
+  call Pvw_GetRow(NEXTRECORD)
+  If Server_EOT(demohstmnt) Then
+    Goto End_Dialog
+  End If
+
+  '*****************************************************************************
+  '* Forward only fetch options dialog
+  '*****************************************************************************
+  Dialog
+    title "SQL Query Results Viewer"
+    width 255
+    height 190
+    Control StaticText
+      Title "Database Record:"
+      Position  8, 8
+    Control ListBox
+      Title Pvw_DataRec
+      Position 8, 24
+      Height PD1_ResultHeight
+      Width 239
+      ID 1
+    Control OKButton
+      Title "&Next"
+      Calling Pvw_NextRec
+      Position 80, PD1_ButtonRow
+    Control CancelButton
+      Title "Cancel"
+      Position 128, PD1_ButtonRow
+      Goto End_Dialog
+
+IGNORE:
+  Resume NEXT
+
+FETCHERROR:
+  NOTE(ERROR$())
+
+End_Dialog:
+
+End Sub
+
+
+'****************************************************************************
+'*
+'****************************************************************************
+Sub Pvw_GetRow ( ByVal cmd as Integer )
+  dim errstr, Sep, no_data_string as String
+  dim col as integer
+
+  OnError Goto FetchError
+  If dbg Then
+    print "Pvw_GetRow Just before Server Fetch statement"
+  End If
+
+  Do Case cmd
+     Case FIRSTRECORD
+       no_data_string = "No data found"
+       Server demohstmnt Fetch First
+
+     Case NEXTRECORD
+       no_data_string = "No more data in that direction"
+       Server demohstmnt Fetch Next
+
+     Case PREVRECORD
+       no_data_string = "No more data in that direction"
+       Server demohstmnt Fetch Prev
+
+     Case LASTRECORD
+       no_data_string = "No data found"
+       Server demohstmnt Fetch Last
+  End Case
+
+  If dbg Then
+    print "Just after case statement"
+  End If
+
+  If Server_EOT(demohstmnt) Then
+    Goto End_Of_Data
+  End If
+
+  '*************************************************************************
+  '* build a string for display with each column name and value
+  '* separated by a ;
+  '*************************************************************************
+  Pvw_DataRec = ""
+  Sep = ""
+  
+  If dbg Then
+    print "Build result message"
+  End If
+
+  For col = 1 To Server_NumCols(demohstmnt)
+    Pvw_DataRec = Pvw_DataRec + Sep + Pvw_ColName(col) + ": " + Server_ColumnInfo(demohstmnt, col, SRV_COL_INFO_VALUE)
+    Sep = ";"
+  Next
+
+  If dbg Then
+    print "Built result message, [" + Pvw_Datarec + "]"
+  End If
+  If dbg Then
+    Print "About to alter control value to..."
+    Print Pvw_DataRec
+  End If
+
+  Exit Sub
+
+  '* Error handling 
+  '*************************************************************************
+  End_of_Data:
+    Note no_data_string
+    If dbg Then
+      Print "Server_EOT from dataLink"
+    End If
+    Exit Sub
+
+  FetchError:
+    If dbg Then
+      Print "Error from MapInfo: " + Error$()
+    End If
+    Note Error$()
+
+End Sub
+
+
+'****************************************************************************
+'*
+'****************************************************************************
+Sub Pvw_FirstRec
+  call Pvw_GetRow(FIRSTRECORD)
+  call Pvw_ResetSub
+End Sub
+
+Sub Pvw_PrevRec
+  call Pvw_GetRow(PREVRECORD)
+  call Pvw_ResetSub
+End Sub
+
+Sub Pvw_LastRec
+  call Pvw_GetRow(LASTRECORD)
+  call Pvw_ResetSub
+End Sub
+
+Sub Pvw_NextRec
+  DIALOG PRESERVE   ' OK button preservation   
+  call Pvw_GetRow(NEXTRECORD)
+  call Pvw_ResetSub
+End Sub
+
+Sub Pvw_ResetSub
+  Alter Control 1 title Pvw_DataRec
+End Sub
+
+'**************************************************************************
+'**************************************************************************
+'**************************************************************************
+
+
+'**************************************************************************
+' Data Link app, must have active connection and Select hstmnt
+' demohdbc demohstmnt must be avalialable globals
+'***************************
+DEFINE COLNAME_XPOS   8
+DEFINE COLNAME_WIDTH  60 
+DEFINE COLVAL_XPOS    72
+DEFINE COLVAL_WIDTH   200
+DEFINE SHOW_ROW_DLG_ID   55
+
+Declare Sub InitRow()
+
+Sub ShowRow()
+  DIALOG
+    TITLE "Data Record Viewer"
+    CALLING InitRow
+
+'    CONTROL CANCELBUTTON POSITION COLVAL_XPOS, 1
+
+    ' Column names columns
+    CONTROL EDITTEXT ID 101 POSITION COLNAME_XPOS, 10  WIDTH COLNAME_WIDTH 
+    CONTROL EDITTEXT ID 102 POSITION COLNAME_XPOS, 26  WIDTH COLNAME_WIDTH 
+    CONTROL EDITTEXT ID 103 POSITION COLNAME_XPOS, 42  WIDTH COLNAME_WIDTH 
+    CONTROL EDITTEXT ID 104 POSITION COLNAME_XPOS, 58  WIDTH COLNAME_WIDTH 
+    CONTROL EDITTEXT ID 105 POSITION COLNAME_XPOS, 74  WIDTH COLNAME_WIDTH 
+    CONTROL EDITTEXT ID 106 POSITION COLNAME_XPOS, 90  WIDTH COLNAME_WIDTH 
+    CONTROL EDITTEXT ID 107 POSITION COLNAME_XPOS, 106 WIDTH COLNAME_WIDTH 
+    CONTROL EDITTEXT ID 108 POSITION COLNAME_XPOS, 122 WIDTH COLNAME_WIDTH 
+    CONTROL EDITTEXT ID 109 POSITION COLNAME_XPOS, 138 WIDTH COLNAME_WIDTH 
+    CONTROL EDITTEXT ID 110 POSITION COLNAME_XPOS, 154 WIDTH COLNAME_WIDTH 
+    CONTROL EDITTEXT ID 111 POSITION COLNAME_XPOS, 170 WIDTH COLNAME_WIDTH 
+    CONTROL EDITTEXT ID 112 POSITION COLNAME_XPOS, 186 WIDTH COLNAME_WIDTH 
+
+    ' Column value controls
+    CONTROL EDITTEXT ID 201 POSITION COLVAL_XPOS, 10  WIDTH COLVAL_WIDTH 
+    CONTROL EDITTEXT ID 202 POSITION COLVAL_XPOS, 26  WIDTH COLVAL_WIDTH 
+    CONTROL EDITTEXT ID 203 POSITION COLVAL_XPOS, 42  WIDTH COLVAL_WIDTH 
+    CONTROL EDITTEXT ID 204 POSITION COLVAL_XPOS, 58  WIDTH COLVAL_WIDTH 
+    CONTROL EDITTEXT ID 205 POSITION COLVAL_XPOS, 74  WIDTH COLVAL_WIDTH 
+    CONTROL EDITTEXT ID 206 POSITION COLVAL_XPOS, 90  WIDTH COLVAL_WIDTH 
+    CONTROL EDITTEXT ID 207 POSITION COLVAL_XPOS, 106 WIDTH COLVAL_WIDTH 
+    CONTROL EDITTEXT ID 208 POSITION COLVAL_XPOS, 122 WIDTH COLVAL_WIDTH 
+    CONTROL EDITTEXT ID 209 POSITION COLVAL_XPOS, 138 WIDTH COLVAL_WIDTH 
+    CONTROL EDITTEXT ID 210 POSITION COLVAL_XPOS, 154 WIDTH COLVAL_WIDTH 
+    CONTROL EDITTEXT ID 211 POSITION COLVAL_XPOS, 170 WIDTH COLVAL_WIDTH 
+    CONTROL EDITTEXT ID 212 POSITION COLVAL_XPOS, 186 WIDTH COLVAL_WIDTH
+
+    CONTROL CANCELBUTTON POSITION 10, 206 WIDTH 45
+    CONTROL BUTTON       POSITION 65, 206 WIDTH 45 TITLE "Update"
+    CONTROL BUTTON       POSITION 120, 206 WIDTH 45 TITLE "Delete"
+  ALLDONE:
+END SUB
+                        
+Sub InitRow()
+  DIM i,j, numcols AS INTEGER
+  DIM  ColName, ColValue  as string
+
+
+  numcols = SERVER_NUMCOLS(demohstmnt)
+  IF numcols > 12 THEN
+    numcols=12         ' Just a demo, truncate to 12 cols
+  END IF
+
+  FOR i = 1 TO numcols
+    ONERROR GOTO WHOCARES
+    ColName  = SERVER_COLUMNINFO(demohstmnt, i, SRV_COL_INFO_NAME)
+    ColValue = SERVER_COLUMNINFO(demohstmnt, i, SRV_COL_INFO_VALUE)
+    ALTER CONTROL 100+i SHOW DISABLE VALUE ColName 
+    ALTER CONTROL 200+i SHOW VALUE ColValue
+  NEXT
+  FOR j=i TO 12
+    ALTER CONTROL 100+j HIDE
+    ALTER CONTROL 200+j HIDE
+  NEXT
+  GOTO ALLDONE
+
+  WHOCARES:
+'    NOTE("Ignoring error: " + ERROR$())
+    RESUME NEXT
+
+  ALLDONE:
+END SUB
+
+'**************************************************************************
+'**************************************************************************
+'**************************************************************************
+
+
+'**************************************************************************
+' LONG TEXT shower
+'***************************
+DEFINE  NEXTROW 10 
+DEFINE  PREVROW 11 
+DEFINE  NEXTCOL 12 
+DEFINE  PREVCOL 13
+
+DIM ColHstmnt, ColNo, ColRow AS INTEGER
+Declare Sub GetNextValue
+
+Sub ShowText(BYVAL hstmnt AS INTEGER, BYVAL num AS INTEGER )
+  ColHstmnt=hstmnt
+  ColNo=num  
+  ColRow=0     
+
+  DIALOG
+    CALLING GetNextValue
+    TITLE "Result Set Browser"
+
+    CONTROL STATICTEXT Position 8,  6  TITLE "Row:"  
+    CONTROL EDITTEXT   Position 44, 6  ID 1           Width 50
+    CONTROL STATICTEXT Position 108, 6 TITLE "Column:"
+    CONTROL EDITTEXT   Position 144, 6 ID 2            Width 50
+    CONTROL STATICTEXT Position 8,  20 TITLE "Name:"  
+    CONTROL EDITTEXT   Position 44, 20 ID 3           Width 160
+    CONTROL STATICTEXT Position 8,  34 TITLE "Alias:"  
+    CONTROL EDITTEXT   Position 44, 34 ID 8           Width 160
+    CONTROL STATICTEXT Position 8,  48 TITLE "Type:"  
+    CONTROL EDITTEXT   Position 44, 48 ID 4           Width 50
+    CONTROL EDITTEXT   Position 108, 48 ID 9          Width 120
+    CONTROL STATICTEXT Position 8,  62 TITLE "Width:" 
+    CONTROL EDITTEXT   Position 44, 62 ID 5           Width 50
+    CONTROL STATICTEXT Position 8,  76 TITLE "Status:"
+    CONTROL EDITTEXT   Position 44, 76 ID 6           Width 50
+
+    CONTROL EDITTEXT   Position 8,  90 ID 7           Width  220 Height 114
+
+    CONTROL BUTTON  TITLE "Prev Row"    POSITION 8,   210 ID PREVROW WIDTH 40 Calling GetNextValue
+    CONTROL BUTTON  TITLE "Next Row"    POSITION 53,  210 ID NEXTROW WIDTH 40 Calling GetNextValue
+    CONTROL BUTTON  TITLE "Prev Col"    POSITION 98,  210 ID PREVCOL WIDTH 40 Calling GetNextValue
+    CONTROL BUTTON  TITLE "Next Col"    POSITION 143, 210 ID NEXTCOL WIDTH 40 Calling GetNextValue
+
+    CONTROL CANCELBUTTON                POSITION 190, 210 WIDTH 40
+END SUB
+
+'---------------------------------------------------------------------
+' Result set value displayer - provides row and column scrolling
+' Best used for Long char and binary fields
+'---------------------------------------------------------------------
+Sub GetNextValue
+  ' Reset dialog values depending on who called
+  DO CASE TRIGGERCONTROL()
+    CASE PREVROW
+      IF ColRow = 1 THEN
+        Note("Already at first row!")
+      ELSE   
+        ONERROR GOTO FETCHERR 
+        SERVER ColHstmnt FETCH PREV
+        ColRow = ColRow - 1
+      END IF
+    CASE NEXTCOL 
+      If ColNo + 1 > Server_NUMCOLS(ColHstmnt) THEN
+        Note("Already at last column!")
+      ELSE   
+        ColNo = ColNo + 1
+      END IF   
+    CASE PREVCOL
+      IF ColNo = 1 THEN
+        Note("Already at first column!")
+      ELSE   
+        ColNo=ColNo-1
+      END IF
+    CASE NEXTROW    
+      ONERROR GOTO FETCHERR 
+      SERVER ColHstmnt FETCH NEXT
+      IF SERVER_EOT(ColHstmnt) THEN
+        Note("Already at last row!")
+      ELSE
+        ColRow = ColRow + 1
+      END IF
+    CASE ELSE    ' default first fetch
+      ONERROR GOTO FETCHERR 
+      SERVER ColHstmnt FETCH FIRST
+      IF SERVER_EOT(ColHstmnt) THEN
+        Note("Table is Empty!")
+      ELSE   
+        ColRow=1    
+      END IF
+  END CASE
+ 
+  Alter control 1 Value FORMAT$(ColRow, "#")
+  Alter control 2 Value FORMAT$(ColNo, "#")
+  Alter control 3 Value SERVER_COLUMNINFO(ColHstmnt, ColNo, SRV_COL_INFO_NAME)
+  Alter control 8 Value SERVER_COLUMNINFO(ColHstmnt, ColNo, 8)
+  Alter control 4 Value FORMAT$(SERVER_COLUMNINFO(ColHstmnt, ColNo, SRV_COL_INFO_TYPE), "#")
+  Alter control 5 Value FORMAT$(SERVER_COLUMNINFO(ColHstmnt, ColNo, SRV_COL_INFO_WIDTH), "#")
+  Alter control 6 Value FORMAT$(SERVER_COLUMNINFO(ColHstmnt, ColNo, SRV_COL_INFO_STATUS), "#")
+  
+  DO CASE SERVER_COLUMNINFO(ColHstmnt, ColNo, SRV_COL_INFO_TYPE)  
+    CASE SRV_COL_TYPE_CHAR     
+      Alter control 7 Value SERVER_COLUMNINFO(ColHstmnt, ColNo, SRV_COL_INFO_VALUE)  
+      Alter control 9 Value "Character"        
+    CASE SRV_COL_TYPE_DECIMAL   
+      Alter control 7 Value STR$(SERVER_COLUMNINFO(ColHstmnt, ColNo, SRV_COL_INFO_VALUE)) 
+      Alter control 9 Value "Decimal"          
+    CASE SRV_COL_TYPE_INTEGER 
+      Alter control 7 Value STR$(SERVER_COLUMNINFO(ColHstmnt, ColNo, SRV_COL_INFO_VALUE))
+      Alter control 9 Value "Integer"             
+    CASE SRV_COL_TYPE_SMALLINT  
+      Alter control 7 Value STR$(SERVER_COLUMNINFO(ColHstmnt, ColNo, SRV_COL_INFO_VALUE)) 
+      Alter control 9 Value "SmallInt"          
+   CASE SRV_COL_TYPE_DATE     
+      Alter control 7 Value STR$(SERVER_COLUMNINFO(ColHstmnt, ColNo, SRV_COL_INFO_VALUE))
+      Alter control 9 Value "Date"            
+    CASE SRV_COL_TYPE_LOGICAL 
+      if SERVER_COLUMNINFO(ColHstmnt, ColNo, SRV_COL_INFO_VALUE)=0  THEN    
+      	Alter control 7 Value "FALSE"
+      ELSE
+      	Alter control 7 Value "TRUE"
+	  END IF
+      Alter control 9 Value "Logical"     
+    CASE SRV_COL_TYPE_FLOAT    
+      Alter control 7 Value FORMAT$(SERVER_COLUMNINFO(ColHstmnt, ColNo, SRV_COL_INFO_VALUE), "#.########") 
+      Alter control 9 Value "Float"  
+    CASE SRV_COL_TYPE_FIXED_LEN_STRING   
+      Alter control 7 Value SERVER_COLUMNINFO(ColHstmnt, ColNo, SRV_COL_INFO_VALUE) 
+      Alter control 9 Value "Fixed Character"  
+    CASE SRV_COL_TYPE_BIN_STRING 
+      Alter control 7 Value SERVER_COLUMNINFO(ColHstmnt, ColNo, SRV_COL_INFO_VALUE)  
+      Alter control 9 Value "Binary String"        
+  END CASE
+
+  GOTO ALLDONE
+
+  FETCHERR:
+    NOTE(ERROR$())
+    RESUME ALLDONE
+  ALLDONE:
+END SUB

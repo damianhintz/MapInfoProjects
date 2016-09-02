@@ -1,0 +1,39 @@
+'*****************************************************************************
+'       Copyright (c) 2000-2001, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile:   SRCHREP.DEF  $
+'
+' Module Description:
+'
+'  SRCHREP STRING defines
+'*****************************************************************************
+
+' Resource String Ids
+Define IDS_MENU_SEARCH_REPLACE           1
+Define IDS_MENU_ABOUT	                 2
+Define IDS_MENU_EXIT                     3
+Define IDS_STR_SEARCH_REPLACE            4
+Define IDS_NO_TABLES_OPENED              5
+Define IDS_OPERATION_CANCELLED           6
+Define IDS_OPEN_TABLES_READONLY          7
+Define IDS_TITLE_SEARCH_REPLACE          8
+Define IDS_TABLE_TO_SEARCH               9
+Define IDS_COLUMN_TO_SEARCH              10
+Define IDS_SEARCH_STRING                 11
+Define IDS_REPLACEMENT_STRING            12
+Define IDS_CASE_SENSITIVE                13
+Define IDS_NO_MATCHES                    14
+Define IDS_UNABLE_TO_REPLACE             15
+Define IDS_TABLE_READONLY                16
+Define IDS_NO_CHARACTER_COLUMNS_EXIST    17
+Define IDS_ABOUT_SEARCH_REPLACE          18
+Define IDS_SEARCH_REPLACE_WILL_SEARCH    19
+Define IDS_CHARACTER_COLUMN_FOR_STRING   20
+Define IDS_AND_REPLACE_IT                21
+Define IDS_USER_MAY_SPECIFY              22
+Define IDS_STRING_TO_BE_CASE_SENSITIVE   23
+Define IDS_ERROR_INVALID_COLUMN_TYPE     24
+Define IDS_ERROR_INVALID_TABLE_TYPE      25
+Define IDS_ERROR_NO_COLUMN_SELECTED      26
+

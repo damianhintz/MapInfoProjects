@@ -1,0 +1,328 @@
+'*****************************************************************************
+'       Copyright (c) 2000-2001, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: Geoset.MB $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+' Read and write MapX Geosets
+'
+' Revision History:
+'
+'    Rev 1.0   11 Jun 1998           SoftServe
+'    Rev 2.2   18 Apr 2000           DRESSEL
+'            - add versioning
+'            - fix problem with mismatched line styles
+'            - support keywords new to geosets with MapX version 4.0:
+'              desription, drawlabelsafter, showlinedirection, shownodes,
+'              showcentroids, editable, and label\partialsegments
+'    Rev 2.3   27 Apr 2000           DRESSEL
+'            - look in MapX 4.0 directory first, then MapX 3.0 directory
+'    Rev 2.4   28 Apr 2000           DRESSEL
+'            - prompt for GeoSet version and handle accordingly
+'            - read and write bitmap (custom) symbol information
+'            - read and ignore pen and linepen 'pattern' setting
+'    Rev 2.5  17 Apr 2001           DRESSEL
+'            - read and write CENTER_USER for 450 geosets #16242
+'            - read halo color and apply properly #15427 & #15959
+'            - read and apply the OFFSET and MAXLABEL keys properly #15959
+'            - read MapX 4.5 geosets #15019 & #15959
+'            - don't mess with menu bar #16323
+'            - remove 'AutoLoad' button from About Box
+'            - extract strings for localization
+'    Rev 2.6  1 Aug 2003            Greene
+'            - write and read MapX 5.0 geosets with new metadata tags
+'              ZOOM\UNIT, LABEL\ALONG, LABEL\PARTIALOBJECTS
+'            - allow grid files to be exported in 5.0 geosets (bug #27021)
+'*****************************************************************************
+Include "MapBasic.def"
+Include "Geoset.def"
+Include "GeosetLoad.def"
+Include "Service.def"
+' Include a file that lets us use the "auto-load" library
+Include "..\Inc\auto_lib.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+Dim msGeosetPath As String
+
+Declare Sub Main
+Declare Sub CreateGeoset
+Declare Function GetGeosetInfo(sGeosetName As String, sGeosetFile As String) As Logical
+Declare Sub CreateGeosetAbout
+Declare Sub CreateGeosetDone
+Declare Sub EnableCreateGeoset
+Declare Sub WinFocusChangedHandler
+Declare Sub WinClosedHandler
+
+'---------------------------------------
+Sub Main
+
+  OnError Goto HandleError
+
+  If LoadStrings((ApplicationDirectory$() + "Geoset.str")) = FALSE Then
+    Note "Unable to access resource string file: " + ApplicationDirectory$() + "Geoset.str"
+    Exit Sub
+  End If
+
+  gsAppFilename = "Geoset.mbx"    '** and set_tools_menu
+  gsAppDescription = GetResString(IDS_APP_DESCRIPTION)
+
+  gnPath = PATH_FULL
+
+  Create Menu GetResString(IDS_MENU_NAME) As
+    GetResString(IDS_OPEN_MENU_ITEM_NAME) Calling LoadGeoset,
+    GetResString(IDS_SAVE_MENU_ITEM_NAME) Calling CreateGeoset,
+    "(-",
+    GetResString(IDS_ABOUT_MENU_ITEM_NAME) Calling CreateGeosetAbout,
+    GetResString(IDS_EXIT_MENU_ITEM_NAME) Calling CreateGeosetDone
+
+  Call set_tools_menu(GetResString(IDS_MENU_NAME))
+
+  Call EnableCreateGeoset
+
+  gsGeoSetVersion = GEOSET_VERSION_500
+
+  Exit Sub
+
+HandleError:
+  Note "Main: " + Error$()
+  Resume Next
+
+End Sub 'Main
+
+'---------------------------------------
+Sub LoadGeoset
+  Dim bOK         As Logical
+  Dim sGeosetFile As String
+
+  OnError Goto ErrorTrap
+
+      If GetGeosetFileName(sGeosetFile) Then
+          ' Open, read, parse and close GeoSet file
+          If ReadGeoSet(sGeosetFile) Then
+              ' Open MI Tables from GeoSet
+              If OpenGeosetTables(msGeosetPath) Then
+                  ' Interpret information from Geoset file
+                  If InterpretGoeset() Then
+                      Print GetResString(IDS_FINISHED_READING_GEOSET) + """" + GetGeosetName() + """"
+                  End If 'InterpretGoeset
+              End If 'OpenGeosetTables
+          End If 'ReadGeoSet
+      End If 'GetGeosetFileName
+
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "LoadGeoset: " & Error$()
+  Resume Done
+End Sub 'LoadGeoset
+
+'---------------------------------------
+Sub CreateGeoset
+  Dim bOK As Logical
+  Dim lMapWin As Integer
+  Dim lLayers As Integer
+  Dim i As Integer
+  Dim sGeosetName As String
+  Dim sGeosetFile As String
+  Dim bCustomDistanceUnits as Logical
+
+  OnError Goto ErrorTrap
+
+  CLS
+  lMapWin = WindowID(FrontWindow())
+  bCustomDistanceUnits=FALSE
+
+  If lMapWin Then
+    If WindowInfo(lMapWin, WIN_INFO_TYPE) = WIN_MAPPER Then
+      If GetGeosetInfo(sGeosetName, sGeosetFile) Then
+      
+        'write all units in current Map Window units for 5.0 geosets
+        If gsGeoSetVersion = GEOSET_VERSION_500 Then
+          Set Distance Units MapperInfo(lMapWin, MAPPER_INFO_DISTUNITS)
+          bCustomDistanceUnits=TRUE
+        End If
+
+        If InitGeoset(lMapWin, sGeosetName, sGeosetFile) Then
+          lLayers = MapperInfo(lMapWin, MAPPER_INFO_LAYERS)
+          For i = 1 To lLayers
+            bOK = GeosetLayerInfo(lMapWin, i)
+          Next 'i
+          bOK = CloseGeoset()
+          Print GetResString(IDS_FINISHED_WRITING_GEOSET)
+
+          ' If no errors occurred and we're on Windows, display the result in notepad
+          If WriteGeosetOK() And SystemInfo(SYS_INFO_PLATFORM) = PLATFORM_WIN Then
+            Run Program "notepad.exe " + sGeosetFile
+          End If 'SystemInfo(SYS_INFO_PLATFORM)
+        End If 'InitGeoset
+      End If 'GetGeosetInfo
+    End If 'WindowInfo - window is a mapper
+  End If 'lMapWin
+
+Done:
+  if bCustomDistanceUnits then
+    Set Distance Units "mi" ' reset internal units in case 4.x geoset saved next
+  end if
+  Exit Sub
+
+ErrorTrap:
+  Print "CreateGeoset: " + Error$()
+  Resume Done
+End Sub 'CreateGeoset
+
+'---------------------------------------
+Sub CreateGeosetAbout
+  Dialog Title GetResString(IDS_ABOUT) + " " + GetResString(IDS_APP_DESCRIPTION) 
+                + " (" + GetResString(IDS_VERSION) + " " + AppVersion + ")"
+    Control StaticText Position 10, 10 Title GetResString(IDS_ABOUT_1)
+    Control StaticText Position 10, 20 Title GetResString(IDS_ABOUT_2)
+    Control StaticText Position 10, 30 Title GetResString(IDS_ABOUT_3)
+    Control StaticText Position 10, 40 Title GetResString(IDS_ABOUT_4)
+    Control OKButton Title GetResString(IDS_OK) Width 45
+End Sub 'CreateGeosetAbout
+
+'---------------------------------------
+Sub CreateGeosetDone
+  End Program
+End Sub 'CreateGeosetDone
+
+'---------------------------------------
+Function GetGeosetInfo(sGeosetName As String, sGeosetFile As String) As Logical
+  Dim nPath       As SmallInt
+  Dim sFileName   As String
+  Dim sTitle      As String
+  Dim iGeoSetVersion As SmallInt
+
+  OnError Goto ErrorTrap
+
+  Do Case gsGeoSetVersion
+  Case GEOSET_VERSION_100
+     iGeoSetVersion = 1
+  Case GEOSET_VERSION_400
+    iGeoSetVersion = 2
+  Case GEOSET_VERSION_450
+    iGeoSetVersion = 3
+  Case GEOSET_VERSION_500
+    iGeosetVersion = 4
+  End Case
+
+  sTitle=GetResString(IDS_SAVE_GEOSET_AS) + " (" + GetResString(IDS_VERSION) + " " + Str$(AppVersion) + ")"
+  Dialog Title sTitle
+    Control StaticText
+      Title GetResString(IDS_SELECT_GEOSET_VERSION)
+    Control RadioGroup
+      Title GetResString(IDS_PRE_40) + ";" + GetResString(IDS_40) + ";" 
+            + GetResString(IDS_45) + ";" + GetResString(IDS_50)
+      Value iGeoSetVersion
+      Into iGeoSetVersion
+    Control OKButton 
+      Title GetResString(IDS_OK)
+    Control CancelButton 
+      Title GetResString(IDS_CANCEL)
+	' extra hidden control to provide a spacer, so that the title can be read...
+    Control StaticText Position 0, 0 Title sTitle & String$(Len(sTitle), "'") Disable Hide
+
+  If CommandInfo(CMD_INFO_DLG_OK) Then
+    Do Case iGeoSetVersion
+      Case 1
+        gsGeoSetVersion = GEOSET_VERSION_100
+      Case 2
+        gsGeoSetVersion = GEOSET_VERSION_400
+      Case 3
+        gsGeoSetVersion = GEOSET_VERSION_450
+      Case 4
+        gsGeoSetVersion = GEOSET_VERSION_500
+    End Case
+
+    sGeosetFile = FileSaveAsDlg(msGeosetPath, "", "gst", GetResString(IDS_SAVE_GEOSET_AS))
+    If Len(sGeosetFile) > 0 Then
+      msGeosetPath = PathToDirectory$(sGeosetFile)
+      sGeosetName = PathToTableName$(sGeosetFile)
+      gnPath = nPath
+      GetGeosetInfo = TRUE
+    End If 'Len
+  End If 'CommandInfo 
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "GetGeosetInfo: " + Error$()
+  Resume Done
+End Function 'GetGeosetInfo
+
+'---------------------------------------
+Sub EnableCreateGeoset
+  Dim lWin As Integer
+  Dim sEnable As String
+
+  OnError Goto ErrorTrap
+
+  sEnable = "Disable"
+  If NumWindows() Then
+    lWin = WindowID(FrontWindow())
+    If lWin Then
+      If WindowInfo(lWin, WIN_INFO_TYPE) = WIN_MAPPER Then
+        sEnable = "Enable"
+      End If 'WindowInfo
+    End If 'lWin
+  End If 'NumWindows
+  Run Command "Alter Menu Item CreateGeoset " + sEnable
+
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "EnableCreateGeoset: " + Error$()
+  Resume Done
+End Sub 'EnableCreateGeoset
+
+'---------------------------------------
+Function GetGeosetFileName(sGeosetFile As String) As Logical
+  OnError Goto ErrorTrap
+
+    sGeosetFile = FileOpenDlg(msGeosetPath, "", "gst", GetResString(IDS_OPEN_GEOSET))
+    If Len(sGeosetFile) > 0 Then
+      msGeosetPath = PathToDirectory$(sGeosetFile)
+      GetGeosetFileName = TRUE
+    End If 'Len
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "GetGeosetFileName: " & Error$()
+  Resume Done
+End Function 'GetGeosetFileName
+
+'---------------------------------------
+Function GetGeosetPath() As String
+  OnError Goto ErrorTrap
+    GetGeosetPath = msGeosetPath
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "GetGeosetPath: " & Error$()
+  Resume Done
+End Function 'GetGeosetPath
+
+'---------------------------------------
+Sub WinFocusChangedHandler
+  Call EnableCreateGeoset
+End Sub
+
+'---------------------------------------
+Sub WinClosedHandler
+  ' if we're closing the last window, disable CreateGeoset
+  If NumWindows() = 1 Then
+    Alter Menu Item CreateGeoset Disable
+  End If 'NumWindows
+End Sub 'WinClosedHandler 

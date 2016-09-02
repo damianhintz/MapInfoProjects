@@ -1,0 +1,1142 @@
+'*****************************************************************************
+'       Copyright © 2010, Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 67995 $
+'
+' Module Description:
+'
+'   DISPERSE POINTS
+'
+'   This program will take a table which contains points and move those points
+'   that are at the same coordinates.
+'
+'   The program adds a sub menu called "Disperse Points" under the "Tools"
+'   menu.  There are instructions in the "About Disperse Points" menu command.
+'
+'*****************************************************************************
+
+' DEFINITIONS
+
+Define x *4
+Define y *8
+Define z *9
+Define AppVersion 1.2
+'****************************************************************************
+'
+' SUB PROCEDURE DECLARATIONS
+
+Include "..\Inc\auto_lib.def"
+Declare Sub Main
+Declare Sub Start
+Declare Sub Get_Table
+Declare Sub Get_Method_to_Disperse
+Declare Sub Adjust_Pen_Picker
+Declare Sub Get_Zoom
+Declare Sub Validate
+Declare Sub Begin_Dispersing
+Declare Sub Disperse_Points_Systematically
+Declare Sub Systematic_Disp_Processing
+Declare Sub Disperse_Around_The_Clock
+Declare Sub Around_Clock_Processing
+Declare Sub Disperse_Points_Randomly
+Declare Sub Random_Disp_Processing
+Declare Sub Disperse_Randomly_With_Lines
+Declare Sub Random_Disp_Lines_Processing
+Declare Sub Clean_up
+Declare Sub End_Program
+Declare Sub Help_text
+Declare Sub Error_Control
+Declare Method TryParse Class "System.Double" Lib "mscorlib.dll" (ByVal str As String, dVal As Float) As Logical
+
+'*****************************************************************************
+
+' GLOBAL VARIABLE DECLARATIONS
+
+Global  temp_X,
+		temp_y,
+	new_x,
+		new_y,
+		Zoom_level,
+		Lat_Dispersal_Distance,
+		Long_Dispersal_Distance         as float
+Global  Table_has_been_chosen,
+		Continue_on,
+		Display_mapper,
+		Finished_Dispersing             as logical
+Global  Table_to_disperse,
+		Mapper_Zoom                             as string
+Global  Disperse_Method,
+	Neg_or_Pos,
+		Neg_or_Pos_2                    as smallint
+Global  Callout_Line_Style              as pen
+Global  i,k,
+		Counter,
+		Num_Records                             as Integer
+Global          Temp_Object                             as Object
+Global  Point_style                             as Symbol
+
+'*****************************************************************************
+
+' INCLUDED FILES
+
+Include "..\Inc\mapbasic.def"     ' Standard MapInfo defines.
+Include "..\Inc\icons.def"
+Include "..\Inc\menu.def"
+Include "Disperse.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+'*****************************************************************************
+'
+' SUB MAIN
+'
+' The main subprocedure is very short.  When the program is first run a
+' dialog which "introduces" the program is presented.  The dialog is stored
+' in a separate sub procedure (Sub Hello).  Besides that the only thing sub
+' Main does is set up the menu commands for the program.
+'
+'*****************************************************************************
+
+Sub Main
+
+	If LoadStrings((ApplicationDirectory$() + STR_RES_STR_FILE)) = FALSE   Then
+		Note STR_FILE_NOT_ACCESSIBLE + ApplicationDirectory$() + STR_RES_STR_FILE
+		Exit Sub
+	End If
+
+	gsAppDescription = GetResString(IDS_DISPERSE)
+	gsAppFileName    = GetResString(IDS_DISPERSE_MBX)
+
+	Create menu GetResString(IDS_DISP) as GetResString(IDS_DISPERSE_PTS) calling Start,
+		STR_MENU_ITEM_SEPARATOR,
+
+		GetResString(IDS_ABT_DISPERSE_PTS)  calling Help_text,
+		GetResString(IDS_EXIT_DISPERSE_PTS)   calling End_Program
+
+	Call set_tools_menu(GetResString(IDS_DISPERSE))
+End Sub
+
+'*****************************************************************************
+'
+' SUB START
+'
+' This sub procedure is called by the menu bar choice "Disperse Points"
+' This procedure calls another procedure which obtains the table which will
+' be dispersed.  Then the user is prompted with a series of dialogs to
+' will be dispersed and the zoom level at which the table is typically
+' viewed.
+'
+'****************************************************************************
+
+Sub Start
+Dim proceed as Logical
+
+	Finished_Dispersing = False   ' This is a variable which is used to determine
+						' whether the table was dispersed or not.  It is
+						' set to false here in case this is not the first
+						' time through the program.
+
+	Call Get_Table
+
+	proceed = Ask(GetResString(IDS_TABLE_COPY_RECOMMEND), GetResString(IDS_CONTINUE), GetResString(IDS_STOP))
+	If Not proceed Then
+		Exit Sub
+	End If
+								'**************************************
+	If Table_has_been_chosen then                 '* Nested loops provide logic so that
+		Call Get_Method_to_Disperse                 '* the program can be exited nicely at
+		If Continue_on = True Then                  '* any dialog.  The user must choose a
+			Call Get_Zoom                                     '* table, a method to disperse, and
+			If Continue_on = True Then                        '* a zoom level. Choosing cancel at
+				Call Begin_Dispersing                           '* any point causes the program to
+				Call Clean_Up                                   '* "go back to sleep".
+			End If                                            '**************************************
+		End If
+	End If
+
+End Sub
+
+'****************************************************************************
+'
+' SUB GET_TABLE
+'
+' This sub procedure starts by building a list of all the open tables.
+' If no tables are open, the FileOpenDlg function is used to prompt the user
+' to open one. If one or more tables are open then the user is prompted
+' to select the table they wish to disperse.
+'
+' If the user does select a table this procedure checks to make sure that
+' it is not a raster table, view table, that it is mappable and finally
+' that it is not set to read only.
+'
+'****************************************************************************
+
+Sub Get_Table
+
+	OnError goto ERROR_HANDLING
+
+	dim Table_name,
+		Tbl_list                    as string
+	dim i,
+		Num_tbls,
+		Table_Number,
+	Table_type              as smallint
+
+	Num_tbls = NumTables()
+
+	'****************************************
+	' The following code checks to see if any tables are open.  If none are open
+	' the user is prompted to open up the table they want to disperse.  If a one
+	' more tables are open then the user is prompted to select
+	If Num_tbls=0 then
+		Table_name = FileOpenDlg(STR_EMPTY_STR,STR_EMPTY_STR,STR_TAB,GetResString(IDS_OPEN_TABLE))
+		If Table_name = STR_EMPTY_STR then
+			Exit Sub
+		End If
+		Open Table Table_name
+		Table_number = 1
+		Table_has_been_chosen = TRUE
+	Else
+
+		For i = 1 to Num_tbls
+			Tbl_list = Tbl_list + Tableinfo(i,TAB_INFO_NAME)+STR_SEMI_COLON
+		Next
+
+		DIALOG_:                    '*** This label is used in error handling.  It is
+					'    called if nothing is selected in the ListBox
+					'    and the user clicks OK.
+
+		Dialog
+			Title GetResString(IDS_DISPERSE_POINTS)                   '**************************************
+			Control StaticText                                         '* User selects table to disperse.                        *
+				Title GetResString(IDS_CHOOSE_TABLE)                   '*************************************
+				Position 5,7
+			Control ListBox
+				Title tbl_list id 1 into Table_number
+				Width 82
+				Position 10,22
+			Control okbutton
+				Id 1
+			Control cancelbutton
+				Id 2
+
+	End IF
+
+	'*****************************************
+	' If the user clicks OK in the table list dialog (above), the selection that
+	' was made is checked to determine if it is a raster table, a view table or
+	' if it has been set to Read Only.  If this turns out to be the case the
+	' program notifies the user and then goes back to sleep.
+	'*****************************************
+
+	If CommandInfo(CMD_INFO_DLG_OK) or Table_has_been_chosen then
+
+		Table_to_Disperse = TableInfo(Table_Number,TAB_INFO_NAME)
+		Table_Type = TableInfo(Table_number,TAB_INFO_TYPE)
+
+		If Table_Type = TAB_TYPE_IMAGE Or Table_Type = TAB_TYPE_WMS Or Table_Type = TAB_TYPE_TILESERVER Then
+			Note GetResString(IDS_TABLE_SELECTED) + Table_to_Disperse +
+				GetResString(IDS_TABLE_SEL_CRITERIA_1)
+			Table_has_been_chosen = False
+
+		ElseIf Table_Type = TAB_TYPE_VIEW Then
+			Note GetResString(IDS_TABLE_SELECTED) + Table_to_Disperse +
+				GetResString(IDS_TABLE_SEL_CRITERIA_2)
+			Table_has_been_chosen = False
+
+		ElseIf Not TableInfo(Table_Number,TAB_INFO_MAPPABLE)Then
+			Note GetResString(IDS_TABLE_SELECTED) + Table_to_Disperse +
+				GetResString(IDS_TABLE_SEL_CRITERIA_3)
+			Table_has_been_chosen = False
+
+		Else
+			Table_has_been_chosen = True
+		End If
+
+	Else
+		Table_has_been_chosen = False
+	End If
+
+	Exit Sub
+
+	'****************************************************************************
+	' An error can occur if the user clicks on the 'OK' button without selecting
+	' a table in the ListBox.  This is error number 405 and is specifically
+	' handled below.  The mistake is noted to the user and the program resumes
+	' at the dialog so the user can try again.
+	'****************************************************************************
+
+	ERROR_HANDLING:
+	If Err() = 405 Then
+		Note GetResString(IDS_SELECT_TABLE)
+		Table_has_been_chosen = False
+		Resume DIALOG_                                  ' Program resumes at the point just
+									' before the dialog box.
+	Else
+		Note Error$()   'Just in case some other error occurs.
+		End Program
+	End If
+End Sub
+
+'****************************************************************************
+'
+' SUB GET ZOOM
+'
+' This sub procedure is where the user selects the zoom level at which they
+' will typically the view the table they are dispersing.  The distance the
+' points will be dispersed will take the zoom level into account.
+'
+'****************************************************************************
+Sub Get_Zoom
+
+	OnError Goto Error_Handling
+
+	'*************************************
+	' The following If-Then statement determines the default value which will
+	' be placed in the edittext control where the user types in the zoom level.
+	' The idea is to use the zoom level of the front window if it is a mapper.
+	'*************************************
+
+	If NumWindows() > 0 Then
+
+		If WindowInfo(FrontWindow(),WIN_INFO_TYPE) = WIN_MAPPER Then
+			Mapper_Zoom = FormatNumber$(MapperInfo(FrontWindow(),MAPPER_INFO_ZOOM))
+		Else
+			Mapper_Zoom = STR_ZOOM_VALUE
+		End If
+
+	Else
+
+		Resume_:    ' This label is used in error trapping.
+
+		Mapper_Zoom = STR_ZOOM_VALUE
+
+	End If
+
+	Dialog
+		Title GetResString(IDS_ZOOM_LEVEL)
+	Control StaticText
+		Title GetResString(IDS_ENTER_ZOOM_LEVEL)
+		Position 2x,1y
+	Control StaticText
+		Title GetResString(IDS_ZOOM_LVL)
+		Position 4x,4y
+	Control EditText
+		value Mapper_Zoom
+		id 4
+	                                                          '******************************
+	Control CheckBox                                          '* This will be used to
+		Title GetResString(IDS_DISPLAY_MAPPER)                  '* determine if a mapper will
+		Into Display_Mapper                                     '* be opened after all the
+		Position 4x, 7y                                         '* processing is done.
+	Control OKButton                                          '******************************
+		Calling Validate
+	Control Cancelbutton
+
+	If CommandInfo(CMD_INFO_DLG_OK) then  'This determines if the program should
+		Continue_on = True                                  'continue or go back to sleep.
+	Else
+		Continue_on = False
+	End If
+
+	Exit Sub
+
+	ERROR_HANDLING:
+
+	'**************************************
+	' An error can occur if there is a document window open but some non
+	' document window is the front window.  The FrontWindow() function will
+	' return an error (#590).  This is specifically trapped below.  The program
+	' resumes by setting the Mapper_zoom variable to 3400.
+	'**************************************
+
+	If Err() = 590 Then
+		Resume Resume_
+	Else
+		Call Error_Control
+		End Program
+	End If
+End Sub
+
+'**************************************************************************
+'
+' SUB VALIDATE
+'
+' This sub procedure checks to make sure that the value in the EditText box
+' from the Get_Zoom dialog is a valid number.  The Val() function is used
+' so only errors that start with a non numeric character are trapped.
+'
+'**************************************************************************
+Sub Validate
+Dim zoomLevelInput As string
+zoomLevelInput = ReadControlValue(4)
+Dim fVal As float
+	If TryParse(zoomLevelInput,fVal) and (fVal >=0) Then
+		Zoom_Level = fVal
+		Dialog Remove
+	Else
+		Alter Control 4 Value zoomLevelInput Active
+		Note GetResString(IDS_SPECIFY_VALID_ZOOM)
+		Dialog Preserve
+	End If
+
+End Sub
+
+'****************************************************************************
+'
+' SUB GET_METHOD_TO_DISPERSE
+'
+' This sub procedure is where the user selects the method by which the
+' points will be dispersed.  The result is stored in a global variable
+' (Disperse Method) which is used later to call the appropriate sub
+' procedure.
+'
+'****************************************************************************
+Sub Get_Method_to_Disperse
+Dim Pen_Style as Pen
+
+	Dialog
+	Title GetResString(IDS_DISPERSE_METHOD)
+	Calling Adjust_Pen_Picker
+	Control StaticText
+	Position 2x,1y
+	'Width 40x
+	'Height 2y
+	Title GetResString(IDS_CHOOSE_METHOD)
+	Control GroupBox
+			Position 1.5x,2.4y
+			Height 4.4y
+			Width 54X
+	Control GroupBox
+			Position 1.5x,6.3y
+			Height 4.3y
+			Width 54x
+	Control Radiogroup
+	Position 3x,3.5y
+	Title GetResString(IDS_DISPERSE_CHOICES)
+	Into Disperse_Method
+	'Width 205
+	Id 1
+	Value 1
+			Calling Adjust_Pen_Picker
+	Control PenPicker into Pen_Style
+			id 2
+			Position 190,58 '67,305
+	Control OKButton
+	Control CancelButton
+	If CommandInfo(CMD_INFO_DLG_OK) then
+		Continue_on = True
+		Set Style Pen Pen_Style                 ' If the user clicks cancel the
+	Else                                                            ' program will go back to sleep
+		Continue_on = False
+	End If
+
+End Sub
+
+'****************************************************************************
+'
+' SUB ADJUST_PEN_PICKER
+'
+' This goes with the dialog where the user selects the dispersion method.
+' If the user chooses "Randomly with Callout Lines" then a PenPicker is
+' added to the dialog which will allow selection of the line style for the
+' callout lines.
+'
+'****************************************************************************
+Sub Adjust_Pen_Picker
+
+	Do Case ReadControlValue(1)
+		Case 1,2,3
+			Alter Control 2 Hide
+
+		Case 4
+	Alter Control 2 Show
+	End Case
+
+End Sub
+
+'***************************************************************************
+'
+
+' SUB BEGIN_DISPERSING
+'
+' This sub procedure starts the dispersion process.  It selects all the
+' records from the table which is being dispersed which contain point
+' objects.  If no records are selected the user is notified.
+'
+'****************************************************************************
+Sub Begin_Dispersing
+
+	OnError Goto ERROR_HANDLING
+
+	If TableInfo(Table_to_Disperse,TAB_INFO_TYPE) = TAB_TYPE_BASE Then
+		Set Table Table_to_Disperse Undo Off
+	End If
+
+	'*** The following creates a table, with the coordinates in order.
+
+	Select centroidx(obj) STR_TEMP_X_COORD, centroidY(Obj) STR_TEMP_Y_COORD from
+		Table_to_Disperse Where Str$(Object)=STR_POINT Order by Col1, Col2 into Temp_table
+
+	Num_Records = TableInfo(Temp_table,TAB_INFO_NROWS)
+
+	If Num_Records > 0 Then
+
+		Fetch First from temp_table
+
+		temp_x = temp_table.Temp_Xcoord     'temporary holding place for coordinates
+		temp_y = temp_table.Temp_Ycoord
+
+		Counter = 0         ' This variable is used to determine which direction
+					' the next point should be moved.
+		i = 1                               ' This variable is used to keep track of what record
+					' is being worked on.
+
+		Fetch Next from temp_table
+
+		Do Case Disperse_Method
+			Case 1
+	Call Disperse_Points_Systematically
+			Case 2
+	Call Disperse_Around_The_Clock
+			Case 3
+	Call Disperse_Points_Randomly
+			Case 4
+	Call Disperse_Randomly_With_Lines
+		End Case
+
+	Else
+		Note GetResString(IDS_TABLE_WITHOUT_POINT)
+	End If
+
+	Exit Sub
+	Error_Handling:
+
+	Call Error_Control
+
+End Sub
+
+'*****************************************************************************
+'
+' SUB CLEAN_UP
+'
+' This sub closes down temporary tables.
+'
+'*****************************************************************************
+Sub Clean_up
+
+	run menu command M_ANALYZE_UNSELECT
+	If Finished_Dispersing Then
+		If Display_Mapper Then                              'If user asked for a mapper then these
+			Set Event Processing Off                  'lines will open one up.
+			Map From Table_to_Disperse Max
+			Set map zoom Zoom_Level
+			Set Event Processing On
+		End If
+	End If
+	Close Table Temp_table
+	Close Window Win_Message
+
+End Sub
+
+'****************************************************************************
+Sub Error_Control
+	Note GetResString(IDS_APPLICATION_ERROR)
+		+ Chr$(13)+Chr$(13) + Error$() + Chr$(13) + Err()
+	Close Table Temp_Table
+	Rollback Table Table_to_Disperse
+	End Program
+End Sub
+
+'****************************************************************************
+Sub End_Program
+	End Program
+End Sub
+
+'****************************************************************************
+'
+' SUB HELP_TEXT
+'
+' This sub procedure is called when the user clicks on the "Help & Instructions"
+' command.
+'
+'****************************************************************************
+Sub Help_Text
+
+	Dialog
+		Title GetResString(IDS_ABT_DISPERSE_POINTS)
+	Control StaticText
+		Title GetResString(IDS_APPLICATION_DISC1) + Chr$(13) + Chr$(13) +
+			GetResString(IDS_SYSTEMATIC_DISP_DISC1) + GetResString(IDS_SYSTEMATIC_DISP_DISC2) + Chr$(13)+ Chr$(13) +
+			GetResString(IDS_RANDOM_DISP_DISC1) + GetResString(IDS_RANDOM_DISP_DISC2) + Chr$(13) + Chr$(13) +
+			GetResString(IDS_APPLICATION_DISC2) + GetResString(IDS_APPLICATION_DISC3) + Chr$(13) + Chr$(13) +
+			GetResString(IDS_APPLICATION_DISC4) + Chr$(13) + Chr$(13) + Chr$(13) +
+			GetResString(IDS_APPLICATION_WARN)
+		Position 1x,1z
+		Width 65x
+		Height 29y
+	Control Okbutton
+End Sub
+
+'****************************************************************************
+'
+' SUB DISPERSE_POINTS_SYSTEMATICALLY
+'
+' This sub procedure handles the simple systematic dispersion.  The order
+' and direction the points are dispersed is: North, South, East, West,
+' Northeast, Southwest, Northwest, Southeast.
+'
+'***************************************************************************
+Sub Disperse_Points_Systematically
+
+	OnError Goto Error_Handling
+
+	Lat_Dispersal_Distance  = (Zoom_level/4000)   ' Distances the points will
+	Long_Dispersal_Distance = (Zoom_level/4000)   '   be moved.
+
+	' The following establishes the progress bar for the dispersion.  The
+	' range is determined by the Num_Records variable.  This means the range
+	' is set up according to the size of the temporary table.
+
+	ProgressBar GetResString(IDS_DISP_PTS_FOR) + Table_to_Disperse
+		Calling Systematic_Disp_Processing
+		Range Num_Records
+
+	Exit Sub
+
+	Error_Handling:
+	Call Error_Control
+End Sub
+
+'*****************************************************************************
+'
+
+' SUB SYSTEMATIC_DISP_PROCESSING
+'
+' Here is where the bulk of the processing is handled.  This sub procedure
+' is called repeatedly by the progressbar statement (in the previous sub
+' procedure) until the end of the table is reached.
+'
+'***************************************************************************
+Sub Systematic_Disp_Processing
+
+	OnError Goto Error_Handling
+
+	Counter = Counter + 1         ' This keeps track of how many consecutive
+							' points have been found in the same place.
+	i = i + 1                                     ' This keeps track of what row from the
+							' table is being processed.
+
+	Temp_Object = Temp_table.obj  'Stores object of current row in table.
+
+	'*************************************
+	' The next line compares the coordinates of the current record with the
+	' coordinates in the temporary storage variables (Temp_X and Temp_Y).  When
+	' these are equal the point needs to be moved.  The coordinates in the
+	' temporary variables will often be the previous record.  However, the
+	' values in Temp_X and Temp_Y are not changed until the next record has
+	' different coordinates.  What this means is that the program will disperse
+	' multiple points on the same location.
+	'
+	' If the point is going to be moved the direction is determined by taking
+	' the remainder of the Counter variable divided by nine.  This yields nine
+	' possibilities.  Eight of the nine possibilities correspond to the eight
+	' different directions the point can be moved in.  If the result is ends
+	' up being zero, the point is not moved at all.  That means if more than
+	' eight points are on the same location the ninth is kept in the original
+	' location and the tenth point and beyond are dispersed the same as the
+	' first eight.  A case statement is used.
+	'
+	' Each time the next point is on a new set of coordinates and does not need
+	' to be moved, the Counter variable is reset to zero and the Temp_X and
+	' Temp_Y variables are updated with the new coordinates.
+	'*************************************
+
+	If Temp_X = temp_table.Temp_Xcoord and Temp_Y = temp_table.Temp_Ycoord Then
+		Do Case Counter Mod 9
+			Case 1  ' Move Point North
+				Alter Object Temp_Object Geography OBJ_GEO_POINTY,
+					ObjectGeography(Temp_table.obj,OBJ_GEO_POINTY)
+					+ Lat_Dispersal_Distance
+
+			Case 2  ' Move Point South
+				Alter Object Temp_Object Geography OBJ_GEO_POINTY,
+					ObjectGeography(Temp_table.obj,OBJ_GEO_POINTY)
+					- Lat_Dispersal_Distance
+
+			Case 3  ' Move Point East
+				Alter Object Temp_Object Geography OBJ_GEO_POINTX,
+					ObjectGeography(Temp_table.obj,OBJ_GEO_POINTX)
+					+ Long_Dispersal_Distance
+
+			Case 4  ' Move point West
+				Alter Object Temp_Object Geography OBJ_GEO_POINTX,
+					ObjectGeography(Temp_table.obj, OBJ_GEO_POINTX)
+					- Long_Dispersal_Distance
+
+			Case 5  ' Move point Northeast
+				Alter Object Temp_Object Geography OBJ_GEO_POINTY,
+					ObjectGeography(Temp_table.obj, OBJ_GEO_POINTY)
+					+ Lat_Dispersal_Distance
+				Alter Object Temp_Object Geography OBJ_GEO_POINTX,
+					ObjectGeography(Temp_table.obj, OBJ_GEO_POINTX)
+					+ Long_Dispersal_Distance
+
+			Case 6  ' Move point Southwest
+				Alter Object Temp_Object Geography OBJ_GEO_POINTY,
+					ObjectGeography(Temp_table.obj,OBJ_GEO_POINTY)
+					- Lat_Dispersal_Distance
+				Alter Object Temp_Object Geography OBJ_GEO_POINTX,
+					ObjectGeography(Temp_table.obj, OBJ_GEO_POINTX)
+					- Long_Dispersal_Distance
+
+			Case 7  ' Move point Northwest
+				Alter Object Temp_Object Geography OBJ_GEO_POINTY,
+					ObjectGeography(Temp_table.obj,OBJ_GEO_POINTY)
+					+ Lat_Dispersal_Distance
+				Alter Object Temp_Object Geography OBJ_GEO_POINTX,
+					ObjectGeography(Temp_table.obj, OBJ_GEO_POINTX)
+					- Long_Dispersal_Distance
+
+			Case 8  ' Move point SouthEast
+				Alter Object Temp_Object Geography OBJ_GEO_POINTY,
+					ObjectGeography(Temp_table.obj,OBJ_GEO_POINTY)
+					- Lat_Dispersal_Distance
+				Alter Object Temp_Object Geography OBJ_GEO_POINTX,
+					ObjectGeography(Temp_table.obj, OBJ_GEO_POINTX)
+					+ Long_Dispersal_Distance
+
+	End case
+
+		Update Temp_table Set Obj = Temp_Object where Rowid = i
+	Else
+
+	' If the current records coordinates are different from those in
+	' Temp_X and Temp_Y then Temp_X and Temp_Y are updated.
+
+	Temp_X = Temp_table.Temp_Xcoord
+	Temp_Y = Temp_table.Temp_Ycoord
+
+	Counter = 0     'Counter is set back to zero to reset the direction the
+				' next point should be moved in.
+
+	End If
+
+	Fetch Next from Temp_table
+
+	If Not EOT(Temp_table) then
+		ProgressBar = i
+	Else
+		ProgressBar = -1
+		Finished_Dispersing = True
+	End If
+
+	Exit Sub
+
+	ERROR_HANDLING:
+
+	'************************************
+	' The specific error trapped below occurs if you try to perform some kind
+	' of write or update to a table which has been set to read only.
+	'************************************
+
+	If Err() = 891 then
+		Note GetResString(IDS_DISPERSE_NOT_ALLOWED) +
+			Table_to_Disperse + GetResString(IDS_TABLE_READ_ONLY)
+		Run Menu Command M_ANALYZE_UNSELECT
+		Finished_Dispersing = False
+		ProgressBar = -1                                    ' Ends progress bar loop.
+	Else
+		Call Error_Control
+	End If
+
+end sub
+
+'****************************************************************************
+'
+' SUB DISPERSE_AROUND_THE_CLOCK
+'
+' This sub procedure disperses points systematically in an "around the clock"
+' pattern: N,NE,E,SE,S,SW,W,NW.
+'
+' The previous sub procedure has more comments than this one.  The only
+' difference between the two is that this one moves the points in a
+' different order.
+'
+'****************************************************************************
+Sub Disperse_Around_the_Clock
+
+	OnError Goto ERROR_HANDLING
+
+	Lat_Dispersal_Distance  = (Zoom_level/4000)
+	Long_Dispersal_Distance = (Zoom_level/4000)
+
+	ProgressBar GetResString(IDS_DISP_PTS_FOR_TABLE) + Table_to_Disperse
+		Calling Around_Clock_Processing
+		Range Num_Records
+
+	Exit Sub
+
+	ERROR_HANDLING:
+
+	Call Error_Control
+
+End Sub
+
+'****************************************************************************
+'
+' SUB Around_Clock_Processing
+'
+'****************************************************************************
+Sub Around_Clock_Processing
+
+	OnError Goto Error_Handling
+
+	Counter = Counter + 1
+	i = i + 1
+
+	Temp_Object = Temp_table.obj  'Stores object of current row in table.
+
+	'*********************************
+
+	If Temp_X = temp_table.Temp_Xcoord and Temp_Y = temp_table.Temp_Ycoord Then
+		Do Case Counter Mod 9
+
+			Case 1     ' Move Point North
+				Alter Object Temp_Object Geography OBJ_GEO_POINTY,
+					ObjectGeography(Temp_table.obj,OBJ_GEO_POINTY)
+					+ Lat_Dispersal_Distance
+
+			Case 5 ' Move Point South
+				Alter Object Temp_Object Geography OBJ_GEO_POINTY,
+					ObjectGeography(Temp_table.obj,OBJ_GEO_POINTY)
+					- Lat_Dispersal_Distance
+
+			Case 3 ' Move Point East
+				Alter Object Temp_Object Geography OBJ_GEO_POINTX,
+					ObjectGeography(Temp_table.obj,OBJ_GEO_POINTX)
+					+ Long_Dispersal_Distance
+
+			Case 7 ' Move point West
+				Alter Object Temp_Object Geography OBJ_GEO_POINTX,
+					ObjectGeography(Temp_table.obj, OBJ_GEO_POINTX)
+					- Long_Dispersal_Distance
+
+			Case 2 ' Move point Northeast
+				Alter Object Temp_Object Geography OBJ_GEO_POINTY,
+					ObjectGeography(Temp_table.obj, OBJ_GEO_POINTY)
+					+ Lat_Dispersal_Distance
+				Alter Object Temp_Object Geography OBJ_GEO_POINTX,
+					ObjectGeography(Temp_table.obj, OBJ_GEO_POINTX)
+					+ Long_Dispersal_Distance
+
+			Case 6 ' Move point Southwest
+				Alter Object Temp_Object Geography OBJ_GEO_POINTY,
+					ObjectGeography(Temp_table.obj,OBJ_GEO_POINTY)
+					- Lat_Dispersal_Distance
+				Alter Object Temp_Object Geography OBJ_GEO_POINTX,
+					ObjectGeography(Temp_table.obj, OBJ_GEO_POINTX)
+					- Long_Dispersal_Distance
+
+			Case 8 ' Move point Northwest
+				Alter Object Temp_Object Geography OBJ_GEO_POINTY,
+					ObjectGeography(Temp_table.obj,OBJ_GEO_POINTY)
+					+ Lat_Dispersal_Distance
+				Alter Object Temp_Object Geography OBJ_GEO_POINTX,
+					ObjectGeography(Temp_table.obj, OBJ_GEO_POINTX)
+					- Long_Dispersal_Distance
+
+			Case 4 ' Move point SouthEast
+				Alter Object Temp_Object Geography OBJ_GEO_POINTY,
+					ObjectGeography(Temp_table.obj,OBJ_GEO_POINTY)
+					- Lat_Dispersal_Distance
+				Alter Object Temp_Object Geography OBJ_GEO_POINTX,
+					ObjectGeography(Temp_table.obj, OBJ_GEO_POINTX)
+					+ Long_Dispersal_Distance
+		End case
+		Update Temp_table Set Obj = Temp_Object where Rowid = i
+	Else
+
+		' If the current records coordinates are different from those in
+		' Temp_X and Temp_Y then Temp_X and Temp_Y are updated.
+
+		Temp_X = Temp_table.Temp_Xcoord
+		Temp_Y = Temp_table.Temp_Ycoord
+
+		Counter = 0 'Counter is set back to zero.
+
+	End If
+
+	Fetch Next from Temp_table
+
+	If not EOT(Temp_table) Then
+		ProgressBar = i
+	Else
+		ProgressBar = -1
+		Finished_Dispersing = True
+	End If
+
+	Exit Sub
+	ERROR_HANDLING:
+
+	'************************************
+	' The specific error trapped below occurs if you try to perform some kind
+	' of write or update to a table which has been set to read only.
+	'************************************
+
+	If Err() = 891 then
+		Note GetResString(IDS_DISPERSE_NOT_ALLOWED) +
+			Table_to_Disperse + GetResString(IDS_TABLE_READ_ONLY)
+		Run Menu Command M_ANALYZE_UNSELECT
+		Finished_Dispersing = False
+		ProgressBar = -1
+	Else
+		Call Error_Control
+	End If
+
+end sub
+
+'***************************************************************************
+
+' SUB DISPERSE_POINTS_RANDOMLY
+'
+' This sub procedure handles dispersing the points randomly.
+'
+'****************************************************************************
+
+Sub Disperse_Points_Randomly
+
+	OnError Goto ERROR_HANDLING
+
+	Randomize
+	Set Progressbars Off
+
+	k = 1
+
+	ProgressBar GetResString(IDS_DISP_PTS_FOR_TABLE) + Table_to_Disperse
+		Calling Random_Disp_Processing
+		Range Num_Records
+
+	Exit Sub
+
+	ERROR_HANDLING:
+
+	Call Error_Control
+
+End Sub
+
+'***************************************************************************
+'
+' SUB RANDOM_DISP_PROCESSING
+'
+' This is where the bulk of the processing is done.
+'
+'***************************************************************************
+Sub Random_Disp_Processing
+
+	OnError Goto ERROR_HANDLING
+
+	k = k + 1     ' K is used to keep track of what row is being worked on
+			' in the table being dispersed.
+
+	If Temp_X = temp_table.Temp_Xcoord and Temp_Y = temp_table.Temp_Ycoord Then
+
+	neg_or_pos = round(rnd(1),1)            'Random number generators used
+	neg_or_pos_2 = round(rnd(1),1)  ' to create two random 1's or
+	If neg_or_pos =0 then                   ' -1's.  This is so the
+		neg_or_pos = -1                         ' dispersion can go in any
+	End if                                                  ' direction.
+	If neg_or_pos_2 = 0 then
+		neg_or_pos_2 = -1
+	End if
+
+	' The following gets the point style of the current symbol
+	' and changes the default to that style so that the program does
+	' not end up changing any point styles.
+
+	Point_style = ObjectInfo(Temp_table.obj,OBJ_INFO_SYMBOL)
+	Set Style Symbol Point_Style
+
+	'***************************************
+	' The next two lines calculate a new X and Y Coordinate.  A pseudo random
+	' number generator is used.  The formula starts with the original
+	' coordinates.  What happens is the user-picked zoom level is divided by
+	' 4000 and multiplied by a random number between zero and one.  This creates
+	' a good random spread which can potentially move a point a couple of
+
+	' "point lengths" away, (with the zoom having been taken into account).
+	' The result of all of this is multiplied with a randomly generated -1 or +1.
+	' This is done for both the X and Y coordinate.
+	'***************************************
+
+		New_x = Temp_table.temp_xcoord + (Rnd(1) * ((zoom_level/3000))* neg_or_pos)
+		New_Y = Temp_table.temp_ycoord + (Rnd(1) * ((zoom_level/3000))* neg_or_pos_2)
+
+	' Update the table with the point at the new coordinates
+		Update temp_table set obj = CreatePoint(New_X,New_Y)where RowID = k
+
+	End If
+
+	Temp_X = Temp_table.Temp_Xcoord 'If the point is not on the same
+	Temp_Y = Temp_table.Temp_Ycoord 'location then update the temp
+								'variable.
+
+	Fetch Next from Temp_table
+
+	If Not EOT(Temp_table) then   ' If not at the end of the table then
+		ProgressBar = k                     ' update the progress bar.
+	Else
+		ProgressBar = -1                    ' If at the end of the table set flags so
+		Finished_Dispersing = True  ' progress bar loop ends and
+	End If                                                ' Finished_Dispersing variable is set to true.
+
+	Exit Sub
+
+ERROR_HANDLING:
+
+	'************************************
+	' The specific error trapped below occurs if you try to perform some kind
+	' of write or update to a table which has been set to read only.
+	'************************************
+
+	If Err() = 891 then
+		Note GetResString(IDS_DISPERSE_NOT_ALLOWED) +
+			Table_to_Disperse + GetResString(IDS_TABLE_READ_ONLY)
+		Run Menu Command M_ANALYZE_UNSELECT
+		Finished_Dispersing = False
+		ProgressBar = -1
+	Else
+		Call Error_Control
+	End If
+
+End Sub
+
+'****************************************************************************
+'
+' DISPERSE_RANDOMLY_WITH_LINES
+'
+' This sub procedure is called when the user wants to do random dispersion
+' with callout lines.  The result is the point is dispersed with a line
+' drawn back to its original location.
+'
+' The callout lines are created in the same layer as the points.
+'
+' There are more comments in the previous sub procedure.
+'
+'****************************************************************************
+
+Sub Disperse_Randomly_With_Lines
+
+	OnError Goto ERROR_HANDLING
+
+	Randomize
+	Set Progressbars Off
+
+	k = 1
+
+	ProgressBar GetResString(IDS_DISP_PTS_FOR) + Table_to_Disperse
+		Calling Random_Disp_Lines_Processing
+		Range Num_Records
+
+	Exit Sub
+
+	ERROR_HANDLING:
+	Call Error_Control
+
+End Sub
+
+'****************************************************************************
+'
+' SUB RANDOM_DISP_LINES_PROCESSING
+'
+' This is where the bulk of the processing takes place
+'
+'***************************************************************************
+Sub Random_Disp_Lines_Processing
+
+	OnError Goto Error_Handling
+
+	k = k + 1
+
+	' Next line checks to see if the current row's object is at the same
+	' coordinates as the coordinates stored in the temporary holding
+	' place (Temp_X and Temp_Y)
+
+	If Temp_X = temp_table.Temp_Xcoord and Temp_Y = temp_table.Temp_Ycoord Then
+
+		neg_or_pos = round(rnd(1),1)                'Random number generators used
+		neg_or_pos_2 = round(rnd(1),1)      ' to create two random 1's or
+		If neg_or_pos =0 then                       ' -1's.  This is so the
+			neg_or_pos = -1                          ' dispersion can go in any
+		End if                                                      ' direction.
+		If neg_or_pos_2 = 0 then
+			neg_or_pos_2 = -1
+		End if
+
+		' The following gets the point style of the current symbol
+		' and changes the default to that style so that the program does
+		' not end up changing any point styles.
+
+		Point_style = ObjectInfo(Temp_table.obj,OBJ_INFO_SYMBOL)
+		Set Style Symbol Point_Style
+
+	'***************************************
+	' The next two lines calculate a new X and Y Coordinate.  A pseudo random
+	' number generator is used.  The formula starts with the original
+	' coordinates.  What happens is the user-picked zoom level is divided by
+	' 4000 and multiplied by a random number between zero and one.  This creates
+	' a good random spread which can potentially move a point a couple of
+	' "point lengths" away, (with the zoom having been taken into account).  To
+	' this number a small additional distance is added (zoom_level/9000).  What
+	' this does is make sure the point is moved a minimum amount.  The result
+
+	' of all of this is multiplied with a randomly generated -1 or +1.  This is
+	' done for both the X and Y coordinate.
+	'***************************************
+
+		New_x = Temp_table.temp_xcoord + ((Rnd(1) * (zoom_level/4000) + zoom_level/9000) * neg_or_pos)
+		New_Y = Temp_table.temp_ycoord + ((Rnd(1) * (zoom_level/4000) + zoom_level/9000) * neg_or_pos_2)
+
+		' Update the table with the point at the new coordinates
+
+		Update temp_table set obj = CreatePoint(New_X,New_Y)where RowID = k
+		Insert into temp_table (obj)
+		values (CreateLine(temp_x,temp_y,New_X,New_Y))
+
+	End if
+
+	Temp_X = Temp_table.Temp_Xcoord               ' If the point is not on the same
+	Temp_Y = Temp_table.Temp_Ycoord               ' location then update the temp
+							' variable.  Now this point will be
+							' the one the next point is compared
+							' with.
+	Fetch Next from Temp_table
+
+	If Not EOT(Temp_table) then
+		ProgressBar = k                             ' ProgressBar gets updated.
+	Else
+		ProgressBar = -1                            ' Finish the ProgressBar loop
+		Finished_Dispersing = True          ' Set the flag so the Clean up sub
+	End If                                                        ' procedure behaves.
+
+	Exit Sub
+
+ERROR_HANDLING:
+
+	'************************************
+	' The specific error trapped below occurs if you try to perform some kind
+	' of write or update to a table which has been set to read only.
+	'************************************
+
+	If Err() = 891 then
+		Note GetResString(IDS_DISPERSE_NOT_ALLOWED) +
+			Table_to_Disperse + GetResString(IDS_TABLE_READ_ONLY)
+		Run Menu Command M_ANALYZE_UNSELECT
+		Finished_Dispersing = False
+		ProgressBar = -1
+	Else
+		Call Error_Control
+	End If
+
+End Sub

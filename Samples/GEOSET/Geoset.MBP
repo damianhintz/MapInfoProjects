@@ -1,0 +1,15 @@
+[Link]
+Application=Geoset.mbx
+Module=Geoset.mbo
+Module=GeosetLayer.mbo
+Module=GeosetStyle.mbo
+Module=GeosetWrite.mbo
+Module=Service.mbo
+Module=GeosetMapLayer.mbo
+Module=GeosetRead.mbo
+Module=Error.mbo
+Module=GeosetParser.mbo
+Module=GeosetData.mbo
+Module=GeosetKeys.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\Lib\resstrng.mbo

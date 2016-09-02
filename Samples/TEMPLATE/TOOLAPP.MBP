@@ -1,0 +1,5 @@
+[Link] 
+Application=toolapp.mbx 
+Module=toolapp.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\Lib\MiStdLib.mbo

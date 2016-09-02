@@ -1,0 +1,255 @@
+'******************************************************************************
+'                             MAPINFO CORPORATION
+'
+' Date:         10/12/95          
+'
+' Module:       MIUPLDDB.mb
+' Application:  MIUPLOAD.mbx
+' For Version:  MapInfo 4.0
+' 
+' Overview:
+'
+'   This module provides the ability to generate the Database specific SQL statements
+'   allowing you to upload a MapInfo table 
+'   Currently it contains the following database routines:
+'        SQS database 
+'
+ '****************************************************************************/
+'NOTE ABOUT THE CONNECTION OF THE DRIVER. The Function WhichSQLDatabase is in the 
+'SQLUTIL.MB. The error will report the name of the driver we are detecting.
+'All you have to do is add another CASE statement with the exact name of the driver 
+'and the upload utility should work.
+'****************************************************************************/
+include "MAPBASIC.DEF"
+include "..\inc\DLSAMP.DEF"
+include "..\inc\Auto_lib.DEF"
+
+
+'*************************************************************************
+'Creates a table on the Autometric SQS - Spatial Query Server (A sybase open server)
+'*************************************************************************
+FUNCTION BuildSQSCreateString(BYVAL TableName As STRING, BYVAL NewTableName As STRING) As STRING
+Dim CreateStr, sep, uptype As STRING
+Dim i As INTEGER
+  ' Build a create string that creates the upload data! way cool! 
+
+  CreateStr="CREATE TABLE " + demoquotechar + NewTableName + demoquotechar + " ("
+  sep=""
+  FOR i=1 TO TABLEINFO(TableName, TAB_INFO_NCOLS)
+    ' Strings must be enclosed on singhle quotes
+    uptype=""  
+ 
+    DO CASE COLUMNINFO(TableName,"COL"+i, COL_INFO_TYPE)
+      CASE COL_TYPE_CHAR       uptype = 
+             "varchar(" + COLUMNINFO(TableName, "COL"+i, COL_INFO_WIDTH) + ")"
+      CASE COL_TYPE_DECIMAL    uptype = 
+             "decimal("+COLUMNINFO(TableName, "COL"+i, COL_INFO_WIDTH) +","+COLUMNINFO(TableName, "COL"+i, COL_INFO_DECPLACES) + ")"
+      CASE COL_TYPE_FLOAT uptype = 
+             "float"
+      CASE COL_TYPE_INTEGER uptype = 
+             "int"
+      CASE COL_TYPE_SMALLINT uptype = 
+             "smallint"
+      CASE COL_TYPE_LOGICAL uptype = 
+             "bit not NULL"
+      CASE COL_TYPE_DATE uptype = 
+             "datetime"
+    END CASE
+    
+    IF uptype <> "" THEN
+      CreateStr=CreateStr + sep + demoquotechar +
+         COLUMNINFO(TableName, "COL"+i, COL_INFO_NAME) + demoquotechar + " " + uptype
+      sep=","        
+    END IF 
+  Next
+
+  IF bUploadMICODE   THEN  
+    CreateStr = CreateStr + sep + 
+      demoquotechar + "MI_SQL_X" + demoquotechar + " float" + sep + 
+      demoquotechar + "MI_SQL_Y" + demoquotechar + " float" + sep +
+      demoquotechar + "MI_SQL_MICODE" + demoquotechar + " char(17)"
+  ELSEIF bUploadXY THEN
+    CreateStr = CreateStr + sep +
+      demoquotechar + "MI_SQL_X" + demoquotechar + " float" + sep +
+      demoquotechar + "MI_SQL_Y" + demoquotechar + " float"
+  END IF
+  
+  ' Mutually exclusive index format
+  IF bUploadSQSXY THEN
+    CreateStr = CreateStr + sep +
+      demoquotechar + "MI_SQS_POINT" + demoquotechar + " point index " + NewTableName + "_SQS_IDX" 
+  ELSEIF bUploadSQSREGN THEN
+    CreateStr = CreateStr + sep +
+       demoquotechar + "MI_SQS_POLYGON " + demoquotechar + " polygon_set index " + 
+                    NewTableName + "_SQS_IDX key to identity   NULL" 
+  ELSEIF bUploadSQSLINE THEN  
+    CreateStr = CreateStr + sep +
+      demoquotechar + "MI_SQS_LINE" + demoquotechar + " line_set index " + 
+                    NewTableName + "_SQS_IDX key to identity  NULL" 
+  END IF 
+
+  IF bUploadRecno or bUploadSQSXY THEN
+    CreateStr = CreateStr + sep +
+      demoquotechar + "MI_SQL_REC_NUM" + demoquotechar + " int primary key"
+  END IF
+
+  CreateStr=CreateStr + ")"
+
+  IF dbg   THEN
+    PRINT   "Create String = " + CreateStr
+'    print #1, CreateStr
+  END IF
+  BuildSQSCreateString=CreateStr
+END FUNCTION
+
+'****************************************************************************/
+'Builds Region Object Strings for SQS 
+'****************************************************************************/
+FUNCTION BuildRegnInsertString(InsertStr As STRING,
+                                 TableObject As Object,
+                                 num_polys as Integer) As STRING
+Dim ObjectPointX, ObjectPointY As FLOAT
+Dim SepChar, EndChar as String
+Dim num_nodes, node_num, poly_num   as Integer
+
+  IF dbg THEN
+	  Print "SQS Regions " + num_polys
+  END IF
+  IF num_polys < 1 THEN
+    GOTO ERR_EXIT
+  END IF
+  InsertStr = InsertStr  + ", polygon_set(("
+ 
+  SepChar = ""	
+  FOR poly_num = 1 to num_polys 
+    num_nodes = ObjectInfo(TableObject , OBJ_INFO_NPOLYGONS+poly_num)
+'    Print "Polygon  # " + poly_num + "  containing " + num_nodes + " Points"
+    FOR node_num=1 to num_nodes - 1 
+      ObjectPointX = ObjectNodeX(TableObject, poly_num, node_num)
+      ObjectPointY = ObjectNodeY(TableObject, poly_num, node_num)
+      InsertStr = InsertStr  + SepChar + "(" + format$(ObjectPointY,"#.########") + "," + 
+               format$(ObjectPointX,"#.########") + ")"
+      SepChar = ", " 
+    NEXT
+    InsertStr = InsertStr  + ")"  
+    SepChar = ", ("
+  NEXT
+  InsertStr = InsertStr  + ")"
+
+  IF dbg THEN
+    print "SQS Polygon InsertStr " + InsertStr
+  END IF 
+  GOTO ALL_DONE
+
+ERR_EXIT:
+  BuildRegnInsertString=""
+
+ALL_DONE:
+  BuildRegnInsertString = InsertStr
+
+END Function
+
+'****************************************************************************/
+'Builds Rectangle Object Strings for SQS 
+'****************************************************************************/
+FUNCTION BuildRectInsertString(InsertStr As STRING,
+                                 TableObject As Object) As STRING
+Dim TableObjectPointMINX, TableObjectPointMINY As FLOAT
+Dim TableObjectPointMAXX, TableObjectPointMAXY As FLOAT
+
+  TableObjectPointMINX = ObjectGeography(TableObject, OBJ_GEO_MINX)	
+  TableObjectPointMINY = ObjectGeography(TableObject, OBJ_GEO_MINY)
+  TableObjectPointMAXX = ObjectGeography(TableObject, OBJ_GEO_MAXX)	
+  TableObjectPointMAXY = ObjectGeography(TableObject, OBJ_GEO_MAXY)
+
+  
+  InsertStr = InsertStr  + ", polygon_set(((" + format$(TableObjectPointMINY,"#.########") + "," + 
+               format$(TableObjectPointMINX,"#.########") + "), (" + 
+	       format$(TableObjectPointMAXY,"#.########") + "," + 
+               format$(TableObjectPointMINX,"#.########") + "), (" + 
+	       format$(TableObjectPointMAXY,"#.########") + "," + 
+               format$(TableObjectPointMAXX,"#.########") + "), (" + 
+	       format$(TableObjectPointMINY,"#.########") + "," + 
+               format$(TableObjectPointMAXX,"#.########")  + "), (" + 
+	       format$(TableObjectPointMINY,"#.########") + "," + 
+               format$(TableObjectPointMINX,"#.########") 
+                + ")))"  
+
+  IF dbg THEN
+    print "SQS Rectangle InsertStr " + InsertStr
+  END IF 
+
+  GOTO ALL_DONE
+
+ERR_EXIT:
+  BuildRectInsertString=""
+
+ALL_DONE:
+  BuildRectInsertString = InsertStr
+
+END Function
+
+'***********************************************************************/
+'Builds Line Object Strings for SQS 
+'***********************************************************************/
+FUNCTION BuildLineInsertString(InsertStr As STRING,
+                                 TableObject As Object) As STRING
+Dim TableObjectPointBEGX, TableObjectPointBEGY As FLOAT
+Dim TableObjectPointENDX, TableObjectPointENDY As FLOAT
+Dim ObjType,num_nodes,node_num,num_lines,line_num as Integer
+Dim ObjectPointX, ObjectPointY As FLOAT
+DIM SepChar as String
+  ObjType = ObjectInfo(TableObject, OBJ_INFO_TYPE)
+
+  InsertStr = InsertStr  + ", line_set(("
+  IF ObjType = OBJ_TYPE_PLINE THEN 
+  num_lines = ObjectInfo(TableObject , OBJ_INFO_NPOLYGONS)
+  SepChar = ""	
+
+  FOR line_num = 1 to num_lines
+    num_nodes = ObjectInfo(TableObject , OBJ_INFO_NPOLYGONS+line_num)
+'    Print "Polyline  # " + line_num + "  containing " + num_nodes + " Points"
+    
+       FOR node_num=1 to num_nodes  
+        ObjectPointX = ObjectNodeX(TableObject, line_num, node_num)
+        ObjectPointY = ObjectNodeY(TableObject, line_num, node_num)
+        InsertStr = InsertStr  + SepChar + "(" + format$(ObjectPointY,"#.########") + "," + 
+               format$(ObjectPointX,"#.########") + ")"
+        SepChar = ", " 
+       NEXT
+    InsertStr = InsertStr  + ")"  
+    SepChar = ", ("
+    NEXT
+    InsertStr = InsertStr  + ")"
+
+  END IF
+  IF ObjType = OBJ_TYPE_LINE THEN
+    SepChar = "("
+    TableObjectPointBEGX = ObjectGeography(TableObject, OBJ_GEO_LINEBEGX)	
+    TableObjectPointBEGY = ObjectGeography(TableObject, OBJ_GEO_LINEBEGY)
+    TableObjectPointENDX = ObjectGeography(TableObject, OBJ_GEO_LINEENDX)	
+    TableObjectPointENDY = ObjectGeography(TableObject, OBJ_GEO_LINEENDY)
+
+    InsertStr = InsertStr + SepChar + format$(TableObjectPointBEGY,"#.########") + "," + 
+               format$(TableObjectPointBEGX,"#.########") + "), (" + 
+               format$(TableObjectPointENDY,"#.########") + "," + 
+               format$(TableObjectPointENDX,"#.########") + "))"  
+ END IF
+
+  IF dbg THEN
+    print "SQS Line InsertStr " + InsertStr
+  END IF 
+
+  GOTO ALL_DONE
+
+ERR_EXIT:
+  NOTE ERROR$()
+  BuildLineInsertString=""
+  RESUME ALL_DONE
+
+ALL_DONE:
+  BuildLineInsertString = InsertStr
+
+END Function
+
+

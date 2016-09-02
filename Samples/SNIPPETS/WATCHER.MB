@@ -1,0 +1,236 @@
+
+'****************************************************************************
+'                  WATCHER.MB   MapBasic source code 
+'
+'  WATCHER uses DDE to display the contents of a MapBasic application's
+'  global variables in a Microsoft Excel [tm] worksheet. 
+'
+'  First, run any MapBasic program which "goes to sleep". 
+'     (Typically, this means the program adds item(s) to a
+'     menu; the program is then "sleeping" until the user   
+'     selects one of those menu items).
+'
+'  Then, run WATCHER.  Watcher runs Microsoft Excel 
+'    - ASSUMING that you have installed Excel, that is, 
+'    and also assuming that Excel is either in the current
+'    directory, in the Windows directory, on in the search path.
+'
+'  After Excel is running, WATCHER uses DDE to set up the 
+'  Excel worksheet to monitor the "sleeping" MapBasic program's
+'  global variables.  Thereafter, when you activate the 
+'  sleeping MapBasic program, you see the variables change in Excel. 
+'****************************************************************************
+
+Include "mapbasic.def" 
+
+Declare Sub Main 
+Declare Sub LBHandler 
+Declare Function CellName(ByVal row As SmallInt, ByVal col As SmallInt) As String
+
+Global double_clicked As Logical, suspect As SmallInt 
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' the MAIN procedure is the procedure which is run when the user
+' first runs WATCHER. 
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub  Main 
+  Dim chan As Integer 
+  Dim topic, topic_list, app_name, app_names(25), 
+      dlg_app_names, chosen As String
+  Dim next_tab_position, next_topic_position, 
+      sleepers, row, col As SmallInt 
+
+  'If the user is running, say, MapInfo for Macintosh, we should
+  'quit right away.  DDE only works on Windows. 
+
+  If SystemInfo(SYS_INFO_PLATFORM) <> PLATFORM_WIN Then 
+    Note "WATCHER only runs on MapInfo for Windows, since "  + 
+         "other MapInfo platforms do not support DDE." 
+    End Program
+  End If 
+ 
+  'Use DDE to find out if there are any sleeping
+  'MapBasic applications. 
+ 
+  chan = DDEInitiate("MapInfo", "System")
+  topic_list = DDERequest$(chan, "Topics") 
+  DDETerminate chan 
+  OnError Goto ignore 
+
+  'The variable:  topic_list   now looks something like this: 
+  '
+  '  System<tab>C:\MB\WATCHER.MBX<tab>...
+  '
+  '(followed by the names of any sleeping applications).  
+  'Now strip off the "System<TAB>" 
+  'from the beginning of the string 
+
+  next_tab_position = InStr(1, topic_list, Chr$(9)) 
+  topic_list = Mid$(topic_list, next_tab_position + 1, 9999) + Chr$(9) 
+
+  'What's left of the string variable:  topic_list  
+  'lists the names of the sleeping MapBasic applications.
+  'Extract each application name, one at a time.  
+  'We will then build a semicolon-separated list of 
+  'application names, for use in a Dialog.  (To display a list
+  'of items in a ListBox dialog control, you must create a string
+  'consisting of the items, separated by semi-colons). 
+  'For convenience's sake, we'll also store each application name
+  'in an array, so that we'll be able to easily retrieve
+  'the Nth application name.  
+
+  sleepers = 0
+  Do 
+    next_tab_position = InStr(1, topic_list, Chr$(9) ) 
+
+  'each application name looks like: C:\MAPINFO\MB\APPNAME.MBX 
+  'For brevity's sake, strip off the path part of the app name
+  'by calling PathToFileName$(). 
+
+    app_name = PathToFileName$(Left$(topic_list, next_tab_position - 1) ) 
+    If app_name <> "WATCHER.MBX" Then 
+      sleepers = sleepers + 1
+      app_names(sleepers) = app_name 
+      dlg_app_names = dlg_app_names + app_name + ";"
+    End If 
+    topic_list = Mid$(topic_list, next_tab_position + 1, 9999)
+  Loop While Len(topic_list) > 1  And  sleepers < 25 
+
+  If sleepers < 1 Then 
+    Note "There currently are no sleeping MapBasic applications; WATCHER halting."
+    End Program
+  End If 
+
+  double_clicked = FALSE 
+
+  'display a dialog box to let the user choose WHICH 
+  'application to monitor. 
+
+  Dialog  
+    Title "Select an application"
+    Control StaticText 
+       Title "Select the application to be monitored by Excel:" 
+       Position 5, 5
+    Control ListBox 
+       Title dlg_app_names 
+       Position 30, 20     Width 100        Height 64 
+       Value 1             Into suspect     ID 1 
+       Calling LBHandler 
+    Control OKButton
+       Title "OK"
+       Position 90, 90
+    Control CancelButton
+       Title "Cancel" 
+       Position 30, 90
+
+  'If the user didn't click OK, and user didn't double-click an 
+  'item in the list, then we'll just stop.  
+  'Note that the variable:   double_clicked   is a global variable
+  'which we set in the ListBox control's handler procedure (see below). 
+
+  If Not CommandInfo(CMD_INFO_DLG_OK) And Not double_clicked Then 
+    Exit Sub 
+  End If 
+
+  'By now, the user has chosen which sleeping application to monitor. 
+  'Now use DDE to obtain a list of that application's global variables.
+  'We obtain this list by using the special item name:  "{items}"
+
+  chosen = app_names(suspect) 
+  chan = DDEInitiate("MapInfo", chosen )
+  topic_list = DDERequest$(chan, "{items}")   + Chr$(9) 
+  DDETerminate chan
+  If Len(topic_list) < 2 Then 
+    Note   "The MapBasic application:" + Chr$(13) + Chr$(13) 
+         + "  " + chosen + Chr$(13) + Chr$(13) 
+         + "has no global variables. WATCHER halting."
+    Exit Sub 
+  End If 
+
+  OnError Goto ExcelProb
+  Run Program "Excel.exe" 
+  chan = DDEInitiate("EXCEL", "Sheet1") 
+  
+  OnError Goto ignore 
+
+  DDEPoke chan, "R1C1", "Monitoring MapBasic program: " + chosen 
+  DDEPoke chan, "R2C1", "VARIABLES:" 
+  DDEPoke chan, "R2C2", " CURRENT CONTENTS:" 
+  row = 3
+  col = 1  
+
+  'Now the string variable:  topic_list   contains a TAB-separated list
+  'of global variable names.  For each variable name, we'll use DDE
+  'to poke TWO things into Excel: in the first column in Excel,
+  'we'll poke a copy of the variable name, as a sort of "label". 
+  'In the second column in Excel, we'll poke an expression of the form: 
+  '
+  '      =MapInfo|APP_NAME.MBX!var_name 
+  '
+  'where  APP_NAME  is the name of the sleeping application,
+  'and  var_name   is the name of a global variable in that application. 
+  'An expression of that format establishes a DDE link, so that 
+  'the cell in Excel will display the current contents of the
+  'named global variable. 
+
+  Do 
+    next_tab_position = InStr(1, topic_list, Chr$(9) ) 
+    topic = Left$(topic_list, next_tab_position - 1) 
+    DDEPoke chan, CellName(row, col), topic   
+    DDEPoke chan, CellName(row, col + 1), "=MapInfo|" + chosen + "!" + topic
+    topic_list = Mid$(topic_list, next_tab_position + 1, 9999)
+    row = row + 1
+  Loop While Len(topic_list) > 1 
+
+  Note "Excel now monitoring the global variables defined by the application: " + Chr$(13) + chosen
+
+  'Now, exit the MAIN procedure, so that we don't accidentally run into
+  'the Error handlers. 
+
+  Exit Sub 
+
+'''''''''''''''''''''''
+' Error handlers 
+'''''''''''''''''''''''
+ignore: 
+  Resume Next 
+
+ExcelProb:  
+  Note "Excel is not responding." + Chr$(13) + 
+       "Try running Excel manually, closing Excel," + Chr$(13) + 
+       "then re-running WATCHER." 
+  Exit Sub 
+
+End Sub 
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' the LBHandler sub procedure is called automatically if the user
+' clicks in the list (ListBox) of sleeping applications. 
+' If the user single-clicks, we'll just do nothing. 
+' If the user DOUBLE-clicks, we want to act as if the user 
+' had selected from the list then clicked OK (that's a common
+' convention of Graphical User Interfaces).   
+' To do this, we'll issue a Dialog Remove statement. 
+' Then we'll have to set the global variable:  double_clicked 
+' to notify the Main procedure that the user selected an item. 
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub LBHandler 
+  If CommandInfo(CMD_INFO_DLG_DBL) Then 
+    suspect = ReadControlValue(1)
+    Dialog Remove
+    double_clicked = TRUE 
+  End If 
+End Sub 
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+' the CellName function takes a row and column number, 
+' and returns a string representing the Excel DDE itemname
+' (e.g. for row 1, column 1, return a string "R1C1")
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Function CellName(ByVal row As SmallInt, ByVal col As SmallInt) As String
+  CellName = "R" + row + "C" + col
+End Function 
+

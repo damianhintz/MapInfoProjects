@@ -1,0 +1,7 @@
+[link]
+Application = SyncWindows.mbx
+module=SyncWindows.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\LIB\ResStrng.mbo
+Module=..\LIB\SetToolBarPos.mbo
+

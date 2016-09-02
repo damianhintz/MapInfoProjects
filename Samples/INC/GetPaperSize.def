@@ -1,0 +1,3 @@
+Include "PaperSize.def"
+
+Declare Sub GetPaperSize(ByVal WindowID As Integer, fLocalHeight As Float, fLocalWidth As Float)

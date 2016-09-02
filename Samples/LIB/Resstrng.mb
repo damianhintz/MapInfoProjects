@@ -1,0 +1,103 @@
+'**************************************************************************************
+'*
+'*  Load and serve resource strings from ASCII text file
+'*
+'* Updated 4/3/2001 to specify SystemInfo(SYS_INFO_CHARSET) on Open File
+'*
+'**************************************************************************************
+Include "MapBasic.def"
+Include "..\Inc\ResStrng.def"
+
+Dim g_strResStrings() As String
+Dim g_iNumResStrings As Integer
+Dim g_bResStringsLoaded As Logical
+
+'**************************************************************************************
+'* Load the strings from the string resource file.
+'**************************************************************************************
+Function LoadStrings(ByVal FileName As String) As Logical
+  Dim Buffer, Buffer2, Buffer3 As String
+  Dim Position, StringNumber, StringCount As Integer
+
+  OnError Goto ErrHandler
+
+  Open File FileName For Input As #1 CharSet SystemInfo(SYS_INFO_CHARSET)
+
+  StringCount = 0
+  Do While Not EOF(1)  
+    Line Input #1, Buffer
+    StringNumber = Val(Buffer)
+    If StringNumber > 0 Then
+      ' Trim off the leading space
+      Position = InStr(1, Buffer, " ")
+      If Position Then
+        Buffer = Mid$(Buffer, Position + 1, 255)
+      End If
+      ' Get rid of the leading quote
+      Buffer2 = Mid$(Buffer, 2, Len(Buffer)-1)
+      ' Get rid of the trailing quote
+      Buffer3 = Mid$(Buffer2, 1, Len(Buffer2)-1)
+      If StringNumber > UBound(g_strResStrings) Then
+        ReDim g_strResStrings(StringNumber)
+      End If
+      g_strResStrings(StringNumber) = Buffer3
+    End If
+    If Not EOF(1) Then 
+      StringCount = StringCount + 1 
+    End If  
+  Loop 
+
+  Close File #1
+  g_iNumResStrings = StringCount
+  g_bResStringsLoaded = TRUE
+  LoadStrings = TRUE
+
+ExitFunction:
+  OnError Goto 0
+  Exit Function
+
+ErrHandler:
+  Note Error$()
+  Resume ExitFunction
+
+End Function
+
+
+'**************************************************************************************
+'**************************************************************************************
+'*
+'*  PUBLIC ROUTINES
+'*
+'**************************************************************************************
+'**************************************************************************************
+
+'**************************************************************************************
+'* Get a string from the string resource file.
+'**************************************************************************************
+Function GetResString(ByVal iResId As Integer) As String
+
+  OnError Goto ErrHandler
+
+  ' If we haven't already loaded the strings from disk
+  If Not g_bResStringsLoaded Then
+    Goto ExitFunction
+  End If
+
+  ' Check the string resource id
+  If iResId < 1 Or iResId > g_iNumResStrings Then
+    Note "Invalid String Resource Requested"
+    Goto ExitFunction
+  End If
+
+  ' Return the string to the caller
+  GetResString = g_strResStrings(iResId)
+
+ExitFunction:
+  OnError Goto 0
+  Exit Function
+
+ErrHandler:
+  Note Error$()
+  Resume ExitFunction
+
+End Function

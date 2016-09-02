@@ -1,0 +1,233 @@
+'** DESCRIBE.MB *************************************************************
+'* An SQL DataLink application for testing the SERVER_COLUMNINFO function
+'* for all options except VALUE
+'* Compare the output with SELECT * FROM SYSCOLUMNS WHERE TNAME='<tname>'
+'* for validation
+'****************************************************************************
+include "MAPBASIC.DEF"
+include "..\INC\DLSAMP.DEF"
+include "ODBCPLUS.DEF"
+include "..\inc\AUTO_LIB.DEF"
+
+DECLARE SUB MAIN
+DECLARE SUB SQLConnect()
+DECLARE Sub PickTab()
+DECLARE SUB Go_Dialog
+DECLARE SUB SQLView_About
+DECLARE SUB All_Stop
+
+DECLARE FUNCTION IsOCI(BYVAL hdbc AS INTEGER) AS LOGICAL
+Declare Sub ViewText
+
+DIM owner, name, tablename as STRING
+
+'*********************************************************************
+'Sets up the tools menu for the catalog utility
+'*********************************************************************
+SUB Main
+  gsAppDescription = "MapInfo SQL Table Viewer"
+  gsAppFilename = "SQLVIEW.mbx"
+
+  Create menu "&SQL Table Viewer" As
+    "&SQL Table Viewer..." Calling  Go_Dialog,
+    "(-",
+    "&About SQL Table Viewer..." Calling SQLView_About,
+    "E&xit SQL Table Viewer" Calling All_Stop
+
+  Call set_tools_menu("&SQL Table Viewer")
+
+  IF demohdbc <> 0 THEN
+    Server demohdbc Disconnect
+    demohdbc = 0
+  END IF
+END SUB
+
+'****************************************************************************
+'* Main dialog
+'****************************************************************************
+SUB Go_Dialog
+   CALL DebugInit("SQLVIEW")  
+
+  '* First connect to the desired database
+   IF demohdbc = 0 THEN
+    ' Get a connection before starting
+    demohdbc = SQLConnectDialog() 
+    'CALL SQLConnect()
+  END IF
+  IF demohdbc=0 THEN
+    GOTO ALLDONE
+  END IF
+
+  owner=""
+  name=""   
+
+  DIALOG
+    TITLE  "SQL Table Viewer"
+    CONTROL STATICTEXT
+      TITLE "Table Name:"
+      POSITION 8, 10
+      WIDTH 160
+
+    CONTROL EDITTEXT
+      POSITION 8, 26
+      WIDTH 160
+      ID 1
+
+    CONTROL BUTTON
+      Title "Tables..."
+      Calling PickTab
+      POSITION 176, 26
+ 
+    CONTROL BUTTON
+      Title "ViewText"
+      Calling ViewText
+      POSITION 75, 46
+      WIDTH  60
+
+    CONTROL BUTTON
+      Title "New Connection"
+      Position 10, 46
+      Width 60
+      Calling SQLConnect
+
+    CONTROL CANCELBUTTON
+      POSITION 140, 46
+      WIDTH  60
+
+  GOTO ALLDONE
+
+  SHOWERR:
+    NOTE(ERROR$())
+    RESUME ALLDONE
+
+  ALLDONE:
+
+END SUB
+
+'********************
+Sub PickTab()
+  owner=""
+  name=""
+
+  IF demohdbc=0 THEN
+    GOTO ALLDONE
+  END IF
+  IF IsOCI(demohdbc) THEN
+    note "Warning: This application does not support OCI connections."
+'    demohdbc = 0
+    GOTO ALLDONE
+  END IF
+
+  Call TablePickerDialog (demohdbc, owner, name, "Table Picker")
+  IF owner <> "" THEN
+    ALTER CONTROL 1 VALUE demoquotechar + owner + demoquotechar + "." +
+       demoquotechar + name + demoquotechar 
+  ELSE
+    ALTER CONTROL 1 VALUE demoquotechar + name + demoquotechar
+  END IF  
+
+  ALLDONE:
+END SUB
+
+
+'********************
+Sub ViewText
+  IF demohdbc=0 THEN
+    GOTO ALLDONE
+  END IF
+  IF IsOCI(demohdbc) THEN
+    note "Warning: This application does not support OCI connections."
+'    demohdbc = 0
+    GOTO ALLDONE
+  END IF
+
+  tablename=READCONTROLVALUE(1)       
+
+  IF tablename = "" THEN
+    GOTO ALLDONE
+  END IF
+
+  '* Fetch the first row to populate the SERVER_COLUMNINFO values      
+  demohstmnt = SERVER_EXECUTE(demohdbc,"SELECT * FROM " + tablename)
+
+  '* Now display the SERVER_COLUMNINFO results
+  Call ShowText(demohstmnt, 1)
+
+  '* Be nice and close the statement and the connection before bolting!
+  SERVER demohstmnt CLOSE 
+
+  ALLDONE:
+End Sub
+
+
+'***************************************************************************
+'* Get a new connection (replace the old one)
+'* Use QELIB DLG=1 option for Windows
+'* Use MB connect dialog for MAC and UNIX
+'***************************************************************************
+SUB SQLConnect()
+  DIM oldhdbc AS INTEGER
+
+  ' save current connection
+  oldhdbc=demohdbc
+
+  ALTER CONTROL 1 VALUE ""
+
+ ' get a new connection
+  ONERROR GOTO CONNERR 
+  ' SQLConnectDialog sets the demodb and the demodbname
+  demohdbc = SQLConnectDialog() 
+
+  ' if new connection, close old one, else recover old one
+  IF demohdbc<>0 THEN
+    ONERROR GOTO WHOCARES
+    ' Set dialog connection control to display connection name
+    ALTER CONTROL CONNECTION_NAME_ID VALUE demodbname
+  ELSE
+    ' recover last hdbc
+    demohdbc=oldhdbc
+  END IF
+
+  GOTO ALLDONE
+
+  CONNERR:
+    Note Error$()
+    demohdbc=0
+    RESUME NEXT
+
+  WHOCARES:
+    RESUME NEXT
+
+  ALLDONE:   
+  
+END SUB
+
+'*********************************************************************
+'clears the tools menu and terminates the catalog utility
+'*********************************************************************
+SUB All_Stop
+  End Program
+END SUB
+
+'**  SQLView_About  *************************************************************
+' The About procedure displays an About dialog box.
+'****************************************************************************
+Sub SQLView_About
+  Dialog
+     Title "About the SQL Table Viewer Utility Program..."
+
+     Control StaticText
+        Title "SQLVIEW.mbx is now running."
+        Position 10, 10
+
+     Control StaticText
+        Title "This MapBasic application will display information about ODBC tables."
+        Position 10, 25
+
+     Control OKButton
+        Title "OK"  Position 84, 40
+
+  ' If the user chooses "Auto-Load"  we call a procedure
+  ' from the Auto_Lib library  (HandleInstallation).
+End Sub
+

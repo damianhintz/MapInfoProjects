@@ -1,0 +1,19 @@
+'*****************************************************************************
+'       Copyright © 2009 Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 66276 $
+'
+' Module Description:
+'
+' MapBasic samples to demonstate how to wrap MapInfo HTTP/XML
+' library internet APIs into MapBasic functions/subs.
+'
+'*****************************************************************************
+
+Define STRING_LEN 1024
+
+Declare Sub DisplayError(ByVal nErr As Integer, ByVal strErr As String)
+Declare Function HttpRequest(ByVal strURL As String, ByVal nVerb As Integer, ByVal strHeaders As String, ByVal strOptional As String, ByVal bAuthenticate As Logical, strContentType As String, ErrorMsg As String) As CString
+Declare Function HttpPost(ByVal strURL As String, ByVal strHeaders As String, ByVal strOptional As String, ByVal bAuthenticate As Logical, strContentType As String, ErrorMsg As String) As CString
+Declare Function HttpGet(ByVal strURL As String, ByVal bAuthenticate As Logical, strContentType As String, ErrorMsg As String) As CString

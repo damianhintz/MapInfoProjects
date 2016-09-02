@@ -1,0 +1,68 @@
+' Resource String Ids
+Define IDS_STR_RES_RANGE_ERR             1
+Define IDS_APP_DESCRIPTION               2
+Define IDS_MENU_NAME                     3
+Define IDS_MENU_ITEM_NAME                4
+Define IDS_ABOUT_MENU_ITEM_NAME          5
+Define IDS_EXIT_MENU_ITEM_NAME           6
+Define IDS_VERSION                       7
+Define IDS_TABLES                        8
+Define IDS_TABLE_COORDSYS_BOUNDS         9
+Define IDS_MIN_X                         10
+Define IDS_MIN_Y                         11
+Define IDS_MAX_X                         12
+Define IDS_MAX_Y                         13
+Define IDS_TABLE_ACTUAL_DATA_BOUNDS      14
+Define IDS_TABLE_COORDSYS                15
+Define IDS_NAME                          16
+Define IDS_CLAUSE                        17
+Define IDS_REREAD_COORDSYS_BOUNDS        18
+Define IDS_OPTIMIZE_COORDSYS_BOUNDS      19
+Define IDS_SAVE_TABLE_AS_WITH            20
+Define IDS_SAVE_TABLE_AS_WITHOUT         21
+Define IDS_DRAW_OUTLINE                  22
+Define IDS_COPY                          23
+Define IDS_OK                            24
+Define IDS_CANCEL                        25
+Define IDS_WARNING                       26
+Define IDS_SPECIFY_NAME                  27
+Define IDS_TABLE_READONLY                28
+Define IDS_RECTANGLE                     29
+Define IDS_CREATED_IN_TABLE              30
+Define IDS_YOU_MAY                       31
+Define IDS_ABOUT                         32
+Define IDS_ABOUT_1                       33
+Define IDS_ABOUT_2                       34
+Define IDS_BUFFER_PERCENTAGE             35
+Define IDS_ENTER_VALID_BUFFER_VAL        36
+Define IDS_ENTER_POSITIVE_BUFFER_VAL     37
+
+'Strings Not to be localized
+Define STR_RES_STR_FILE                  "CoordSysBounds.str"
+Define STR_FILE_NOT_ACCESSIBLE           "Unable to access resource string file: "
+Define STR_APP_FILE_NAME                 "CoordSysBounds.mbx"
+Define STR_MENU_ITEM_SEPERATOR           "(-"
+Define STR_EMPTY_STR1                    ""
+Define STR_EMPTY_STR2                    " "
+Define STR_EMPTY_STR3                    """"
+Define STR_SET                           "Set"
+Define STR_FORMAT1                       "#.############"
+Define STR_COMMA                         ","
+Define STR_OPEN_BRAC                     "("
+Define STR_CLOSE_BRAC                    ")"
+Define STR_DOT                           "."
+Define STR_TAB                           "TAB"
+Define STR_BOUNDS                        "Bounds"
+Define STR_COMMIT_TABLE                  "Commit Table"
+Define STR_AS                            " As "
+Define STR_SUB_MAIN                      "Main:"
+Define STR_SUB_BOUNDS                    "Bounds: "
+Define STR_SUB_READ_BOUNDS               "ReadBounds: "
+Define STR_SUB_WRITE_BOUNDS              "WriteBounds: "
+Define STR_SUB_WRITE_WITHOUT_BOUNDS      "WriteWithoutBounds: "
+Define STR_SUB_OPTIMIZE_BOUNDS           "OptimizeBounds: "
+Define STR_SUB_CREATE_RECT_AT_BOUNDS     "CreateRectangleAtBounds: "
+Define STR_SUB_COPY_BOUNDS               "CopyBounds: "
+Define STR_SUB_SET_BOUNDS_CONTROL        "SetBoundsControl: "
+Define STR_SUB_ABOUT                     "About: "
+Define STR_SUB_GOOD_BYE                  "GoodBye: "

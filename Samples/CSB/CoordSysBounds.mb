@@ -1,0 +1,642 @@
+'*****************************************************************************
+'       Copyright (c) 1995-2001, MAPINFO CORPORATION
+'       All rights reserved.
+'       Confidential Property of MAPINFO CORPORATION
+'
+' $Workfile: CoordSysBounds.mb $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+' MapBasic program used to check and set coordinate system bounds of a table.
+'
+' Revision History:
+'
+'    Rev 1.0   13 Oct 1998 10:41:02   DRESSEL
+'            - Initial revision.
+'    Rev 1.1   27 Jan 1999 10:41:02   DRESSEL
+'            - add option to draw rectangle at bounds
+'    Rev 1.2   11 Apr 2001 10:41:02   DRESSEL
+'            - add versioning
+'            - extract strings for localization
+'            - improve automatic optimization of bounds, don't round #16902
+'            - widen dialog
+'    Rev 1.3   17 Apr 2001 10:41:02   DRESSEL
+'            - force use of up to 12 digits right of decimal place #16902
+'    Rev 1.4   18 Apr 2001 10:41:02   DRESSEL
+'            - check and warn of read only table before drawing rectangle #17138
+'    Rev 1.5   05 Mar 2008            RAJAN BATRA
+'            - Internationalization of Tool
+'            - DeformatNumber to get the values without regional format,
+'              before commiting in writebounds  procedure. #T24281
+'            - Added a field to allow user to specify buffer percentage
+'              while optimizing the coordsys bounds. #T18863
+'            - 07 April 2008          RAJAN BATRA
+'            - Fix for T25636
+'*****************************************************************************
+Include "..\Inc\MapBasic.def"
+Include "CoordSysBounds.def"
+' Include a file that lets us use the "auto-load" library                 
+Include "..\Inc\auto_lib.def"      
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+Define AppVersion 1.5
+
+Declare Sub Main
+Declare Sub Bounds
+Declare Sub ReadBounds
+Declare Sub OptimizeBounds
+Declare Sub WriteBounds
+Declare Sub WriteWithoutBounds
+Declare Sub CreateRectangleAtBounds
+Declare Sub CopyBounds
+Declare Sub SetBoundsControl
+Declare Sub About
+Declare Sub GoodBye
+
+Define TABLES_ID 1
+Define MINX_ID 2
+Define MINY_ID 3
+Define MAXX_ID 4
+Define MAXY_ID 5
+Define REALMINX_ID 6
+Define REALMINY_ID 7
+Define REALMAXX_ID 8
+Define REALMAXY_ID 9
+Define COORDSYSNAME_ID 10
+Define COORDSYSCLAUSE_ID 11
+Define BUFF_ID 12
+
+
+Global minx, miny, maxx, maxy, realminx, realminy, realmaxx, realmaxy As Float
+Global sTableNames(0) As String
+Global iTable As Integer
+Global sCoordSysName, sCoordSysClause As String
+Global lCopyable As Logical
+Global buff As Float
+
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub Main
+
+  OnError Goto HandleError
+
+  If LoadStrings((ApplicationDirectory$() + STR_RES_STR_FILE)) = FALSE Then
+    Note STR_FILE_NOT_ACCESSIBLE + ApplicationDirectory$() + STR_RES_STR_FILE
+    Exit Sub
+  End If
+
+  gsAppDescription = GetResString(IDS_APP_DESCRIPTION)
+  gsAppFilename = STR_APP_FILE_NAME
+  buff = 20
+
+  Create Menu GetResString(IDS_MENU_NAME) as
+    GetResString(IDS_MENU_ITEM_NAME)
+      Calling Bounds,
+    STR_MENU_ITEM_SEPERATOR,                                      
+    GetResString(IDS_ABOUT_MENU_ITEM_NAME)
+      Calling About,
+    GetResString(IDS_EXIT_MENU_ITEM_NAME)
+      Calling Goodbye
+
+  Call set_tools_menu(GetResString(IDS_MENU_NAME))
+
+  lCopyable = FALSE
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_MAIN + Error$()
+  Resume Next
+
+End Sub                                                                   
+
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub Bounds
+
+  OnError Goto HandleError
+
+  Dim i, j As Integer
+
+  j = 0
+  For i = 1 To NumTables()
+    If TableInfo(i, TAB_INFO_MAPPABLE) And 
+       TableInfo(i, TAB_INFO_TYPE) = TAB_TYPE_BASE Then
+      j = j + 1
+      ReDim sTableNames(j)
+      sTableNames(j) = TableInfo(i, TAB_INFO_NAME)
+    End If
+  Next
+  If j > 0 Then
+    iTable = 1
+
+  Dialog
+    Title GetResString(IDS_APP_DESCRIPTION) + STR_EMPTY_STR2 + STR_OPEN_BRAC + GetResString(IDS_VERSION) + STR_EMPTY_STR2 + Str$(AppVersion) + STR_CLOSE_BRAC
+    Calling ReadBounds
+    Control GroupBox
+      Title GetResString(IDS_TABLES)
+      Position 10, 10
+      Width 155
+      Height 80
+    Control ListBox
+      ID TABLES_ID
+      Title From Variable sTableNames
+      Value iTable
+      Into iTable
+      Position 15, 25
+      Width 145
+      Height 60
+      Calling ReadBounds
+
+    Control GroupBox
+      Title GetResString(IDS_TABLE_COORDSYS_BOUNDS)
+      Position 170, 10
+      Width 145
+      Height 80
+    Control StaticText
+      Title GetResString(IDS_MIN_X)
+      Position 175, 25
+    Control EditText
+      ID MINX_ID
+      Value minx
+      Into minx
+    Control StaticText
+      Title GetResString(IDS_MIN_Y)
+      Position 175, 40
+    Control EditText
+      ID MINY_ID
+      Value miny
+      Into miny
+    Control StaticText
+      Title GetResString(IDS_MAX_X)
+      Position 175, 55
+    Control EditText
+      ID MAXX_ID
+      Value maxx
+      Into maxx
+    Control StaticText
+      Title GetResString(IDS_MAX_Y)
+      Position 175, 70
+    Control EditText
+      ID MAXY_ID
+      Value maxy
+      Into maxy
+   
+    Control GroupBox
+      Title GetResString(IDS_TABLE_ACTUAL_DATA_BOUNDS)
+      Position 320, 10
+      Width 140
+      Height 80
+    Control StaticText
+      Title GetResString(IDS_MIN_X)
+      Position 325, 25
+    Control EditText
+      ID REALMINX_ID
+      Value realminx
+      Into realminx
+      Disable
+    Control StaticText
+      Title GetResString(IDS_MIN_Y)
+      Position 325, 40
+    Control EditText
+      ID REALMINY_ID
+      Value realminy
+      Into realminy
+      Disable
+    Control StaticText
+      Title GetResString(IDS_MAX_X)
+      Position 325, 55
+    Control EditText
+      ID REALMAXX_ID
+      Value realmaxx
+      Into realmaxx
+      Disable
+    Control StaticText
+      Title GetResString(IDS_MAX_Y)
+      Position 325, 70
+    Control EditText
+      ID REALMAXY_ID
+      Value realmaxy
+      Into realmaxy
+      Disable
+
+    Control GroupBox
+      Title GetResString(IDS_TABLE_COORDSYS)
+      Position 10, 100
+      Width 450
+      Height 50
+    Control StaticText
+      Title GetResString(IDS_NAME)
+      Position 15, 115
+    Control EditText
+      ID COORDSYSNAME_ID
+      Disable
+      Value sCoordSysName
+      Width 360
+    Control StaticText
+      Title GetResString(IDS_CLAUSE)
+      Position 15, 130
+    Control EditText
+      ID COORDSYSCLAUSE_ID
+      Disable
+      Value sCoordSysClause
+      Width 360
+
+    Control StaticText
+      Title GetResString(IDS_BUFFER_PERCENTAGE)
+      Position 10,160
+    Control EditText
+      ID BUFF_ID
+      Value buff
+      Into buff
+
+    Control Button
+      Title GetResString(IDS_REREAD_COORDSYS_BOUNDS)
+      Calling ReadBounds
+      Position 10, 180
+    Control Button
+      Title GetResString(IDS_SAVE_TABLE_AS_WITH)
+      Calling WriteBounds
+    Control Button
+      Title GetResString(IDS_DRAW_OUTLINE)
+      Calling CreateRectangleAtBounds 
+      
+    Control Button
+      Title GetResString(IDS_OPTIMIZE_COORDSYS_BOUNDS)
+      Calling OptimizeBounds
+      Position 10, 200
+    Control Button
+      Title GetResString(IDS_SAVE_TABLE_AS_WITHOUT)
+      Calling WriteWithoutBounds
+    Control Button
+      Title GetResString(IDS_COPY)
+      Calling CopyBounds
+    Control CancelButton
+      Title GetResString(IDS_CANCEL)
+
+    ReDim sTableNames(0)
+
+  Else
+    Note GetResString(IDS_WARNING)
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_BOUNDS + Error$()
+  Resume Next
+
+End Sub
+
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub ReadBounds
+
+  OnError Goto HandleError
+
+  Dim sTableName, sCommand As String
+
+  Call SetBoundsControl
+
+  iTable = ReadControlValue(TABLES_ID)
+  If iTable > 0 Then
+    sTableName = sTableNames(iTable)
+    sCommand = STR_SET + STR_EMPTY_STR2 + TableInfo(sTableName, TAB_INFO_COORDSYS_CLAUSE)
+
+    Run Command sCommand
+    minx = TableInfo(sTableName, TAB_INFO_COORDSYS_MINX)
+    miny = TableInfo(sTableName, TAB_INFO_COORDSYS_MINY)
+    maxx = TableInfo(sTableName, TAB_INFO_COORDSYS_MAXX)
+    maxy = TableInfo(sTableName, TAB_INFO_COORDSYS_MAXY)
+    Alter Control MINX_ID Value Format$(minx, STR_FORMAT1)
+    Alter Control MINY_ID Value Format$(miny, STR_FORMAT1)
+    Alter Control MAXX_ID Value Format$(maxx, STR_FORMAT1)
+    Alter Control MAXY_ID Value Format$(maxy, STR_FORMAT1)
+
+    OnError GoTo EmptyTable
+
+    realminx = TableInfo(sTableName, TAB_INFO_MINX)
+    realminy = TableInfo(sTableName, TAB_INFO_MINY)
+    realmaxx = TableInfo(sTableName, TAB_INFO_MAXX)
+    realmaxy = TableInfo(sTableName, TAB_INFO_MAXY)
+
+FinishEmptyTable:
+    OnError Goto HandleError
+
+    Alter Control REALMINX_ID Value Format$(realminx, STR_FORMAT1)
+    Alter Control REALMINY_ID Value Format$(realminy, STR_FORMAT1)
+    Alter Control REALMAXX_ID Value Format$(realmaxx, STR_FORMAT1)
+    Alter Control REALMAXY_ID Value Format$(realmaxy, STR_FORMAT1)
+    sCoordSysName = TableInfo(sTableName, TAB_INFO_COORDSYS_NAME)
+    sCoordSysClause = TableInfo(sTableName, TAB_INFO_COORDSYS_CLAUSE)
+    Alter Control COORDSYSNAME_ID Value sCoordSysName
+    Alter Control COORDSYSCLAUSE_ID Value sCoordSysClause
+  End If
+
+  Exit Sub
+
+EmptyTable:
+  realminx = 0
+  realminy = 0
+  realmaxx = 0
+  realmaxy = 0
+Resume FinishEmptyTable
+
+HandleError:
+  Note STR_READ_BOUNDS + Error$()
+  Resume Next
+
+End Sub
+
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub OptimizeBounds
+
+  OnError Goto HandleError
+
+  Dim bLenX, bLenY As Float
+
+'  minx = Int(realminx)
+'  If minx > realminx Then
+'    minx = minx - 1
+'  End If
+'  miny = Int(realminy)
+'  If miny > realminy Then
+'    miny = miny - 1
+'  End If
+'  maxx = Int(realmaxx)
+'  If maxx < realmaxx Then
+'    maxx = maxx + 1
+'  End If
+'  maxy = Int(realmaxy)
+'  If maxy < realmaxy Then
+'    maxy = maxy + 1
+'  End If
+'  Alter Control MINX_ID Value Str$(minx)
+'  Alter Control MINY_ID Value Str$(miny)
+'  Alter Control MAXX_ID Value Str$(maxx)
+'  Alter Control MAXY_ID Value Str$(maxy)
+'  Alter Control MINX_ID Value Format$(realminx, STR_FORMAT1)
+'  Alter Control MINY_ID Value Format$(realminy, STR_FORMAT1)
+'  Alter Control MAXX_ID Value Format$(realmaxx, STR_FORMAT1)
+'  Alter Control MAXY_ID Value Format$(realmaxy, STR_FORMAT1)
+
+  If Len(Str$(Val(DeformatNumber$(ReadControlValue(BUFF_ID))))) = Len(ReadControlValue(BUFF_ID)) Then
+    buff = DeformatNumber$(ReadControlValue(BUFF_ID))
+    If buff >0 then
+      bLenX = abs(((realmaxx-realminx)*(buff/100))/2)
+      bLenY = abs(((realmaxy-realminy)*(buff/100))/2)
+      minx = realminx - bLenX     
+      miny = realminy - bLenY     
+      maxx = realmaxx + bLenX    
+      maxy = realmaxy + bLenY 
+      Alter Control MINX_ID Value Format$(minx , STR_FORMAT1)
+      Alter Control MINY_ID Value Format$(miny , STR_FORMAT1)
+      Alter Control MAXX_ID Value Format$(maxx , STR_FORMAT1)
+      Alter Control MAXY_ID Value Format$(maxy , STR_FORMAT1)
+    Else
+      Alter Control BUFF_ID Active
+      Note GetResString(IDS_ENTER_POSITIVE_BUFFER_VAL)
+    End if
+  Else 
+    Alter Control BUFF_ID Active
+    Note GetResString(IDS_ENTER_VALID_BUFFER_VAL)
+  End if
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_OPTIMIZE_BOUNDS + Error$()
+  Resume Next
+
+End Sub
+
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub WriteBounds
+
+  OnError Goto HandleError
+
+  Dim sFileSpec, sFileDir, sFileName, sTableName As String
+  Dim sCoordSys, sCommand As String
+  Dim i As Integer
+
+  minx = DeformatNumber$(ReadControlValue(MINX_ID))
+  miny = DeformatNumber$(ReadControlValue(MINY_ID))
+  maxx = DeformatNumber$(ReadControlValue(MAXX_ID))
+  maxy = DeformatNumber$(ReadControlValue(MAXY_ID))
+    
+  sTableName = sTableNames(iTable)
+  sFileSpec = TableInfo(sTableName, TAB_INFO_TABFILE)
+  sFileName = PathToFileName$(sFileSpec)
+  sFileDir = PathToDirectory$(sFileSpec)
+  sFileSpec = FileSaveAsDlg(sFileDir, sFileName, STR_TAB, GetResString(IDS_SPECIFY_NAME))
+  If sFileSpec <> STR_EMPTY_STR1 Then
+    sCoordSys = TableInfo(sTableName, TAB_INFO_COORDSYS_CLAUSE)
+    i = InStr(1, sCoordSys, STR_BOUNDS)
+    If i Then
+      sCoordSys = Left$(sCoordSys, i - 1)
+    End If
+      
+    sCoordSys = sCoordSys + STR_EMPTY_STR2 + STR_BOUNDS + STR_EMPTY_STR2+ STR_OPEN_BRAC + 
+                                          'Format$(minx, STR_FORMAT1) + STR_COMMA + STR_EMPTY_STR2 +
+                                          'Format$(miny, STR_FORMAT1)  + STR_CLOSE_BRAC + STR_EMPTY_STR2 + STR_OPEN_BRAC +
+                                          'Format$(maxx, STR_FORMAT1) + STR_COMMA  + STR_EMPTY_STR2 +
+                                          'Format$(maxy, STR_FORMAT1) + STR_CLOSE_BRAC
+                                          DeformatNumber$(Format$(minx, STR_FORMAT1)) + STR_COMMA + STR_EMPTY_STR2 +
+                                          DeformatNumber$(Format$(miny, STR_FORMAT1)) + STR_CLOSE_BRAC + STR_EMPTY_STR2 + STR_OPEN_BRAC +
+                                          DeformatNumber$(Format$(maxx, STR_FORMAT1)) + STR_COMMA  + STR_EMPTY_STR2 +
+                                          DeformatNumber$(Format$(maxy, STR_FORMAT1)) + STR_CLOSE_BRAC
+    sCommand = STR_COMMIT_TABLE + STR_EMPTY_STR2 + sTableName +  STR_AS + STR_EMPTY_STR3 + sFileSpec +  STR_EMPTY_STR3 +  STR_EMPTY_STR2 + sCoordSys
+    'Note sCommand
+
+    Run Command sCommand
+  End If 
+
+  Exit Sub
+
+HandleError:
+
+
+
+
+  Note STR_SUB_WRITE_BOUNDS + Error$()
+  Resume Next
+
+End Sub
+
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub WriteWithoutBounds
+
+  OnError Goto HandleError
+
+  Dim sFileSpec, sFileDir, sFileName, sTableName As String
+  Dim sCoordSys, sCommand As String
+  Dim i As Integer
+
+  sTableName = sTableNames(iTable)
+  sFileSpec = TableInfo(sTableName, TAB_INFO_TABFILE)
+  sFileName = PathToFileName$(sFileSpec)
+  sFileDir = PathToDirectory$(sFileSpec)
+  sFileSpec = FileSaveAsDlg(sFileDir, sFileName, STR_TAB, GetResString(IDS_SPECIFY_NAME))
+  If sFileSpec <> STR_EMPTY_STR1 Then
+    sCoordSys = TableInfo(sTableName, TAB_INFO_COORDSYS_CLAUSE)
+    i = InStr(1, sCoordSys, STR_BOUNDS)
+    If i Then
+      sCoordSys = Left$(sCoordSys, i - 1)
+    End If
+    sCommand = STR_COMMIT_TABLE + STR_EMPTY_STR2 + sTableName + STR_AS + STR_EMPTY_STR3 + sFileSpec + STR_EMPTY_STR3 + STR_EMPTY_STR2 + sCoordSys
+    'Note sCommand
+    Run Command sCommand
+  End If 
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_WRITE_WITHOUT_BOUNDS + Error$()
+  Resume Next
+
+End Sub
+
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub CreateRectangleAtBounds
+
+  OnError Goto HandleError
+
+  Dim oRect as Object
+  Dim sTableName As String
+ 
+  minx = DeformatNumber$(ReadControlValue(MINX_ID))
+  miny = DeformatNumber$(ReadControlValue(MINY_ID))
+  maxx = DeformatNumber$(ReadControlValue(MAXX_ID))
+  maxy = DeformatNumber$(ReadControlValue(MAXY_ID))
+
+  iTable = ReadControlValue(TABLES_ID)
+  If iTable > 0 Then
+    sTableName = sTableNames(iTable)
+    If TableInfo(sTableName, TAB_INFO_READONLY) Then
+      Note GetResString(IDS_TABLE_READONLY)
+    Else
+      Create Rect
+        Into Variable oRect
+        (minx, miny)(maxx, maxy)
+        Pen(1, 2, BLACK)
+        Brush(1, WHITE, BLACK)
+
+      Insert Into sTableName (obj) Values (oRect)
+'      Note GetResString(IDS_RECTANGLE) + STR_EMPTY_STR2 + STR_OPEN_BRAC + minx + STR_COMMA + STR_EMPTY_STR2 + miny + STR_CLOSE_BRAC +
+'                    STR_EMPTY_STR2 + STR_OPEN_BRAC + maxx + STR_COMMA + STR_EMPTY_STR2 + maxy + STR_CLOSE_BRAC + STR_EMPTY_STR2 + 
+'                    GetResString(IDS_CREATED_IN_TABLE) + STR_EMPTY_STR2 + sTableName + STR_DOT
+    End If
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_CREATE_RECT_AT_BOUNDS + Error$()
+  Resume Next
+
+End Sub
+
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub CopyBounds                                                        
+
+  OnError Goto HandleError
+
+  If Not lCopyable Then
+    lCopyable = TRUE
+    Note GetResString(IDS_YOU_MAY)
+  Else
+    lCopyable = FALSE
+  End If
+
+  Call SetBoundsControl
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_COPY_BOUNDS + Error$()
+  Resume Next
+
+End Sub                                                                    
+
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub SetBoundsControl
+
+  OnError Goto HandleError
+
+  If Not lCopyable Then
+    Alter Control COORDSYSCLAUSE_ID
+      Disable
+  Else
+    Alter Control COORDSYSCLAUSE_ID
+      Enable
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_SET_BOUNDS_CONTROL + Error$()
+  Resume Next
+
+End Sub                                                                    
+                                                                    
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub About                                                                  
+
+  OnError Goto HandleError
+
+  Dialog Title GetResString(IDS_ABOUT) + STR_EMPTY_STR2 + GetResString(IDS_APP_DESCRIPTION) + STR_EMPTY_STR2 + STR_OPEN_BRAC + GetResString(IDS_VERSION)+ STR_EMPTY_STR2 + AppVersion + STR_CLOSE_BRAC
+    Control StaticText
+      Title GetResString(IDS_ABOUT_1) + Chr$(13)+ Chr$(13)+
+            GetResString(IDS_ABOUT_2)
+      Position 10, 10
+      width 280
+      Height 50
+    Control OKButton
+      Title GetResString(IDS_OK)
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_ABOUT + Error$()
+  Resume Next
+
+End Sub                                                                    
+
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub GoodBye                                                                
+
+  OnError Goto HandleError
+
+  End Program                                                              
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_GOOD_BYE + Error$()
+  Resume Next
+
+End Sub                                                                    
+
+' End of File

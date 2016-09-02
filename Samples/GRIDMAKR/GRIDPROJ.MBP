@@ -1,0 +1,5 @@
+[Link] 
+Application=gridmakr.mbx 
+Module=gridmakr.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\Lib\resstrng.mbo

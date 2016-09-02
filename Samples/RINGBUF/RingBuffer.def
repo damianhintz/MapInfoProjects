@@ -1,0 +1,169 @@
+' Resource String Ids
+Define IDS_STR_RES_RANGE_ERR             1
+Define IDS_APP_DESCRIPTION               2
+Define IDS_MENU_NAME                     3
+Define IDS_MENU_ITEM_NAME_1              4
+Define IDS_MENU_ITEM_HELP_MSG_1          5
+Define IDS_MENU_ITEM_NAME_2              6
+Define IDS_MENU_ITEM_HELP_MSG_2          7
+Define IDS_ABOUT_MENU_ITEM_NAME          8
+Define IDS_ABOUT_MENU_ITEM_HELP_MSG      9
+Define IDS_EXIT_MENU_ITEM_NAME           10
+Define IDS_EXIT_MENU_ITEM_HELP_MSG       11
+Define IDS_DISTANCE_UNITS                12
+Define IDS_NO_TABLES_OPEN                13
+Define IDS_NO_SELECTION                  14
+Define IDS_NO_OBJECTS_IN_TABLE           15
+Define IDS_NO_OBJECTS_IN_SELECTION       16
+Define IDS_VERSION                       17
+Define IDS_RADII                         18
+Define IDS_RADIUS                        19
+Define IDS_ADD_RING                      20
+Define IDS_MODIFY_RING                   21
+Define IDS_DELETE_RING                   22
+Define IDS_CLEAR_ALL                     23
+Define IDS_ALL_BUFFERS                   24
+Define IDS_UNITS                         25
+Define IDS_USE_THESE_STYLES              26
+Define IDS_USE_OBJECT_STYLES             27
+Define IDS_SMOOTHNESS                    28
+Define IDS_NAME_AND_PATH                 29
+Define IDS_TABLE_NAME                    30
+Define IDS_PATH                          31
+Define IDS_CALCULATE_STATS               32
+Define IDS_OK                            33
+Define IDS_CANCEL                        34
+Define IDS_HELP                          35
+Define IDS_CHANGE_RADIUS                 36
+Define IDS_RING                          37
+Define IDS_OLD_RADIUS                    38
+Define IDS_NEW_RADIUS                    39
+Define IDS_RADIUS_VALUE_NOT_VALID        40
+Define IDS_NO_RADII                      41
+Define IDS_SMOOTHNESS_NOT_VALID          42
+Define IDS_ENTER_TABLE_NAME              43
+Define IDS_TABLE_NAMED                   44
+Define IDS_ALREADY_EXISTS                45
+Define IDS_BUFFER_TOO_COMPLEX            46
+Define IDS_OBJECT_ERROR                  47
+Define IDS_CALCULATE_RING_STATS          48
+Define IDS_USE_DATA_FROM_TABLE           49
+Define IDS_WITHIN_EACH_RING              50
+Define IDS_CALCULATE_THE                 51
+Define IDS_SUM                           52
+Define IDS_PROPORTION_SUM                53
+Define IDS_GRAPH_RESULTS                 54
+Define IDS_AVERAGE                       55
+Define IDS_PROPORTION_AVG                56
+Define IDS_CALCULATE_RECORD_COUNT        57
+Define IDS_INCLUDE_RECORDS               58
+Define IDS_WITHIN                        59
+Define IDS_PARTLY_WITHIN                 60
+Define IDS_CANNOT_AGGREGATE_WITHOUT_OBJS 61
+Define IDS_CANNOT_AGGREGATE_RASTER       62
+Define IDS_SELECT_RING_TABLE             63
+Define IDS_SELECT_A_TABLE                64
+Define IDS_NO_RING_BUFFER_TABLES         65
+Define IDS_COUNTS                        66
+Define IDS_DATA_AGGREGATED               67
+Define IDS_NO_NUMERIC_VALUES             68
+Define IDS_TOTALS                        69
+Define IDS_AVERAGES                      70
+Define IDS_INCORRECT_VERSION             71
+Define IDS_USING_INTERNAL_DEFAULTS       72
+Define IDS_UNABLE_TO_FIND                73
+Define IDS_UNABLE_TO_READ                74
+Define IDS_UNABLE_TO_WRITE               75
+Define IDS_SKIPPING                      76
+Define IDS_ERROR_OCCURRED                77
+Define IDS_ABOUT                         78
+Define IDS_ABOUT_1                       79
+Define IDS_ABOUT_2                       80
+Define IDS_ABOUT_3                       81
+Define IDS_ABOUT_4                       82
+Define IDS_ABOUT_5                       83
+Define IDS_ABOUT_6                       84
+Define IDS_ABOUT_7                       85
+Define IDS_ABOUT_8                       86
+Define IDS_ABOUT_9                       87
+Define IDS_ABOUT_10                      88
+Define IDS_ABOUT_11                      89
+Define IDS_ABOUT_12                      90
+Define IDS_ABOUT_13                      91
+Define IDS_ABOUT_14                      92
+Define IDS_ABOUT_15                      93
+Define IDS_ABOUT_16                      94
+Define IDS_ABOUT_17                      95
+
+'Strings Not to be localized
+Define STR_RES_STR_FILE                  "RingBuffer.str"
+Define STR_FILE_NOT_ACCESSIBLE           "Unable to access resource string file: "
+Define STR_APP_FILE_NAME                 "RingBuffer.mbx"
+Define STR_MENU_ITEM_SEPERATOR           "(-"
+Define STR_UNIT_IN                       "in"
+Define STR_UNIT_LI                       "li"
+Define STR_UNIT_FT                       "ft"
+Define STR_UNIT_SURVEY_FT                "survey ft"
+Define STR_UNIT_YD                       "yd"
+Define STR_UNIT_RD                       "rd"
+Define STR_UNIT_CH                       "ch"
+Define STR_UNIT_MI                       "mi"
+Define STR_UNIT_NMI                      "nmi"
+Define STR_UNIT_MM                       "mm"
+Define STR_UNIT_CM                       "cm"
+Define STR_UNIT_M                        "m"
+Define STR_UNIT_KM                       "km"
+Define STR_AREA_UNIT_SQ_IN               "sq in"
+Define STR_AREA_UNIT_SQ_LI               "sq li"
+Define STR_AREA_UNIT_SQ_FT               "sq ft"
+Define STR_AREA_UNIT_SQ_SURVEY_FT        "sq survey ft"
+Define STR_AREA_UNIT_SQ_YD               "sq yd"
+Define STR_AREA_UNIT_SQ_RD               "sq rd"
+Define STR_AREA_UNIT_SQ_CH               "sq ch"
+Define STR_AREA_UNIT_SQ_MI               "sq mi"
+Define STR_AREA_UNIT_SQ_NMI              "sq nmi"
+Define STR_AREA_UNIT_SQ_MM               "sq mm"
+Define STR_AREA_UNIT_SQ_CM               "sq cm"
+Define STR_AREA_UNIT_SQ_M                "sq m"
+Define STR_AREA_UNIT_SQ_KM               "sq km"
+Define STR_DEFAULT_SMOOTHNESS            "30"
+Define STR_BACK_SLASH                    "\"
+Define STR_EMPTY_STR1                    ""
+Define STR_EMPTY_STR2                    " "
+Define STR_EMPTY_STR3                    """"
+Define STR_OPEN_BRAC                     "("
+Define STR_CLOSE_BRAC                    ")"
+Define STR_COLON                         ":"
+Define STR_SEMI_COLON                    ";"
+Define STR_COMMA                         ","
+Define STR_UNDER_SCORE                   "_"
+Define STR_HASH_COLON                    "#: "
+Define STR_BUFF_TABLE_NAME               "Ring_Buffer"
+Define STR_RING                          "Ring "
+Define STR_TAB                           "TAB"
+Define STR_FILE_TYPE_TAB                 ".tab"
+Define STR_COL1                          "COL1"
+Define STR_COL                           "Col"
+Define STR_RING_UNDERSCORE               "Ring_"
+Define STR_WITHIN                        " Within "
+Define STR_INTERSECTS                    " Intersects "
+Define STR_ADD_COLUMN                    "Add column "
+Define STR_COUNT_OF                      "Countof" 
+Define STR_INTEGER                       " integer)"
+Define STR_FLOAT                         " float)"
+Define STR_FROM                          " From "
+Define STR_SET_TO_COUNT                  " Set To Count(*) "
+Define STR_WHERE                         " Where "
+Define STR_SUM                           "Sum"
+Define STR_PROPORTION_SUM                " Proportion Sum "
+Define STR_AVG                           "Avg"
+Define STR_PROPORTION_AVG                " Proportion Avg "
+Define STR_SET_TO                        " Set To "
+Define STR_SET_GRAPH_VAL_AXIS_TITLE      "Set Graph Value Axis Title "
+Define STR_SET_GRAPH_LABEL_AXIS_TITLE    "Set Graph Label Axis Title "
+Define STR_GRAPH_COL2                    "Graph Col2"
+Define STR_PLUS                          " + "
+Define STR_COL3                          "Col3 "
+Define STR_SUB_READ_PREFERENCES          "ReadPreferences: "
+Define STR_SUB_WRITE_PREFERENCES         "WritePreferences: "
+

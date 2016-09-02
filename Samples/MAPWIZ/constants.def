@@ -1,0 +1,121 @@
+Define WELCOMEDIALOG				0
+Define DATADIALOG					1
+Define GEOGRAPHYDIALOG				2
+Define ANALYZEDIALOG				3
+Define DISPLAYDIALOG				4 
+
+Define WLCMTXT						10
+Define FRSTTXT						20
+Define SCNDTXT						30
+Define THRDTXT						40
+Define FRTHTXT						50
+Define FIFTHTXT						60
+
+Define FRSTRDO						1
+Define MAPRDO							6
+Define SCNDRDO						2
+Define THRDRDO						3
+Define FRTHRDO						4
+Define FIFTHRDO						5
+
+Define BTN_WELCOME					200
+Define BTN_DATA						300
+Define BTN_MAPS						400
+Define BTN_ANALYZE					500
+Define BTN_PUBLISH					600
+Define CNCLBTN						700
+Define OPNBTN							800
+Define RUNBTN							900
+
+Define USER_DATA_FRAME				110
+Define MAP_DATA_FRAME				120
+Define Group_BOX1					130	
+Define GROUP_BOX3					140
+Define WELCOME_FRAME				150
+
+Define GEOCODE_FILE_LIST			1100
+Define MAPPABLE_WIN_LIST			1200
+Define THEM_MOD_WIN_LIST			1300
+Define ALL_OPNENWIN_LIST			1400
+Define ALL_OPEN_TABLES				1500
+
+Define DATA_DLG_BMP					1000
+Define MAP_DLG_BMP					2000
+
+'These are the string constants
+Define STR_BTN_YES					"&Yes"
+Define STR_BTN_NO					"&No"
+
+Define STR_BTN_WELCOME				"&Welcome"
+Define STR_BTN_DATA					"1. &Data"
+Define STR_BTN_MAPS					"2. &Maps"
+Define STR_BTN_ANALYZE				"3. &Analyze"
+Define STR_BTN_PUBLISH				"4. &Publish"
+Define STR_BTN_EXIT					"&Exit"
+
+Define STR_BTN_OPEN_FILE			"&Open..."
+Define STR_BTN_RUN_CMD				"&Run Selected Option..." 
+Define STR_BTN_GEOCODE				"&Geocode..."
+Define STR_BTN_NEW_TEHM			"&Create Thematic Map..."
+Define STR_BTN_MOD_TEHM			"&Modify Thematic Map..."
+
+Define STR_OPT_TITLE				"Actions List"
+
+Define USER_DATA_TITLE_FRAME		""
+Define MAP_DATA_TITLE_FRAME		""
+
+Define STR_GEOCODE_FILE_LIST		"Non-Geocoded Tables"
+Define STR_OPEN_MAPPERS			"Open Map Windows"
+Define STR_THEM_MOD_WIN_LIST		"Open Map Windows with Thematic Layers"
+
+Define STR_PRINTABLE_WINDOWS		"Select a Window to Print"
+Define STR_SAVE_AS_RASTER_WIN		"Select a Window to Save"
+Define STR_LIST_OF_TABLES			"Select Table for output"
+
+Define STR_CLOSE_ALL				"To make a clean start, would you like to close all open tables?"
+
+Define MSG_NO_ODBC					"You do not have DBMS support installed. Please install DBMS support from the MapInfo CD and try this again."
+Define MSG_NO_FILES_OPEN			"There are no data files or maps open. You must open at least one map before you can access this option." 
+Define MSG_NOTHING_TO_GEOCODE 	"There is nothing to geocode. Geocoding is the process of adding geographic representation to your data. All open files seem to be geocoded."
+Define MSG_NO_MAP_FILE_OPEN		"There are no maps to geocode against. Please open a map and try this again."
+Define MSG_NO_MAP_FILES_OPEN		"There are no map windows open. Please open a map window first. You can open Map windows in step 2."
+Define MSG_NO_THENM_TO_CREATE		"You can not create thematic map in this window. Please open or select a table with Map objects in it."
+Define MSG_NO_THENM_TO_MOD			"There are no map windows with thematic layers to modify. Please create a thematic layer first."
+Define MSG_NO_CORRESPONDING_MAP	"There are no maps open that correspond to the geography represented in your data."
+Define MSG_NOTHING_TO_PUBLISH		"There are no windows to publish. Please open windows first."
+Define MSG_NOTHING_TO_REPORT		"There are no tables to publish. Please open a table with columns first."
+
+Define MSG_CRYSTAL_NOT_INSTALLED	"You do not have Seagate Crystal Reports installed. Please install Seagate Crystal Reports by running MapInfo Professional setup and try this again."
+Define MSG_NO_FILES_TO_GRAPH		"In order to use the Graph option, the table has to contain at least one numeric column. Please open a table with one or more numeric columns and try this option again."
+
+
+
+'Wizard dialog related text string
+Define WIZARD_CAPTION_TITLE		"Mapping Wizard Tool" 
+
+Define WIZARD_STR_1_1				"                               Welcome to the MapInfo Professional Mapping Wizard Tool. "
+Define WIZARD_STR_1_3				"This Mapping Wizard Tool will guide you through the few simple steps you need to get your data on a map."
+Define WIZARD_STR_1_4				"1. Open one or more data files which you would like to view on a map."
+Define WIZARD_STR_1_5				"2. Open one or more maps which correspond to the geography represented in your data."
+Define WIZARD_STR_1_6				"3. Create points that can be displayed on a map to represent the records in your data. (Geocode)"
+Define WIZARD_STR_1_7				"4. Shade regions, scale points, or in some way show the values in your data files on a map. (Thematic Map)"
+Define WIZARD_STR_1_8				"5. Output the map you have created to a printer or a file."
+Define WIZARD_STR_1_9				"To start using the Mapping Wizard Tool, click on any of the buttons. Click on the Exit button at any time to return to MapInfo Professional."
+
+Define WIZARD_STEP_1				"Step 1 of 4: "
+Define WIZARD_STR_2					"Please select the type of data file(s) you would like open." 
+
+Define WIZARD_STEP_2				"Step 2 of 4: "
+Define WIZARD_PIC_GEOGRAPHY		"Please pick the map(s) that best correspond to the geography represented in your data."
+
+Define WIZARD_STEP_3				"Step 3 of 4: "
+Define WIZARD_SELECT_OPER			"Please select the operation you would like to perform with your data." 
+
+Define WIZARD_STEP_4				"Step 4 of 4: "
+Define WIZARD_SELECT_OUTPUT_TYPE	"Please select an output option." 
+Define WIZARD_USER_DATA_LIST		"MapInfo (*.tab);dBase DBF (*.DBF);Delimited ASCII (*.TXT);Lotus123 (*.WK*);Microsoft Excel (*.xls);Microsoft Access (*.mdb);DBMS"
+Define WIZARD_MAP_FILE_TYPE_LIST	"MapInfo (*.tab);MapInfo Workspaces (*.wor);Import Map (*.mif, *.dxf, *.mbi,*.mmi,*.img); Raster Image (*.bmp,*.bil,*.jpg,*.pcx etc.);DBMS"
+Define WIZARD_OPT_LIST				"Create Points(Geocode);Create Thematic Layer;Modify Thematic Layer;Create Graph"
+Define WIZARD_OUTPUT_TYPE_LIST	"Create Layout Window;Print Window;Save Window to file;Generate Report"
+
+Define NEW_LINE						Chr$(10)

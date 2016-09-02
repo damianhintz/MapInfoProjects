@@ -1,0 +1,4 @@
+[Link] 
+Application=textbox.mbx 
+Module=textbox.mbo
+Module=..\Lib\auto_lib.mbo

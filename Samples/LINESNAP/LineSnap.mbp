@@ -1,0 +1,4 @@
+[Link] 
+Application=LineSnap.mbx 
+Module=LineSnap.mbo
+Module=..\Lib\resstrng.mbo

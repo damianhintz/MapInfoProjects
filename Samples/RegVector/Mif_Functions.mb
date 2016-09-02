@@ -1,0 +1,744 @@
+'
+'       Copyright (c) 2007, Pitney Bowes MapInfo Corporation
+'       All rights reserved.
+'       Confidential Property of Pitney Bowes MapInfo Corporation
+'
+Include "Mapbasic.def"
+Include "menu.def"
+Include "Icons.def"
+include "auto_lib.def"
+include "register.def"
+include "Register_Strings.def"
+include "..\inc\Resstrng.def"
+'##########################################################################################
+'#####  Converts all Ellipsoids to regions. Converts all arcs to PolyLines
+
+Sub ConvertToRegion(ByVal strTableName as string)
+OnError goto whats_wrong
+
+	select * from strTableName where str$(obj) = "ellipse" into ConvertEllipse
+	Update ConvertEllipse set obj = convertToRegion(obj)
+	Select * from strTableName where str$(obj) = "arc" into ConvertArc
+	Update ConvertArc set obj = ConvertToPline(obj)
+
+	Close Table ConvertEllipse
+	Close Table ConvertArc
+Exit Sub
+
+whats_wrong:
+
+'note "An error occured in ConvertToRegion/Mif_Functions"
+
+End Sub
+
+'##########################################################################################
+'#####  Exports a table to a mif file, killing any existing mif files in the specified
+'#####  directory with the same name.
+
+Sub ExportToMif(strFileLocation as string, strTableName as string)
+
+	OnError goto whats_wrong
+	
+	Dim strMifLocal, strExportMif as string
+	
+	strMifLocal = strFileLocation & strTableName & ".mif"
+	
+		If FileExists(strMifLocal) then 
+			Kill strMifLocal
+		End If
+	
+		If FileExists(strMifLocal & ".old") then 
+			Kill strMifLocal & ".old" 
+		End If
+	
+	strExportMif = "Export " & strTableName & " into " & chr$(34) & strMifLocal & chr$(34) & " Type " & chr$(34) & "mif" & chr$(34)
+
+	run command strExportMif 
+	
+	Exit Sub
+	
+	whats_wrong:
+	
+	'note "An error occured in ExportToMif/MifFunctions.mbo"
+
+End Sub
+
+'#############################################################################################
+'####   Pass this function a file location and filename and it will import a mif and add it to 
+'####  the current mapper.
+
+Sub ImportMif(strFileLocation as string, strTableName as string, MapID as integer)
+
+	OnError goto whats_wrong
+	
+	Dim strImport , strAddMap , strSavedFile , strFinalTable as string
+	
+		Close table strTableName
+	
+	'Do
+	
+		strSavedFile = lcase$(fileSaveAsDlg("","","tab",GetResString(IDS_Save_As_Title)))
+	
+		strFinalTable = PathToFileName$(strSavedFile)
+	
+		strFinalTable = left$(strFinalTable,instr(1,strFinalTable,".tab")-1)
+	
+	'####################################################################################################
+	'################## Kill mid,mif files if the user cancels the save as dialog. ######################
+	'####################################################################################################
+	
+	If strSavedFile = "" then
+		
+	   Exit Sub
+	End If
+	
+	'Loop while strSavedFile = ""
+	
+	'	If FileExists(strFileLocation & strTableName & ".tab") then
+	'		Kill strFileLocation & strTableName & ".tab"
+	'	End If
+	
+	strImport = "Import " & chr$(34) & strFileLocation & strTableName & ".mif" & chr$(34) & " Type " & chr$(34) & "MIF" & chr$(34) &
+					" into " & chr$(34) & strSavedFile & chr$(34) & " overwrite"
+	run command strImport
+	
+	
+	If numWindows() = 0 then 
+		strAddMap = "Map From " & strFinalTable
+		Run Command strAddMap
+		Exit Sub
+	End If
+	
+	OnError goto NoMapper
+	
+		strAddMap = "Add map Window " & MapId & " layer " & strFinalTable
+		run command strAddMap
+	
+	Exit Sub
+	
+	After_NoMapper:
+		strAddMap = "Map From " & strFinalTable
+		Run Command strAddMap
+	
+	Exit Sub
+	
+	whats_wrong:
+	
+	Print "An error occured in ImportMif / MifFunctions.mbo"
+	Print Err() + "  " + Error$()
+	If Err() = 311 Then  ' Table not open
+		Exit sub
+	End If
+
+	NoMapper:
+	Resume After_NoMapper
+
+End Sub
+
+
+
+'#############################################################################################
+'####  Renames an existing mif file, adding.old to the filename and opens it for input. Opens
+'####  a new file with the original mif name for output. The purpose of this is to read in an 
+'####  existing mif file, edit information in the file and write it back to a file with the
+'####  original name, thus keeping the link with the .mid file.
+
+Sub OpenMif(strFileLocation as string, strTableName as string)
+
+	OnError goto whats_wrong
+	
+	Dim strMifLocal as string
+	
+	strMifLocal = strFileLocation & strTableName & ".mif"
+	
+	Rename File strMifLocal as strMifLocal & ".old"
+	
+	Open File strmiflocal & ".old" for input as #1
+	
+	Open File strmiflocal for output as #2
+	
+	Exit Sub
+	
+	whats_wrong:
+	
+	'note "An error occured in MifFunctions/OpenMif"
+	
+End Sub
+
+
+'##############################################################################################
+'####  Pass this function a string variable containing a line from a mif file and it will return 
+'####  an integer value defining what type of object is currently being read from the mif file.
+
+Function Parse_Mif(strCurrentLine as string , intCurrentObj as integer) as integer
+	
+OnError goto whats_wrong
+
+	Dim intObjType as integer	
+
+	intObjType = 0
+
+	If lcase$(Ltrim$(left$(strCurrentLine,5))) = "point" then 
+		intObjType = 1
+	
+	ElseIf
+	
+		lcase$(Ltrim$(left$(strCurrentLine,11))) = "pline multi" then 
+		intObjType = 6
+
+	ElseIf
+	
+		lcase$(Ltrim$(left$(strCurrentLine,5))) = "pline" then 
+		intObjType = 2
+
+	ElseIf
+	
+		lcase$(Ltrim$(left$(strCurrentLine,6))) = "region" then 
+		intObjType = 3
+
+	ElseIf
+
+		lcase$(Ltrim$(left$(strCurrentLine,4))) = "text" then 
+		intObjType = 4
+
+	ElseIf
+
+		lcase$(Ltrim$(left$(strCurrentLine,4))) = "line" then 
+		intObjType = 5
+
+	ElseIf
+
+		lcase$(Ltrim$(left$(strCurrentLine,9))) = "roundrect" then 
+		intObjType = 7
+
+	ElseIf
+
+		lcase$(Ltrim$(left$(strCurrentLine,7))) = "ellipse" then 
+		intObjType = 8
+
+	ElseIf
+
+		lcase$(Ltrim$(left$(strCurrentLine,3))) = "arc" then 
+		intObjType = 9
+
+	ElseIf
+
+		lcase$(Ltrim$(left$(strCurrentLine,10))) = "multipoint" then 
+		intObjType = 10
+	
+	ElseIf
+
+		lcase$(Ltrim$(left$(strCurrentLine,4))) = "rect" then
+		intObjType = 11
+
+	ElseIf
+
+		lcase$(Ltrim$(left$(strCurrentLine,4))) = "data" then 
+		intObjType = 22
+
+	ElseIf
+
+		lcase$(Ltrim$(left$(strCurrentLine,8))) = "coordsys" then 
+		intObjType = 20
+
+	End If
+
+	If intObjType = 0 then 
+		Parse_Mif = intCurrentObj
+	Else
+		Parse_Mif = intObjType
+	End If
+
+Exit Function
+
+whats_wrong:
+
+'note "An error occured in Parse_Mif/MifFunctions.mbo"
+
+
+End Function
+
+
+'#########################################################################################
+'####  Pass a string containing coordinates, an integer indicating the type of object the 
+'####  coordinates belongs to and the a,b,c,d,e, and f values for an affine transformation
+'####  and it will return a string containing the transformed coordinates.
+
+Function Transform_Coord(strCurrentLine as string, intCurrentObj as integer,intA as float,intB as float,intC as float,intD as float,intE as float,intF as float, f_Angle as float,L_Angle as logical) as string
+
+OnError goto whats_wrong
+
+dim strSec1 , strSec2, strSec3, strSec4, strSec5 , strSec6, strSec7 as string
+dim fltX , fltY , fltX2 , fltY2 , fltX3, fltY3, fltX4, flty4 as float
+Dim L_Parsed as logical
+
+	Do Case intCurrentObj
+
+		Case 1 '###point objects
+
+			L_Parsed = StringParser(strCurrentLine ,strSec1, strSec2, strSec3, strSec4, strSec5, strSec6, strSec7)
+			
+			fltX = val(strSec2)
+			fltY = val(strSec3)
+
+			strCurrentLine = "point " & str$((intA * fltX) + (intB  * fltY) + intC) & " " &
+									str$((intD * fltX) + (intE * fltY) + intF)
+
+
+		Case 2,3,6 '### PLINE, Region, PLINE MULTI Objects
+
+			L_Parsed = StringParser(strCurrentLine ,strSec1, strSec2, strSec3, strSec4, strSec5, strSec6, strSec7)
+						
+			fltX = val(strSec1)
+			fltY = val(strSec2)
+			
+			strCurrentLine = str$((intA * fltX) + (intB  * fltY) + intC) & " " &
+								str$((intD * fltX) + (intE * fltY) + intF)
+
+'############## Test Coordinates and tranformations
+'print intA & " " & intB & " " & intC 
+'print intD & " " & intE & " " & intF
+'print fltX & " " & fltY
+'print strCurrentLine
+
+		Case 4 '### Text Objects
+			L_Parsed = StringParser(strCurrentLine ,strSec1, strSec2, strSec3, strSec4, strSec5, strSec6, strSec7)
+					
+			fltX = val(strSec1)
+			fltY = val(strSec2)
+			fltX2 = val(strSec3)
+			fltY2 = val(strSec4)
+
+			L_Angle = False
+
+	Call Find_Rotation(fltX,fltY,fltX2,fltY2, intA , intB,intC, intD, intE, intF, f_Angle, fltx3, flty3, fltx4, flty4, intCurrentObj)
+
+   strCurrentLine = str$(fltx) & " " & str$(fltY) & " " & str$(fltX2) & " " & str$(fltY2)
+
+        
+		Case 5,7,11 '### Line, RoundRect and Rect Objects
+
+			L_Parsed = StringParser(strCurrentLine ,strSec1, strSec2, strSec3, strSec4, strSec5, strSec6, strSec7)
+
+			fltX = val(strSec2)
+			fltY = val(strSec3)
+			fltX2 = val(strSec4)
+			fltY2 = val(strSec5)
+   
+		'###Rectangle Or Round Rectangles
+			If intCurrentObj = 7 or intCurrentObj = 11 then
+				Call Find_Rotation(fltX,fltY,fltX2,fltY2, intA , intB,intC, intD, intE, intF, f_Angle,fltx3,flty3,fltx4,flty4,intCurrentObj)
+				strCurrentLine = "Region 1"
+				print #2,strCurrentLine
+				strCurrentLine = "  4"
+				print #2,strCurrentLine
+				strCurrentLine = str$(fltx) & " " & str$(flty)
+				print #2,strCurrentLine
+				strCurrentLine = str$(fltx3) & " " & str$(flty3)
+
+				print #2,strCurrentLine
+				strCurrentLine = str$(fltx2) & " " & str$(flty2)
+				print #2,strCurrentLine
+				strCurrentLine = str$(fltx4) & " " & str$(flty4)
+				
+
+			Else
+			'### Line Objects
+           strCurrentLine = "line " & str$((intA * fltX) + (intB * fltY) + intC) & " " & str$((intD * fltX) + (intE * fltY) + intF) & " " &
+                              str$((intA * fltX2) + (intB * fltY2) + intC) & " " & str$((intD * fltX2) + (intE * fltY2) + intF)
+			End If 
+
+		Case 8,9 '### Arc and Ellipsoid Objects
+			
+			L_Parsed = StringParser(strCurrentLine ,strSec1, strSec2, strSec3, strSec4, strSec5, strSec6, strSec7)
+			
+	End Case
+
+Transform_Coord = strCurrentLine
+
+Exit Function
+
+whats_wrong:
+
+'note "An error occured in Transform_Coord/MifFunctions.mbo"
+
+End Function
+
+'#####################################################################################################
+'#####################################################################################################
+'#####################################################################################################
+'#####################################################################################################
+
+Function StringParser(strCurrentLine as string, strSec1 as string, strSec2 as string , strSec3 as string, strSec4 as string, 
+							strSec5 as string, strSec6 as string, strSec7 as string) as logical
+
+Onerror goto whats_wrong
+
+Dim intPos1, intPos2, intPos3, intPos4, intPos5, intPos6, intPos7, intPos8 as integer
+
+	strCurrentLine = strCurrentLine & " "	
+
+	intPos1 = InStr(1,strCurrentLine," ")
+	intPos2 = InStr(intPos1 + 1,strCurrentLine," ")
+	intPos3 = InStr(intPos2 + 1,strCurrentLine," ")
+	intPos4 = InStr(intPos3 + 1,strCurrentLine," ")
+	intPos5 = InStr(intPos4 + 1,strCurrentLine," ")
+	intPos6 = InStr(intPos5 + 1,strCurrentLine," ")
+	intPos7 = InStr(intPos6 + 1,strCurrentLine," ")
+	intPos8 = InStr(intPos7 + 1,strCurrentLine," ")
+
+
+	strSec1 = left$(strCurrentLine,intPos1 - 1)
+	strSec2 = Mid$(strCurrentLine,intPos1 + 1, intPos2 - intPos1 - 1)
+	strSec3 = Mid$(strCurrentLine,intPos2 + 1, intPos3 - intPos2 - 1)
+	strSec4 = Mid$(strCurrentLine,intPos3 + 1, intPos4 - intPos3 - 1)
+	strSec5 = Mid$(strCurrentLine,intPos4 + 1, intPos5 - intPos4 - 1)
+	strSec6 = Mid$(strCurrentLine,intPos5 + 1, intPos6 - intPos5 - 1)
+	strSec7 = Mid$(strCurrentLine,intPos6 + 1, intPos7 - intPos6 - 1)
+
+StringParser = true
+	
+Exit Function
+
+whats_wrong:
+
+'note "An error occured in StringParser/MifFunctions.mbo"
+
+End Function
+'#####################################################################################################
+'#####################################################################################################
+'####  This Sub loops through a file and pulls out all the coordinates.
+
+Sub Find_Coord(intA as float, intB as float, intC as float, intD as float, intE as float, intF as float)
+
+	dim strMifLines, strTrimmed as string
+	dim intStart,intCurrent, intObjType as integer
+	dim f_Angle as float
+	Dim L_Angle as Logical
+	
+	OnError goto whats_wrong
+	
+	L_Angle = false
+	
+	Do While Not EOF(1)
+	
+		Line Input #1,strMifLines
+	
+		intObjType = Parse_Mif(strMifLines,intCurrent)
+	
+		intCurrent = intObjType
+	
+		' coordsys
+		If intObjType = 20 Then
+			Call DoCoordsys(g_strMapperCoord2, strMifLines, l_NonEarth, intCurrent)
+		End If
+	
+		If intObjType = 22 then
+			intStart = 2
+		End If
+	
+		If intStart = 2 then
+			If intObjType = 3 or intObjType = 6 then
+				strTrimmed = strMifLines
+			Else
+				strTrimmed = ltrim$(strMifLines)
+			End If
+	
+			If strTrimmed >= "0" and left$(strTrimmed,1) <= "9"	or left$(strTrimmed,1) = "-" or lcase$(left$(strTrimmed,5))= "point" or lcase$(left$(strTrimmed,4))= "line" 
+								or lcase$(left$(strTrimmed,4)) = "rect" or lcase$(left$(strTrimmed,9)) = "roundrect" then
+			
+				strMifLines = Transform_Coord(strTrimmed,intObjType,intA,intB,intC,intD,intE,intF,f_Angle,L_Angle)
+				
+			End If
+		End If
+	
+	If left$(strTrimmed,5) = "Angle" and L_Angle = false then
+		l_Angle = true
+		call rotate_Text(f_Angle,strMifLines,L_Angle)
+		strMifLines = "Angle " & str$(f_Angle)
+	End If
+	
+	
+	If intObjType = 4 and strTrimmed = "" then
+		If L_Angle = false then 
+			strMifLines = "Angle 0"
+			call rotate_Text(f_Angle,strMifLines,L_Angle)
+			L_Angle = true
+			strMifLines = "Angle " & str$(f_Angle)
+		End If
+	End If
+	
+	print #2,strMifLines
+	
+	Loop
+	
+	
+	Close File #1
+	Close File #2
+	
+	Exit Sub
+	
+	whats_wrong:
+		'note "Error: Mif_Functions/FindCoord"
+End Sub
+
+
+'####################################################################################################################
+'##### This Sub /function will take the X,Y coordinates of 3 existing points and the X coordinates of where the 3
+'##### existing points are suppose to be and return the A, B , and C values of the affine transformation or feed it
+'##### the X,Y coordinates of the 3 existing points and the Y coordinates of where they should be and it returns the 
+'##### D, E, and F coordinates of the affine transformation.
+
+Sub Calc3Unknowns(a1 as float, b1 as float, a2 as float, b2 as float, a3 as float, b3 as float,
+						 t1 as float, t2 as float, t3 as float, unknown1 as float, unknown2 as float, unknown3 as float)
+	'equations are a1 * A + b1 * B + C = t1, etc.
+	dim a4 as float, b4 as float, a5 as float, b5 as float, t4 as float, t5 as float
+
+	OnError goto whats_wrong
+	
+	g_L_Valid = true
+	
+	' get rid of constant -- down to 2 equations in 2 unknowns.  Easy subtraction, since constant doesn't change:
+	a4=a1-a2 b4=b1-b2 a5=a1-a3 b5=b1-b3 t4=t1-t2 t5=t1-t3
+	if b5=0 then
+			if a5=0 then 
+				g_L_Valid = false
+				note GetResString(IDS_Inputs_Collinear)
+				Exit Sub 
+			End If
+		
+		Unknown1=t5/a5
+			if b4=0 then 
+				g_L_Valid = false
+				note GetResString(IDS_Inputs_Collinear) 
+				Exit Sub 
+			End If
+	else
+		'normalize equation #2 for Unknown1
+		dim a6 as float, t6 as float
+	   a6=a4-a5*b4/b5 t6=t4-t5*b4/b5
+			if a6=0 then 
+				g_L_Valid = false
+				note GetResString(IDS_Inputs_Collinear)
+				Exit Sub 
+			End If
+		Unknown1=t6/a6
+	end if
+	if b4=0 then
+		Unknown2=(t5-a5*Unknown1)/b5  ' not necessarily right, though
+	else	
+		Unknown2=(t4-a4*Unknown1)/b4
+	end if
+	Unknown3=t1-Unknown1*a1-Unknown2*b1
+	
+	Exit Sub
+	
+	Whats_wrong:
+		'note "Error: Mif_Functions/Calc3Unknowns"
+
+End Sub
+
+
+'###########################################################################################################
+'###########################################################################################################
+'####################    Finds the Rotation of a Rectangle  ################################################
+'###########################################################################################################
+
+Sub Find_Rotation(fltx as float, fltY as float, fltx2 as float, fltY2 as float, intA as float, intB as float,
+intC as float, intD as float, intE as float, intF as float, f_Angle as float,fltx3 as float,flty3 as float,fltx4 as float,flty4 as float,intCurrentObj as integer)
+
+dim f_XLL, f_XLR, f_XUR, f_XUL, f_YLL, f_YLR, f_YUR, f_YUL , f_CX, f_CY ,f_OP , f_AJ ,f_unRotate as float
+Dim myPoint, myPoint2, CenterPoint, objRotatePoint as object
+Dim strRotate as string
+Dim intNodeCount as integer
+
+OnError goto whats_wrong
+
+'###### The below formula returns the translated X and Y coordinates ### A,B,C Calculates X ### D,E,F Calculates Y
+'str$((intA * fltX) + (intB * fltY) + intC) & " " & str$((intD * fltX) + (intE * fltY) + intF)
+
+'#### Bottom Left Corner					         
+f_XLL = (intA * fltx) + (intB * fltY) + intC
+f_YLL = (intD * fltx) + (intE * fltY) + intF
+
+'#### Bottom Right Corner
+f_XLR = (intA * fltx2) + (intB * fltY) + intC
+f_YLR = (intD * fltx2) + (intE * fltY) + intF
+'#### Top Right Corner
+f_XUR = (intA * fltx2) + (intB * fltY2) + intC
+f_YUR = (intD * fltx2) + (intE * fltY2) + intF
+
+'#### Top Left Corner
+f_XUL = (intA * fltx) + (intB * fltY2) + intC
+f_YUL = (intD * fltx) + (intE * fltY2) + intF
+
+'#### Determine whether we are working with a text object and if so, apply the proper rotation
+
+	
+'note f_YUR & " " & f_yUL & " " & f_XUR & " " & f_XUL
+
+f_CX = (f_XLL + f_XUR + f_XLR + f_XUL) / 4
+f_CY = (f_YLL + f_YUR + f_YUL + f_YLR) / 4
+
+f_OP = f_YUR - f_YUL
+f_AJ = f_XUR - f_XUL
+
+	If f_AJ < 0 then
+		f_AJ = f_AJ * -1 
+			If f_OP < 0 then
+				f_OP = f_OP * - 1
+				f_Angle = (Atn(f_OP / f_AJ)* RAD_2_DEG) + 180
+			Else
+				f_Angle = (Atn(f_OP / f_AJ)* RAD_2_DEG) + 90
+			End If
+	Else
+		If f_OP < 0 then
+			f_OP = f_OP * -1
+			f_Angle = (Atn(f_OP / f_AJ)* RAD_2_DEG) + 270
+		Else
+			f_Angle = Atn(f_OP / f_AJ)* RAD_2_DEG
+		End If
+	End If
+'note f_Angle
+create region into Variable myPoint 1 4 (f_XLL,f_YLL)(f_XLR,f_YLR)(f_XUR,f_YUR)(f_XUL,f_YUL)
+'CenterPoint = createPoint((f_XLL + f_XLR + f_XUR + f_XUL)/4,(f_YLL + f_YLR + f_YUR + f_YUL)/4)
+objRotatePoint = createPoint(f_XUL,f_YUL)
+
+f_unRotate = 360 - f_Angle
+
+myPoint = rotateAtPoint(myPoint,f_unRotate,objRotatePoint)
+
+run command strRotate
+
+fltx = objectGeography(myPoint,OBJ_GEO_MINX)
+fltY = objectGeography(myPoint,OBJ_GEO_MINY)
+fltx2 = objectGeography(myPoint,OBJ_GEO_MAXX)
+fltY2 = objectGeography(myPoint,OBJ_GEO_MAXY)
+
+If intCurrentObj = any(7,11) then
+	Create region into Variable MyPoint 1 4 (fltX,fltY)(fltX2,fltY)(fltX2,fltY2)(fltX,fltY2)
+	'ObjRotatePoint = createPoint((fltX + fltX2)/2,(fltY2 + fltY)/2)
+	'myPoint = rotateAtPoint(myPoint,f_angle,objRotatePoint)
+	
+	fltX = ObjectNodeX(myPoint,1,1)
+	fltY = ObjectNodeY(myPoint,1,1)
+	fltX2 = ObjectNodeX(myPoint,1,3)
+	fltY2 = ObjectNodeY(myPoint,1,3)
+	fltX3 = ObjectNodeX(myPoint,1,2)
+	fltY3 = ObjectNodeY(myPoint,1,2)
+	fltX4 = ObjectNodeX(myPoint,1,4)
+	fltY4 = ObjectNodeY(myPoint,1,4)
+
+	ObjRotatePoint = createPoint(fltx4,fltY4)
+	myPoint = rotateAtPoint(myPoint,f_Angle,objRotatePoint)
+
+	fltX = ObjectNodeX(myPoint,1,1)
+	fltY = ObjectNodeY(myPoint,1,1)
+	fltX2 = ObjectNodeX(myPoint,1,3)
+	fltY2 = ObjectNodeY(myPoint,1,3)
+	fltX3 = ObjectNodeX(myPoint,1,2)
+	fltY3 = ObjectNodeY(myPoint,1,2)
+	fltX4 = ObjectNodeX(myPoint,1,4)
+	fltY4 = ObjectNodeY(myPoint,1,4)
+
+
+End If
+
+Exit Sub
+
+whats_wrong:
+	'note "Error: Mif_Functions/FindRotation"
+	
+End Sub
+
+'##########################################################################################
+'##########################################################################################
+'##########      This Function Will alter the rotation of Text or Rectangle Objects.
+
+Sub Rotate_Text(f_Angle as float, strMifLine as string, L_Angle as logical)
+
+	Dim f_CurAngle as float
+
+OnError goto whats_wrong
+
+	f_CurAngle = Val(mid$(strMifLine,Instr(1,strMifLine,"e") + 1, 8))
+
+	f_Angle = f_Angle + f_CurAngle
+
+If f_Angle > 360 then 
+	f_Angle = f_Angle - 360
+	'note "Angle was greater than 360 and its now " & f_angle
+End If
+
+L_Angle = true
+
+Exit Sub
+
+whats_wrong:
+	'note "Error: Mif_Functions/Rotate_Text"
+End Sub
+
+'############################################################################################
+'############################################################################################
+'#############    Convert and Translate Arc Objects   #######################################
+
+Function ConvertArc(byVal intA as float, byVal intB as float, byVal intC as float, byVal intD as float, byVal intE as float,
+						byVal intF as float, fltX as float, fltY as float, fltX2 as float, fltY2 as float, fltStartAngle as float,
+						fltEndAngle as Float, intObjType as integer) as logical
+
+Dim MyObj as Object
+Dim intNumNodes,intCounter  as integer
+Dim strCurrentLine as string
+Dim strX , strY as float
+
+OnError goto whats_wrong
+
+'###### The below formula returns the translated X and Y coordinates ### A,B,C Calculates X ### D,E,F Calculates Y
+'str$((intA * fltX) + (intB * fltY) + intC) & " " & str$((intD * fltX) + (intE * fltY) + intF)
+
+Do Case intObjType
+	Case 8
+		Create Ellipse into Variable myObj (fltX,fltY) (fltX2,fltY2)
+		myObj = ConvertToRegion(myObj)
+		intNumNodes = ObjectInfo(myObj,OBJ_INFO_NPNTS)
+		strCurrentLine = "Region 1"
+		print #2,strCurrentLine
+		strCurrentLine = "  " & str$(intNumNodes)
+
+	Case 9
+		Create Arc into Variable MyObj (fltX,fltY) (fltX2,fltY2) fltStartAngle fltEndAngle
+		myObj = ConvertToPLine(myObj)
+		intNumNodes = ObjectInfo(myObj,OBJ_INFO_NPNTS)
+		strCurrentLine = "PLine " & intNumNodes
+		print #2,strCurrentLine
+End Case
+
+for intCounter = 1 to intNumNodes
+	strX = str$((intA * fltX) + (intB * fltY) + intC)
+	strY = str$((intD * fltX) + (intE * fltY) + intF)
+
+	strCurrentLine = strX & " " & strY
+	print #2,strCurrentLine
+Next
+
+ConvertArc = true
+
+Exit function
+
+whats_wrong:
+	'note "Error: Mif_Functions/ConvertArc)"
+
+End Function
+
+Sub DoCoordsys(g_strMapperCoord2 as string, strMifLines as string, l_NonEarth as Logical, intCurrent as Integer)
+
+	strMifLines = g_strMapperCoord2 '###Old CoordSys
+	'strMifLines = strDoc2CoordSys
+	If instr(1,strMifLines,"Bounds") > 0 and l_NonEarth = false then
+		strMifLines = Left$(strMifLines,instr(1,strMifLines,"Bounds") - 1)
+	End If
+
+	'note strMifLines & " find coord"
+	intCurrent = 0
+
+End Sub

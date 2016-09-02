@@ -1,0 +1,114 @@
+'****************************************************************************
+'*  MI TAble picker dialog
+'****************************************************************************
+INCLUDE "MAPBASIC.DEF"
+INCLUDE "..\INC\DLSAMP.DEF"
+
+'* Internal utility functions
+DECLARE FUNCTION GetMITAbleNames() AS STRING
+
+' Internal Dialog control handlers
+DECLARE SUB SelectMITableName()
+
+'* Internal Defines
+Define MITableNameSelect_ID   1 
+
+DIM MITableNames, MITableName AS STRING
+DIM MITableNameSel as Integer
+
+'****************************************************************************
+'* Main external function (Modeled after FileOpenDialog)
+'****************************************************************************
+SUB MITablePickerDialog (tabname AS STRING, BYVAL prompt AS STRING)
+
+  if dbg THEN
+    PRINT "In MITablePickerDialog"
+  END IF
+
+  '* Set output fields
+  MITableName = tabname
+
+  '* prime the selection fields
+  IF prompt="" THEN
+    prompt="Pick MapInfo Table"
+  END IF
+
+  MITableNames = GetMITableNames()
+
+  ONERROR GOTO DLGERR
+  DIALOG
+    TITLE prompt
+    CONTROL LISTBOX
+      Width 80
+      Height 80
+      Position 0,0
+      TITLE MITableNames
+      ID MITableNameSelect_ID   
+    CONTROL CancelButton
+      Title "Cancel"
+      Position 45,85
+    CONTROL OKButton
+      Title "OK"
+      Position 5,85
+      CALLING SelectMITableName
+     
+  tabname = MITableName
+  IF dbg THEN
+    PRINT "Picked table = " + tabname
+  END IF
+
+  EXIT SUB
+
+  DLGERR:
+    NOTE(ERROR$())
+    RESUME ALLDONE
+
+  ALLDONE:
+END SUB
+
+
+'****************************************************************************
+SUB SelectMITableName
+  MITableNameSel=ReadControlValue(MITableNameSelect_ID)
+  MITableName = SelectString(MITableNames, MITableNameSel)
+  DIALOG REMOVE
+END SUB
+
+
+'****************************************************************************
+FUNCTION GetMITableNames() AS STRING
+  DIM NextName, TableNames, Sep AS STRING
+  DIM i as integer
+  IF dbg THEN
+    PRINT "IN GetMITableNames"
+  END IF
+
+  GetMITableNames=""
+  Sep = ""  
+  TableNames=""
+
+  ONERROR GOTO ATEOD
+  FOR i=1 TO NUMTABLES()
+    NextName=TableInfo(i, TAB_INFO_NAME)
+    IF NextName <> "" THEN     
+      TableNames = TableNames + Sep + NextName
+      IF dbg THEN
+        PRINT "MITableNames = " + TableNames
+      END IF   
+      Sep = ";"
+    END IF
+  NEXT
+
+  IF dbg THEN
+    PRINT "Final MITableNames = " + TableNames
+  END IF
+  GOTO ALLDONE
+
+  ATEOD:
+    RESUME ALLDONE     
+
+  ALLDONE:
+    GetMITableNames=TableNames
+
+END FUNCTION
+        

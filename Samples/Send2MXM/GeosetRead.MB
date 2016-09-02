@@ -1,0 +1,117 @@
+Include "Mapbasic.def"
+Include "GeoSet.def"
+Include "GeosetLoad.def"
+Include "Error.def"
+Include "Service.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+'---------------------------------------
+' Read GeoSet File
+'---------------------------------------
+Function ReadGeoSet( sGeoSetFile As String ) As Logical
+  OnError Goto ErrorTrap
+  Dim hGSTFile   As Integer
+  Dim sBuffer    As String
+  Dim bMetaData  As Logical
+
+    ' Open GeoSet file in sequential mode
+    If OpenFile( hGSTFile, sGeosetFile ) Then
+Print GetResString(IDS_READING_GEOSET) + " " + sGeosetFile
+        ' Check Header of GeoSet file
+        If Not CheckHeader( hGSTFile ) Then
+            ' Error reading Geoset file - bad header
+            Call PrintErrMsg( SVRT_ERROR, ERR_AREA_READING, GetResString(IDS_ERR_MSG_BAD_HEADER) )
+            Goto CloseGeoSet ' Close file and exit
+        End If
+
+        ' Reset global array of Geoset Table and Geoset Settings
+        Call ResetGeoset()
+
+        Do While Not EOF( hGSTFile )
+            Line Input #hGSTFile, sBuffer
+            ' Increment the number of current line in Geoset file
+            Call IncrementCurrentLineNumber()
+
+            If Not EOF( hGSTFile ) Then 
+                sBuffer = RTrim$( LTrim$( sBuffer ) )
+
+                If sBuffer <> "" Then
+                    Do Case Parse( sBuffer ) 
+                        Case CODE_ERROR  ' Error has occured
+                            Goto CloseGeoSet ' Close file and exit
+                        Case CODE_OK     ' All right
+                        Case CODE_END    ' End of Data
+                            Exit Do
+                    End Case
+                End If
+            End If
+        Loop 
+
+        ReadGeoSet = TRUE
+
+CloseGeoSet:
+        Call CloseFile( hGSTFile )
+    End If 'OpenFile
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "ReadGeoSet: " & Error$()
+  Resume Done
+End Function 'ReadGeoSet
+
+
+'---------------------------------------
+' Check Header of GeoSet File
+'---------------------------------------
+Function CheckHeader( ByVal hGSTFile As Integer ) As Logical
+  OnError Goto ErrorTrap
+  Dim sBuffer  As String
+
+      Line Input #hGSTFile, sBuffer
+      ' Increment the number of current line in Geoset file
+      Call IncrementCurrentLineNumber()
+
+      sBuffer = RTrim$( LTrim$( sBuffer ) )
+      If sBuffer <> KEY_GEOSET_HEADER Then
+          Exit Function
+      End If
+ 
+      If Not EOF( hGSTFile ) Then 
+          Line Input #hGSTFile, sBuffer
+          ' Increment the number of current line in Geoset file
+          Call IncrementCurrentLineNumber()
+
+          sBuffer = RTrim$( LTrim$( sBuffer ) )
+          If Left$(sBuffer, Len(KEY_VERSION)) <> KEY_VERSION Then
+              Exit Function
+          End If
+
+          sBuffer = RTrim$( LTrim$(Mid$(sBuffer, Len(KEY_VERSION) + 1, 255)))
+          Do Case sBuffer
+            Case GEOSET_VERSION_100
+              gsGeoSetVersion = sBuffer
+            Case GEOSET_VERSION_400
+              gsGeoSetVersion = sBuffer
+            Case GEOSET_VERSION_450
+              gsGeoSetVersion = sBuffer
+            Case Else
+              Note GetResString(IDS_UNKNOWN_VERSION) + ": " + sBuffer
+              Exit Function
+          End Case
+            
+      End If  
+
+     CheckHeader = TRUE
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "CheckHeader: " & Error$()
+  Resume Done
+End Function 'CheckHeader
+
+

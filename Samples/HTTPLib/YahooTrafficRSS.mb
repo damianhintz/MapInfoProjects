@@ -1,0 +1,324 @@
+'*****************************************************************************
+'       Copyright © 2009 Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 66276 $
+'
+' Module Description:
+'
+' A MapBasic sample program to demonstate the usage of MapInfo HTTP/XML
+' library API to get traffic information from Yahoo.
+'*****************************************************************************
+Include "../inc/Mapbasic.def"
+Include "../inc/HTTPTypes.def"
+Include "../inc/HTTPLib.def"
+Include "../inc/XMLTypes.def"
+Include "../inc/XMLLib.def"
+Include "XMLUtil.def"
+Include "HTTPUtil.def"
+Include "MapUtils.def"
+Include "YahooTrafficRSS.def"
+
+'http://maps.yahoo.com/traffic.rss?csz=12198&mag=4&minsev=2
+'czs is your zip code
+'mag is the level of ‘magnification’ (3 = 4 miles, 4 = 10 miles, 5 = 40 miles)
+'minserv is the minimum severity of the traffic condition (1 = minor, 2 = moderate, 4 = major, 5 = critical.)
+
+Sub YahooTrafficRSSGetPreferences
+'Some basic information are hard-coded here. You may want to make them dynamic as your situation
+
+  YahooTrafficRSSURL = "http://maps.yahoo.com/traffic.rss"
+
+  YahooTrafficZip = "12205"
+  iYahooTrafficMagChoice = 2      'The level of 'magnification' (1=4 miles, 2=10 miles, 3=40 miles)
+  iYahooTrafficSeverityChoice = 2 'The minimum severity of the traffic condition (1=minor, 2=moderate, 3=major, 4=critical)
+
+  YahooTrafficAccidentSymbol = MakeSymbol(59,RED,18)
+  TrafficLabelFont = MakeFont("Arial",257,8,0,16777215)
+
+  TrafficTempLayerDir = ApplicationDirectory$()'same dir as the executable
+  TrafficTempLayerName = "Trafficlayer"
+End Sub
+
+Sub YahooTrafficRSSInit
+  YahooTrafficMagList = "4 Miles;10 Miles;40 Miles"
+  YahooTrafficSeverityList = "Minor;Moderate;Major;Critical"
+
+  Call CreateTempTrafficLayer(TrafficTempLayerName, "1,104")
+End Sub
+
+Sub YahooTrafficRSSPreferencesDLG
+  Dialog Title "Yahoo Traffic RSS Preferences"
+   Control GroupBox Title "Yahoo Traffic RSS:" Width 280 Height 30 Position 5,5
+   Control StaticText Title "URL:" Position 10,18
+   Control EditText Width 250 Value YahooTrafficRSSURL Position 30,16 Into YahooTrafficRSSURL
+
+   Control CancelButton
+   Control OKButton
+
+  If CommandInfo(CMD_INFO_DLG_OK) Then
+    Call YahooTrafficRSSSavePreferences
+  End If
+End Sub
+
+Sub YahooTrafficRSSSavePreferences
+'goto file or registry
+End Sub
+
+Sub GetYahooTrafficDLG
+Dim URL As String
+Dim TrafficFeed As YahooTrafficFeedRec
+Dim TrafficData() As YahooTrafficItemRec
+Dim ErrorMsg As String
+Dim i, NumItems As SmallInt
+Dim CoordSys As String
+
+  CoordSys = "1,104" 'For now
+
+  Dialog Title "Get Yahoo Traffic"
+
+    Control StaticText Title "Zip Code:" Position 5,5
+    Control EditText Width 49 Value YahooTrafficZip Position 55,3 ID 1 Into YahooTrafficZip
+
+    Control StaticText Title "Magnification:" Position 5,25
+    Control PopupMenu Width 50 Value iYahooTrafficMagChoice Title YahooTrafficMagList Position 55,23 ID 2 Into iYahooTrafficMagChoice
+
+    Control StaticText Title "Severity:" Position 5,45
+    Control PopupMenu Width 50 Value iYahooTrafficSeverityChoice Title YahooTrafficSeverityList Position 55,43 ID 3 Into iYahooTrafficSeverityChoice
+
+    Control CancelButton
+    Control OKButton
+
+  If CommandInfo(CMD_INFO_DLG_OK) Then
+    If GetYahooTrafficRSSData(YahooTrafficRSSURL, YahooTrafficZip, iYahooTrafficMagChoice, iYahooTrafficSeverityChoice, TrafficFeed, TrafficData(), ErrorMsg) Then
+      NumItems = UBound(TrafficData())
+      If NumItems = 0 Then
+        Note "No Traffic incidents to display - " + ErrorMsg
+      Else
+        Call AddTrafficDataToMapLayer(TrafficTempLayerName, TrafficData(), CoordSys, False)
+        Call ShowOnMap(TrafficTempLayerName, TrafficLabelFont, True)
+      End If
+'      Note TrafficFeed.Title
+    Else
+      Note ErrorMsg
+    End If
+  End If
+End Sub
+
+Function GetYahooTrafficRSSData(ByVal URL As String, ByVal ZipCode As String, ByVal Magnification As SmallInt, ByVal Severity As SmallInt, TrafficFeed As YahooTrafficFeedRec, TrafficData() As YahooTrafficItemRec, ErrorMsg As String) As Logical
+Dim hResponse As CString
+Dim RSSURL As String
+Dim strContentType As String
+
+  OnError GoTo ErrorHandler
+
+  GetYahooTrafficRSSData = False
+
+  RSSURL = URL + "?csz=" + ZipCode + "&mag=" + Str$(Magnification + 2) + "&minsev=" + Str$(Severity)
+
+  hResponse = HttpGet(RSSURL, True, strContentType, ErrorMsg)
+  If hResponse Then
+    If Left$(strContentType, 8) = "text/xml" Then
+      GetYahooTrafficRSSData = GetYahooTrafficRSSResponse(hResponse, TrafficFeed, TrafficData(), ErrorMsg)
+    Else
+      ErrorMsg = "Wrong Content Type: " + strContentType
+    End If
+    Call MICloseContent(hResponse)
+    hResponse = 0
+  End If
+
+CleanUp:
+	If hResponse Then Call MICloseContent(hResponse) End If
+	Exit Function
+
+ErrorHandler:
+	ErrorMsg = Error$()
+	Resume CleanUp
+End Function
+
+Function GetYahooTrafficRSSResponse(ByVal hResponse As CString, TrafficFeed As YahooTrafficFeedRec, TrafficData() As YahooTrafficItemRec, ErrorMsg As String) As Logical
+Dim hXMLDocument As MIXmlDocument
+Dim hRoot As MIXmlNode
+Dim hNode As MIXmlNode
+Dim hNodeList As MIXmlNodeList
+Dim i  As SmallInt
+
+  GetYahooTrafficRSSResponse = False
+
+	OnError GoTo ErrorHandler
+
+	hXMLDocument = MIXmlDocumentCreate()
+	If hXMLDocument Then
+		Dim bParsingError As SmallInt
+		If MIXmlDocumentLoadXML(hXMLDocument, hResponse, bParsingError, FALSE, FALSE) Then
+      If MIXmlDocumentSetProperty(hXMLDocument, "SelectionLanguage", "XPath") Then
+        hRoot = MIXmlDocumentGetRootNode(hXMLDocument)
+        If hRoot Then
+          If CheckFault(hRoot, ErrorMsg) Then
+            Exit Function
+          End If
+          hNode = MIXmlSelectSingleNode(hRoot, "//rss/channel")
+          If hNode Then
+
+            TrafficFeed.Title = GetSingleNodeValue(hNode, "title")
+'Check to see if this is "Invalid Location"
+            TrafficFeed.Category = GetSingleNodeValue(hNode, "category")
+            TrafficFeed.Link = GetSingleNodeValue(hNode, "link")
+            TrafficFeed.Description = GetSingleNodeValue(hNode, "description")
+            TrafficFeed.Language  = GetSingleNodeValue(hNode, "language")
+            TrafficFeed.TTL = GetSingleNodeValue(hNode, "ttl")
+            TrafficFeed.LastBuildDate = GetSingleNodeValue(hNode, "lastBuildDate")
+            TrafficFeed.PubDate = GetSingleNodeValue(hNode, "pubDate")
+            TrafficFeed.Copyright = GetSingleNodeValue(hNode, "copyright")
+
+            i = 0
+            hNodeList = MIXmlSelectNodes(hNode,	"item")
+
+            If hNodeList Then
+              Call MIXmlNodeDestroy(hNode) 'Gary added: it will be reused later, so it needs to be disposed
+              hNode = MIXmlGetNextNode(hNodeList)
+              While hNode
+
+                If GetSingleNodeValue(hNode, "title") <> "Traffic info is not yet available for this area" Then
+                  If GetSingleNodeValue(hNode, "title") <> "Invalid Location" Then
+                    If GetSingleNodeValue(hNode, "category") <> "Error" Then
+                      i = i + 1
+                      ReDim TrafficData(i)
+                      TrafficData(i).Title = GetSingleNodeValue(hNode, "title")
+                      TrafficData(i).Description = GetSingleNodeValue(hNode, "description")
+                      TrafficData(i).Link = GetSingleNodeValue(hNode, "link")
+                      TrafficData(i).PubDate = GetSingleNodeValue(hNode, "pubDate")
+                      TrafficData(i).Category = GetSingleNodeValue(hNode, "category")
+                      TrafficData(i).Severity = GetSingleNodeValue(hNode, "severity")
+                      TrafficData(i).EndDate = GetSingleNodeValue(hNode, "endDate")
+                      TrafficData(i).UpdatedDate = GetSingleNodeValue(hNode, "updatedDate")
+
+                      Call GetYahooLinkLocation(TrafficData(i).Link, TrafficData(i).Longitude, TrafficData(i).Latitude)
+                    End If
+                  Else
+                    ErrorMsg = "Invalid Traffic Location"
+                  End If
+                Else
+                  ErrorMsg = "Traffic info is not yet available for this area"
+                End If
+                Call MIXmlNodeDestroy(hNode)'Gary added: because hNode is reused without disposing it
+                hNode = MIXmlGetNextNode(hNodeList)
+              Wend
+              Call MIXmlNodeListDestroy(hNodeList)'Gary added
+            End If
+
+          End If
+          GetYahooTrafficRSSResponse = True
+        End If
+			End If
+		End If
+	End If
+
+CleanUp:
+	If hNode Then Call MIXmlNodeDestroy(hNode) End If 'Gary's comments: here it only cleaned once
+	If hRoot Then Call MIXmlNodeDestroy(hRoot) End If
+	If hXMLDocument Then Call MIXmlDocumentDestroy(hXMLDocument) End If
+	Exit Function
+ErrorHandler:
+	ErrorMsg = Error$()
+	If 342 = Err() Then
+		Exit Function
+	Else
+		Resume CleanUp
+	End If
+End Function
+
+Sub CreateTempTrafficLayer(ByVal LayerName As String, ByVal CoordSys As String)
+  OnError Goto ErrorTrap
+  Close Table LayerName
+  Create Table LayerName (ID SmallInt, Title Char(100), Description Char(255), Category Char(20), Severity Char(20), Link Char(255), PubDate Char(50), EndDate Char(50), UpdatedDate Char(50), Longitude Float, Latitude Float) File TrafficTempLayerDir+LayerName
+  Run Command "Create Map For " + LayerName + " CoordSys Earth Projection " + CoordSys
+  Set Table LayerName FastEdit On Undo Off 'Check into UserXXX clauses
+Exit Sub
+ErrorTrap:
+  Resume Next
+End Sub
+
+Sub AddTrafficDataToMapLayer(ByVal LayerName As String, TrafficData() As YahooTrafficItemRec, ByVal CoordSys As String, ByVal bAppend As Logical)
+Dim i, j, NumObjects As SmallInt
+Dim WindowArray(0) As Integer
+Dim ItemSymbol As Symbol
+Dim objPoint As Object
+
+  If Not IsTableOpen(LayerName) Then
+    Call CreateTempTrafficLayer(LayerName, CoordSys)
+  End If
+
+  If Not bAppend Then
+    Delete From LayerName
+  End If
+
+  NumObjects = UBound(TrafficData())
+  For i = 1 To NumObjects
+
+'Symbol ("CAUT1-32.BMP",16752768,24,0) - Yellow diamond !!!
+'Symbol ("AMBU1-32.BMP",16777215,24,0) - Ambulance
+'Symbol ("FIRE1-32.BMP",16777215,24,0) - FireTruck
+'Symbol ("YIEL1-32.BMP",16777215,24,0) - Yellow Yield Sign
+'Symbol ("YIEL2-32.BMP",16777215,24,0) - Red/Gray Yield Sign
+'Symbol ("TRAF1-32.BMP",16777215,24,0) - Traffic Light
+'Symbol (77,0,24,"MapInfo Miscellaneous",257,0) - SnowFlake
+'Symbol (72,16776960,24,"MapInfo Miscellaneous",17,0) - Lightning Bolt
+'Symbol (46,255,20,"MapInfo Transportation",1,0) - Blue i in Circle (Info)
+'Symbol (49,16711680,20,"MapInfo Transportation",256,0) - Red Circle w/ white horizontal Line
+'Symbol (71,16711680,36,"MapInfo Transportation",257,0) - Car being Towed (Accident)
+'Symbol (70,16711680,36,"MapInfo Transportation",257,0) - Car w/ hood up (Disabled Vehicle)
+'Symbol (221,12632256,36,"Webdings",16,0) - Tornado
+'Symbol (219,12632256,36,"Webdings",16,0) - Rain
+'Symbol (220,12632256,36,"Webdings",16,0) - Thunderstorm
+'Symbol (102,16711680,36,"Webdings",256,0) - Firetruck head on
+'Symbol (104,16711680,36,"Webdings",256,0) - Ambulance
+'Symbol (112,16711680,36,"Webdings",256,0) - Police Car head on
+'Symbol (105,255,36,"Webdings",256,0) - Info
+'Symbol (126,16776960,24,"Webdings",16,0) - Lightning bolt
+
+    ItemSymbol = MakeSymbol(34,16711680,12) 'Red Circle
+
+    Do Case TrafficData(i).Category
+      Case "Construction"
+        ItemSymbol = MakeCustomSymbol("CAUT1-32.BMP",16752768,20,0) 'Yellow diamond !!!
+      Case "Incident"
+        ItemSymbol = MakeFontSymbol(126,16776960,20,"Webdings",16,0) 'Lightning bolt
+      Case "Accident"
+        ItemSymbol = MakeFontSymbol(71,16711680,20,"MapInfo Transportation",257,0) 'Car being Towed (Accident)
+      Case "Info"
+        ItemSymbol = MakeFontSymbol(105,255,20,"Webdings",256,0) 'Info
+      Case "Police"
+        ItemSymbol = MakeFontSymbol(112,16711680,20,"Webdings",256,0) 'Police Car head on
+      Case "Fire"
+        ItemSymbol = MakeFontSymbol(102,16711680,20,"Webdings",256,0) 'Firetruck head on
+      Case "Ambulance"
+        ItemSymbol = MakeFontSymbol(104,16711680,20,"Webdings",256,0) 'Ambulance
+    End Case
+
+    Create Point Into Variable objPoint (TrafficData(i).Longitude, TrafficData(i).Latitude) Symbol ItemSymbol
+    Insert Into LayerName (ID, Title, Description, Category, Severity, Link, PubDate, EndDate, UpdatedDate, Longitude, Latitude, Obj) Values (Str$(i), TrafficData(i).Title, TrafficData(i).Description, TrafficData(i).Category, TrafficData(i).Severity, TrafficData(i).Link, TrafficData(i).PubDate, TrafficData(i).EndDate, TrafficData(i).UpdatedDate, TrafficData(i).Longitude, TrafficData(i).Latitude, objPoint)
+  Next
+
+  Call PackTempLayer(LayerName)
+
+End Sub
+
+Sub GetYahooLinkLocation(ByVal Link As String, Longitude As Float, Latitude As Float)
+Dim index1, index2, index3, index4 As SmallInt
+Dim sIndex1, sIndex2, sIndex3, sIndex4 As String
+
+  sIndex1 = "mlt="
+  sIndex2 = "&mln="
+  sIndex3 = "&lat="
+  sIndex4 = "&lon="
+
+  index1 = InStr(1,Link,sIndex1)
+  index2 = InStr(1,Link,sIndex2)
+  index3 = InStr(1,Link,sIndex3)
+  index4 = InStr(1,Link,sIndex4)
+
+  Latitude = Val(Mid$(Link, index1 + Len(sIndex1), index2 - (index1 + Len(sIndex1))))
+  Longitude = Val(Mid$(Link, index2 + Len(sIndex2), index3 - (index2 + Len(sIndex2))))
+
+End Sub

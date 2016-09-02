@@ -1,0 +1,58 @@
+'****************************************************************************
+'* SQL DataLink Programming Utility .Def file
+'* Enables DataLink applications to harness and use QELIB and ODBC DLL functions!
+'* Use these in conjunction with the SQL DataLink functions
+'* server_getqehconn and server_getqehstmt
+'*
+'* Warning! These functions must be declared with their widened binary types
+'* to avoid stack incompatability problems resulting in Internal Error 10003!
+'****************************************************************************
+'****************************************************************************
+' Interesting QELIB Functions for SQL DataLink
+'  QELIB REMOVED FOR LIBERTY
+'****************************************************************************
+'****************************************************************************
+' Interesting ODBC Functions for SQL DataLink
+' Note that these need to be defined differently for 16 vs 32 bit functions
+'****************************************************************************
+DECLARE FUNCTION SQLAllocStmt16 LIB "ODBC.DLL"   Alias "SQLAllocStmt"(BYVAL hdbc AS INTEGER, hstmt AS INTEGER) AS SMALLINT
+DECLARE FUNCTION SQLAllocStmt32 LIB "ODBC32.DLL" Alias "SQLAllocStmt" (BYVAL hdbc AS INTEGER, hstmt AS INTEGER) AS SMALLINT
+
+DECLARE FUNCTION SQLFetch16     LIB "ODBC.DLL"   Alias "SQLFetch" (BYVAL hstmt AS INTEGER) AS SMALLINT
+DECLARE FUNCTION SQLFetch32     LIB "ODBC32.DLL" Alias "SQLFetch" (BYVAL hstmt AS INTEGER) AS SMALLINT
+
+DECLARE FUNCTION SQLFreeStmt16  LIB "ODBC.DLL"   Alias "SQLFreeStmt" (BYVAL hdbc AS INTEGER, BYVAL Option AS SMALLINT) AS SMALLINT
+DECLARE FUNCTION SQLFreeStmt32  LIB "ODBC32.DLL" Alias "SQLFreeStmt" (BYVAL hdbc AS INTEGER, BYVAL Option AS SMALLINT) AS SMALLINT
+
+DECLARE FUNCTION SQLGetData16   LIB "ODBC.DLL"   Alias "SQLGetData" (BYVAL hstmt AS INTEGER,BYVAL ColNo AS SMALLINT,BYVAL Option AS SMALLINT,OutBuf AS STRING,BYVAL OutBufLen AS INTEGER,OutLen AS INTEGER) AS SMALLINT
+DECLARE FUNCTION SQLGetData32   LIB "ODBC32.DLL" Alias "SQLGetData" (BYVAL hstmt AS INTEGER,BYVAL ColNo AS SMALLINT,BYVAL Option AS SMALLINT,OutBuf AS STRING,BYVAL OutBufLen AS INTEGER,OutLen AS INTEGER) AS SMALLINT
+
+DECLARE FUNCTION SQLTables16        LIB "ODBC.DLL"   Alias  "SQLTables" (BYVAL hdbc AS INTEGER, BYVAL TableQualifier AS INTEGER, BYVAL TableQualifierLen AS SMALLINT, TableOwner AS STRING, BYVAL TableOwnerLen AS SMALLINT, 
+  TableName AS STRING, BYVAL TableNameLen AS SMALLINT, TableType AS STRING, BYVAL TableTypeLen AS SMALLINT) AS SMALLINT
+DECLARE FUNCTION SQLTables32        LIB "ODBC32.DLL" Alias  "SQLTables" (BYVAL hdbc AS INTEGER, BYVAL TableQualifier AS INTEGER, BYVAL TableQualifierLen AS SMALLINT, TableOwner AS STRING, BYVAL TableOwnerLen AS SMALLINT, 
+  TableName AS STRING, BYVAL TableNameLen AS SMALLINT, TableType AS STRING, BYVAL TableTypeLen AS SMALLINT) AS SMALLINT
+
+DECLARE FUNCTION SQLTablesNoOwner16 LIB "ODBC.DLL"   Alias  "SQLTables" (BYVAL hdbc AS INTEGER, BYVAL TableQualifier AS INTEGER, BYVAL TableQualifierLen AS SMALLINT, BYVAL TableOwner AS INTEGER, BYVAL TableOwnerLen AS SMALLINT, 
+  TableName AS STRING, BYVAL TableNameLen AS SMALLINT, TableType AS STRING, BYVAL TableTypeLen AS SMALLINT) AS SMALLINT
+DECLARE FUNCTION SQLTablesNoOwner32 LIB "ODBC32.DLL" Alias  "SQLTables" (BYVAL hdbc AS INTEGER, BYVAL TableQualifier AS INTEGER, BYVAL TableQualifierLen AS SMALLINT, BYVAL TableOwner AS INTEGER, BYVAL TableOwnerLen AS SMALLINT, 
+  TableName AS STRING, BYVAL TableNameLen AS SMALLINT, TableType AS STRING, BYVAL TableTypeLen AS SMALLINT) AS SMALLINT
+
+DECLARE FUNCTION SQLOwners16        LIB "ODBC.DLL"   Alias  "SQLTables" (BYVAL hdbc AS INTEGER, TableQualifier AS STRING, BYVAL TableQualifierLen AS SMALLINT, TableOwner AS STRING, BYVAL TableOwnerLen AS SMALLINT, 
+  TableName AS STRING, BYVAL TableNameLen AS SMALLINT, TableType AS STRING, BYVAL TableTypeLen AS SMALLINT) AS SMALLINT
+DECLARE FUNCTION SQLOwners32        LIB "ODBC32.DLL" Alias  "SQLTables" (BYVAL hdbc AS INTEGER, TableQualifier AS STRING, BYVAL TableQualifierLen AS SMALLINT, TableOwner AS STRING, BYVAL TableOwnerLen AS SMALLINT, 
+  TableName AS STRING, BYVAL TableNameLen AS SMALLINT, TableType AS STRING, BYVAL TableTypeLen AS SMALLINT) AS SMALLINT
+
+DECLARE FUNCTION SQLGetInfo32 LIB "ODBC32.DLL" Alias  "SQLGetInfo" (
+								 BYVAL odbchdbc AS INTEGER, 
+                                                 BYVAL infoflag AS SMALLINT, 
+                                                 Database AS STRING, 
+                                                 BYVAL len AS SMALLINT, 
+                                                 outlen AS SMALLINT) AS SMALLINT
+
+DECLARE FUNCTION SQLGetInfo LIB "ODBC.DLL" Alias  "SQLGetInfo" (
+ 								 BYVAL odbchdbc AS INTEGER, 
+                                                 BYVAL infoflag AS SMALLINT, 
+                                                 Database AS STRING, 
+                                                 BYVAL len AS SMALLINT, 
+                                                 outlen AS SMALLINT) AS SMALLINT
+'

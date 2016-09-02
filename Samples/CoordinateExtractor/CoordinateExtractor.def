@@ -1,0 +1,83 @@
+' Resource String Ids
+Define IDS_STR_RES_RANGE_ERR              1
+Define IDS_APP_DESCRIPTION                2
+Define IDS_MENU_NAME                      3
+Define IDS_MENU_ITEM_NAME                 4
+Define IDS_ABOUT_MENU_ITEM_NAME           5
+Define IDS_EXIT_MENU_ITEM_NAME            6
+Define IDS_OPEN_TABLE                     7
+Define IDS_VERSION                        8
+Define IDS_TABLE_NAME                     9
+Define IDS_X_COLUMN                      10
+Define IDS_X_COLUMN_EXMPL                11
+Define IDS_Y_COLUMN                      12
+Define IDS_Y_COLUMN_EXMPL                13
+Define IDS_CREATE_NEW_COLUMNS            14
+Define IDS_COORDINATES_EXTRACTED_IN      15
+Define IDS_NOT_IN_PRJ_FILE               16
+Define IDS_USE_NATIVE_RADIO              17
+Define IDS_USE_NON_NATIVE_RADIO          18
+Define IDS_SELECT_PROJECTION             19
+Define IDS_BROWSE_RESULTS                20
+Define IDS_OK                            21
+Define IDS_CANCEL                        22
+Define IDS_LAT                           23
+Define IDS_Y                             24
+Define IDS_LON                           25
+Define IDS_X                             26
+Define IDS_LATITUDE                      27
+Define IDS_LONGITUDE                     28
+Define IDS_CREATE_COORDINATE_COLUMNS     29
+Define IDS_PENDING_EDITS                 30
+Define IDS_SAVE                          31
+Define IDS_NON_FLOAT                     32
+Define IDS_SAME_COLS                     33
+Define IDS_CONTINUE                      34
+Define IDS_NO_MAP_OBJECTS                35
+Define IDS_NO_X_Y                        36
+Define IDS_ABOUT                         37
+Define IDS_ABOUT_1                       38
+Define IDS_ABOUT_2                       39
+Define IDS_ABOUT_3                       40
+Define IDS_ABOUT_4                       41
+Define IDS_SPACE1                        42
+Define IDS_COLON                         43
+
+'Strings not to be localized
+Define STR_RES_STR_FILE                  "CoordinateExtractor.str"
+Define STR_FILE_NOT_ACCESSIBLE           "Unable to access resource string file: "
+Define STR_APP_FILE_NAME                 "CoordinateExtractor.mbx"
+Define STR_EMPTY_STR1                    ""
+Define STR_EMPTY_STR2                    " "
+Define STR_COLON                         ";"
+Define STR_OPEN_BRAC                     "("
+Define STR_CLOSE_BRAC                    ")"
+Define STR_UNDER_SCORE                   "_"
+Define STR_SET                           "Set "
+Define STR_FORMAT1                       "#.######"
+Define STR_COL                           "COL"
+Define STR_TMP_COORD_SYS_FILE            "\TempCoordSys.tab"
+Define STR_QRY_CREATE_TEMP_TABLE         "Create Map For TempCoordSys "
+Define STR_TMP_COORD_SYS_SHELL           "TempCoordSysShell"
+Define STR_TMP_COORD_SYS                 "TempCoordSys"
+Define STR_MENU_ITEM_SEPARATOR           "(-"
+Define STR_FN_MAIN                       "Main:"
+Define STR_FN_COORD_EXTRACTOR            "CoordinateExtractor: "
+Define STR_FN_TBL_NAME_HANDLER           "TableNameHandler: "
+Define STR_FN_COL_NAME_HANDLER           "ColumnNameHandler: "
+Define STR_FN_PICK_DEFAULT_LL_COL        "PickDefaultLatLonColumns: "
+Define STR_FN_COORD_EX_OK_HNDLR          "CoodinateExtractorOKButtonHandler: "
+Define STR_FN_CREATE_COORD_COL           "CreateCoordinateColumns: "
+Define STR_FN_CREATE_COL_OK_HNDLR        "CreateColumnsOKButtonHandler: "
+Define STR_FN_PENDING_EDITS_HNDLR        "PendingEditsHandler: "
+Define STR_FN_TBL_CHOICE_HANDLER         "TableChoiceHandler: "
+Define STR_FN_CHOOSE_PROJECTION_BTN      "ChooseProjectionButton: "
+Define STR_FN_SET_USR_PROJ               "SetUserProjection: "
+Define STR_FN_UPDATE_STATIC_TXT          "UpdateStaticText: "
+Define STR_FN_RESET_NATIVE               "ResetNative: "
+Define STR_FN_EXTRACT_COORDINATES        "ExtractCoordinates: "
+Define STR_FN_CLOSE_TMP_COORD_SHL        "Close_TempCoordSysShell: "
+Define STR_FN_CLOSE_TMP_COORD_SYS        "Close_TempCoordSys: "
+Define STR_FN_ABOUT                      "About: "
+Define STR_FN_END_PROG                   "EndProgram: "
+Define STR_FN_RESET_GLOBALS              "ReSetGlobals: "

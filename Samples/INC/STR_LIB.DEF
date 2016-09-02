@@ -1,0 +1,56 @@
+'------------------------------------------------------------------------------------
+' NOTE! This library is provided as is and cannot be supported by MapInfo
+' Technical support.  These routines have been tested, but in some cases there
+' are specific assumptions that may not be evident from the prototypes.  If you
+' use these routines, test your code thoroughly.  If in doubt, review the source
+' code in the Lib directory.
+'
+' str_lib.def
+' Prototypes for the routines in str_Lib.mb
+'
+' The routines in this library provide extensions to the built-in MapBasic string
+' manipulation routines.  Most of the routines in this library operate on semi-colon
+' delimited lists like those used for the titles of list boxes and popup menus.
+'
+' Version 1.0
+'
+'------------------------------------------------------------------------------------
+
+'------------------------------------------------------------------------------
+' count_items takes a semi-colon delimited list and returns the number of
+' items in the list. 
+'------------------------------------------------------------------------------
+Declare Function count_items(ItemTitleList as String) As SmallInt
+
+'------------------------------------------------------------------------------------
+' This routine takes a semi delimited list and swaps the itemIndex item with the item
+' before it in the list.
+'------------------------------------------------------------------------------------
+Declare Function list_move_up(ItemTitleList As String, ByVal itemIndex as SmallInt) as SmallInt
+
+'------------------------------------------------------------------------------------
+' This routine takes a semi delimited list and swaps the itemIndex item with the item
+' after it in the list.
+'------------------------------------------------------------------------------------
+Declare Function list_move_down(ItemTitleList As String, ByVal itemIndex as SmallInt) as SmallInt
+
+'------------------------------------------------------------------------------------
+' This routine makes sure that the string passed to it ends with a semi.
+'------------------------------------------------------------------------------------
+Declare Function set_list_end(ItemTitleList as String) as SmallInt
+
+'------------------------------------------------------------------------------------
+' Given a semi-colon delimited string, and and a substr, this routine removes
+' the substring
+'------------------------------------------------------------------------------------
+Declare Sub remove_list_item(itemList as String, item2Remove as String, byval removeTrailingSemis as Logical)
+
+'------------------------------------------------------------------------------
+' Given a semi-colon delimited string, this routine will return the text for an
+' item with the given index.
+'
+' index - the index of the item to return
+' StrToParse - the delimited string
+' retStr - string variable passed by reference for return
+'------------------------------------------------------------------------------
+Declare Sub Extract( ByVal index As Integer, ByVal StrToParse As String, retStr As String )

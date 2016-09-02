@@ -1,0 +1,894 @@
+'*****************************************************************************
+'       Copyright (c) 2003-2004, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: LineSnap.mb $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+' Utility to trim or extend a single-segment line to its intersection point
+'  with another chosen line; uses a custom tool button on the Tools menu.
+'
+' Revision History:
+'
+'    Rev 1.0   3 July 2003              Greene
+'					initial localizable version created from Trim/Extend tool
+'        1.1   1 Aug 2003               Greene
+'               fixed bug (mid-stream alterations to selected object)
+'        2     28 May 2004              Smith
+'               Improved speed, and enhanced so it can work with polylines
+'
+'****************************************************************************
+Include "MapBasic.DEF" 
+Include "Menu.DEF"
+Include "Icons.DEF"
+Include "LineSnap.DEF"
+Include "..\Inc\Resstrng.DEF"
+
+Type tCoords
+	x	AS Float
+	y	AS Float
+End Type
+
+Declare Sub Main
+Declare Sub About
+Declare Sub Goodbye
+Declare Sub ErrorMessage(ByVal SubName As String, ByVal strError as String)
+Declare Sub CAD_Extend
+Declare Sub SelChangedHandler
+Declare Sub ShowHighlights(oldLocation As tCoords, newLocation As tCoords)
+Declare Sub ClearHighlights
+
+Declare Function ProcessLineSegment(ByVal objCutter As Object, objTarget As Object, ByVal bStartNode As Logical) As Logical
+Declare Function PointIsOnLineSegment(segmentStart As tCoords, segmentEnd As tCoords, pnt As tCoords) As Logical 
+Declare Function ConfirmNodeEdit(bStartNode As Logical, 
+								bSingleSegmentCutter As Logical, bSingleSegmentTarget As Logical) As Logical
+
+Declare Function EA_GetEditableLayer(ByVal lWinId As Integer, strLayer As String) As  Logical
+Declare Function SelectClosestObject	(ByVal strLayer As String, fX As  Float, fY As Float) As Logical
+Declare Function SelectClosestObjectInMap(ByVal strLayer As String, fX As  Float, fY As Float) As Logical
+Declare Sub GetLineNodes (objCurr As Object, tcStartNode, tcEndNode As tCoords)
+Declare Function CalcIntersection (tcSegAFrom, tcSegATo, tcSegBFrom, tcSegBTo, tcIntersect As tCoords) As Logical
+Declare Function IsBetween( num As Float,  n1 As Float,  n2 As Float) As Logical 
+
+Global gnToolMode as SmallInt
+
+Define MODE_NONE   0
+Define MODE_EXTEND 1
+
+Define LF          Chr$(13)
+
+Sub Main
+
+  If LoadStrings(ApplicationDirectory$() + "LineSnap.str") = FALSE Then
+    Note "Unable to access resource String file: " + ApplicationDirectory$() + "LineSnap.str"
+    Exit Sub
+  End If
+  Create Menu GetResString(IDS_LINESNAP_TOOL_NAME) As 
+    GetResString(IDS_ABOUT_MENU_NAME)
+			HelpMsg GetResString(IDS_ABOUT_HELPMSG) Calling About,
+    GetResString(IDS_EXIT_MENU_NAME)
+	 		HelpMsg GetResString(IDS_EXIT_HELPMSG) Calling GoodBye
+
+  Alter Menu ID 4 Add GetResString(IDS_LINESNAP_TOOL_NAME)
+						 As GetResString(IDS_LINESNAP_TOOL_NAME)
+
+  Alter ButtonPad ID 3 ' Tools buttonpad
+    Add 
+      ToolButton
+        Icon MI_ICON_CROSSHAIR
+        Cursor MI_CURSOR_CROSSHAIR    ' the draw-mode mouse cursor 
+        HelpMsg GetResString(IDS_LINESNAP_HELPMSG)
+        DrawMode  DM_CUSTOM_POINT     ' let the user click, but not drag
+        Calling  CAD_Extend  
+    Show     
+
+End Sub
+
+
+'************************************************************************
+Sub GoodBye
+  End Program
+End Sub
+
+'************************************************************************
+Sub About
+  OnError Goto HandleError
+
+  Dialog Title GetResString(IDS_ABOUT)
+  Height 176 Width 200
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_1) Position 10, 10
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_2) Position 10, 19
+
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_3) Position 10, 38
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_4) Position 10, 47
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_5) Position 10, 56
+
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_6) Position 10, 75
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_7) Position 10, 83
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_8) Position 10, 92
+
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_9) Position 10, 111
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_10) Position 10, 120
+  Control StaticText Title GetResString(IDS_ABOUT_TEXT_11) Position 10, 129
+
+  Control OKButton Title GetResString(IDS_OK) Position 78, 150 Width 45
+  Exit Sub
+
+HandleError:
+  Note "About: " + Error$()
+  Resume Next
+End Sub
+
+
+Sub ErrorMessage (ByVal SubName As String, ByVal strError As String)
+'-----------------------------------------------------------------------------
+'Subroutine:	>Error Message
+'Called By:	    >Main
+'Description:	>This Subroutine displays any untrapped errors
+
+'-----------------------------------------------------------------------------
+	Note GetResString(IDS_ERROR_OCCURRED) & SubName & LF
+      & GetResString(IDS_PROCESS_HALTED) & LF & LF & strError
+	gnToolMode=MODE_NONE
+
+End Sub 'Error Message
+
+
+Sub CAD_Extend
+'------------------------------------------------------------------------------
+'	Description:	Allows the user to trim/extend to another line.
+'					(i)	 Source line will End at intersection with target
+'					(ii) Source line will End at theoretical intersection
+'
+'	Pre:			A layer on the current mapper is editable.
+'	Post:			
+'------------------------------------------------------------------------------
+Dim
+	fX,
+	fY,
+	fDistBeg,
+	fDistEnd          as Float,
+	tcSegAFrom,
+	tcSegATo,
+	tcSegBFrom,
+	tcSegBTo,
+	tcIntersect       as tCoords,
+	objCutter,
+	objTarget         as Object,
+	lSourceRow        as Integer,
+	strLayer          as String,
+	bFoundLine        as Logical
+
+	'Setup general error handler
+	OnError Goto ErrorHandler
+
+	Set Coordsys Window FrontWindow()
+		
+	'Save the position where the user clicked
+	fX = CommandInfo(CMD_INFO_X)
+	fY = CommandInfo(CMD_INFO_Y)
+	
+	'First check if there is an editable layer
+	If EA_GetEditableLayer(FrontWindow(), strLayer) Then
+
+		If gnToolMode=MODE_EXTEND Then
+				'Check that the previous selected object is still there
+				Fetch First From TmpSel
+
+			If Str$(TmpSel.obj)="" Then
+				' the target line has been deleted!  Reset the tool:
+				gnToolMode=MODE_NONE
+			End If
+		End If		
+
+		If gnToolMode = MODE_NONE Then
+			' The user just clicked to select the first line/polyline
+			If WindowInfo(FrontWindow(), WIN_INFO_TYPE) = WIN_MAPPER Then
+				bFoundLine = SelectClosestObjectInMap(strLayer, fX, fY)
+			Else
+				bFoundLine = SelectClosestObject(strLayer, fX, fY) 
+			End If
+
+			If bFoundLine Then  
+
+				'Check that the object selected for modification was a line or polyline
+				Fetch First From TmpSel
+				objTarget = TmpSel.obj
+
+				Do Case ObjectInfo(objTarget, OBJ_INFO_TYPE)
+				Case OBJ_TYPE_PLINE
+					gnToolMode = MODE_EXTEND
+				Case OBJ_TYPE_LINE
+					gnToolMode = MODE_EXTEND
+				End Case
+				If gnToolMode = MODE_EXTEND Then
+					' object is valid, so actually select it now --
+					Select * From TmpSel
+				Else
+					Note GetResString(IDS_SELECT_LINE)
+				End If
+			End If
+		Else
+			' From the previous run of this subroutine, there should already be a 
+			'  temporary table called TmpSel with the 'target object' selected.
+			' (the object to be modified)
+			'
+			SELECT * FROM TmpSel Into SelSource NoSelect
+			Fetch First from SelSource
+			objTarget = SelSource.obj
+
+			'Locate the second object, which we will use as a cutter to trim the original line
+
+			If WindowInfo(FrontWindow(), WIN_INFO_TYPE) = WIN_MAPPER Then
+				bFoundLine = SelectClosestObjectInMap(strLayer, fX, fY)
+			Else
+				bFoundLine = SelectClosestObject(strLayer, fX, fY) 
+			End If
+
+			If bFoundLine Then 
+	
+				Fetch First From TmpSel
+				objCutter = TmpSel.Obj
+				
+				'Only work with lines and polylines
+				If ObjectInfo(objCutter, OBJ_INFO_TYPE) = OBJ_TYPE_LINE 
+                  Or ObjectInfo(objCutter, OBJ_INFO_TYPE) = OBJ_TYPE_PLINE  
+             Then
+					'Calculate the actual / theoretical intersection between two Source and Target
+					If ObjectInfo(objCutter, OBJ_INFO_TYPE) = OBJ_TYPE_LINE Then 
+						' Convert the cutter object to a Polyline, so that the ProcessLineSegment
+						' method won't have to check the type of feature 
+						Create Pline 
+							Into Variable objCutter 2 
+							( ObjectGeography(objCutter, OBJ_GEO_LINEBEGX), ObjectGeography(objCutter, OBJ_GEO_LINEBEGY) ) 
+							( ObjectGeography(objCutter, OBJ_GEO_LINEENDX), ObjectGeography(objCutter, OBJ_GEO_LINEENDY) )
+					End If 
+
+					' Try to adjust the starting node of the line
+					If  ProcessLineSegment(objCutter, objTarget, true) Then 
+						Update SelSource Set obj = objTarget
+					End If 
+
+					' Try to adjust the ending node of the line
+					If  ProcessLineSegment(objCutter, objTarget, false) Then 
+						Update SelSource Set obj = objTarget
+					End If 
+
+					gnToolMode = MODE_NONE
+					'Unselect everything
+					Run Menu Command M_ANALYZE_UNSELECT
+				Else
+					Note GetResString(IDS_SELECT_REFERENCE_LINE)
+					' re-select previous source object
+					Select * From SelSource into TmpSel
+				End If
+			
+			Else
+				' no valid objects withing range of click point; best to reset the tool
+				gnToolMode = MODE_NONE
+				'Unselect everything
+				Run Menu Command M_ANALYZE_UNSELECT
+			End If
+
+		End If
+
+	Else
+		Note GetResString(IDS_MAKE_LAYER_EDITABLE)
+	End If
+	
+	Exit Sub
+				
+ErrorHandler:
+	Call ErrorMessage("CAD_Extend", Error$() )
+
+End Sub	'CAD_Extend
+
+
+Function ProcessLineSegment(ByVal objCutter As Object, objTarget As Object, ByVal bStartNode As Logical) As Logical
+'---------------------------------------------------------------------------
+' Attempt to extend or trim the specied node (first or last node) of the
+' specified "target" object using the specified "cutter" object. 
+'
+' objCutter must be a Polyline object.  objTarget can be a line or polyline.
+'
+' If bStartNode is true, modify the starting node of the line or polyline,
+' otherwise modify the ending node.  
+'
+' If either the target object or the cutter object is a multi-segment 
+' polyline, then there may be ambiguity about where to snap to or trim to.
+' In these cases, we draw highlighting at the current node position 
+' and the proposed new node position, and we call ConfirmNodeEdit to ask
+' the user to confirm the proposed node move. 
+' 
+' Return true if the target object was modified. 
+'---------------------------------------------------------------------------  
+
+	Dim bCutterObjectIsSingleSegment, bTargetObjectIsSingleSegment  As Logical
+	Dim bGotCandidatePoint As Logical 
+	Dim bLinesIntersect As Logical
+	Dim iSectionNumber As Integer 
+	Dim iNodeNumber As Integer 
+	Dim fDistStart, fDistEnd As Float
+	Dim fDistCurrent, fDistNew As Float 
+
+	Dim iSectionNumberToModify As Integer 
+	Dim iNodeNumberToModify As Integer 
+	Dim iStartNodeNumber, iEndNodeNumber As Integer 
+
+	bGotCandidatePoint = FALSE
+	ProcessLineSegment = FALSE
+
+	' tCoords objects representing starting/ending points of line segments
+	Dim tcCutterStart,	' Starting node of a segment of the cutter object 
+		tcCutterEnd, 		' Ending node of a segment of the cutter object 
+		tcTargetStart,	' Starting node of a segment of the Target object 
+		tcTargetEnd, 		' Ending node of a segment of the Target object 
+		tcIntersect,		' Node where segments intersect
+		tcOldCoords,    ' Original coordinates of the node we're going to move
+		tcBestCandidate ' record the best intersection candidate while looping
+		As tCoords 
+
+	' Set flags to indicate whether target and/or cutter objects are single-segment
+	bCutterObjectIsSingleSegment = TRUE  
+	If 	ObjectInfo(objCutter, OBJ_INFO_NPNTS) > 2 Then
+		bCutterObjectIsSingleSegment = FALSE
+	End If 
+	bTargetObjectIsSingleSegment = TRUE 
+	If ObjectInfo(objTarget, OBJ_INFO_TYPE) = OBJ_TYPE_PLINE Then 
+		If 	ObjectInfo(objTarget, OBJ_INFO_NPNTS) > 2 Then
+			bTargetObjectIsSingleSegment = FALSE
+		End If 
+	End If 
+
+	' Assign the X and Y values of the tCoords structures that represent
+	' the starting and ending points of the line segment we're modifying
+	' (either a line object, or the first or last segment of a polyline) 
+	If ObjectInfo(objTarget, OBJ_INFO_TYPE) = OBJ_TYPE_LINE Then
+		If bStartNode = TRUE Then 
+			Call GetLineNodes(objTarget, tcTargetStart, tcTargetEnd)
+		Else 
+			Call GetLineNodes(objTarget, tcTargetEnd, tcTargetStart)
+		End If 
+	Else 
+		If bStartNode = TRUE Then 
+			iSectionNumberToModify = 1
+			iNodeNumberToModify = 1
+
+			iStartNodeNumber = 1
+			iEndNodeNumber = 2
+		Else 
+			iSectionNumberToModify = ObjectInfo(objTarget, OBJ_INFO_NPOLYGONS)
+			iNodeNumberToModify = ObjectInfo(objTarget, OBJ_INFO_NPOLYGONS + iSectionNumberToModify)
+
+			iStartNodeNumber = iNodeNumberToModify
+			iEndNodeNumber = iStartNodeNumber - 1
+		End If 
+
+		tcTargetStart.X = ObjectNodeX(objTarget, iSectionNumberToModify, iStartNodeNumber)
+		tcTargetStart.Y = ObjectNodeY(objTarget, iSectionNumberToModify, iStartNodeNumber) 
+		tcTargetEnd.X = ObjectNodeX(objTarget, iSectionNumberToModify, iEndNodeNumber)
+		tcTargetEnd.Y = ObjectNodeY(objTarget, iSectionNumberToModify, iEndNodeNumber)
+	End If 
+
+	bGotCandidatePoint = FALSE
+	' For each section of the cutter polyline... 
+	For iSectionNumber = 1 to ObjectInfo(objCutter, OBJ_INFO_NPOLYGONS) 
+
+		' For each segment in this section... 
+		For iNodeNumber = 1 to ObjectInfo(objCutter, OBJ_INFO_NPOLYGONS + iSectionNumber) - 1
+
+			'Calculate the actual / theoretical intersection between two Source and Target
+			tcCutterStart.X = ObjectNodeX(objCutter, iSectionNumber, iNodeNumber)
+			tcCutterStart.Y = ObjectNodeY(objCutter, iSectionNumber, iNodeNumber)
+			tcCutterEnd.X   = ObjectNodeX(objCutter, iSectionNumber, iNodeNumber + 1)
+			tcCutterEnd.Y   = ObjectNodeY(objCutter, iSectionNumber, iNodeNumber + 1)
+
+			If CalcIntersection(tcCutterStart, tcCutterEnd, tcTargetStart, tcTargetEnd, tcIntersect) = TRUE Then    
+				' We found a point of intersection, but it might not be reasonable to use it. 
+				' If the cutter is a multi-segment polyline, and if the point of intersection 
+				' was only found by extrapolating the segment, then reject this intersection point.
+				' (The assumption is that when a cutter has multiple segments, we should only
+				' trim or extend to an actual segment of the cutter, because it's hard for 
+				' user to envision all the possible extrapolations of all segments. 
+				' It is easy to envision how two line segments might intersect at an
+				' extrapolated point, but much harder to envision with a polyline, 
+				' as there are just too many possibilities.)  
+				If bCutterObjectIsSingleSegment  Or  
+					PointIsOnLineSegment(tcCutterStart, tcCutterEnd, tcIntersect) = TRUE 
+				Then
+					' Either the cutter is a single-segment object,  or the point of
+					' intersection is actually on the cutter (not on an extrapolation); proceed. 
+					fDistStart = Distance(tcTargetStart.X, tcTargetStart.Y, tcIntersect.X, tcIntersect.Y, "m")
+					fDistEnd = Distance(tcTargetEnd.X,   tcTargetEnd.Y,   tcIntersect.X, tcIntersect.Y, "m")
+					If  fDistStart < fDistEnd   Or  
+						(bTargetObjectIsSingleSegment = FALSE And PointIsOnLineSegment(tcTargetStart, tcTargetEnd, tcIntersect) = TRUE)
+					Then
+						if bGotCandidatePoint = FALSE Then 
+							' This is the first potential point of intersection that we've found so far
+			          	tcBestCandidate.X = tcIntersect.X
+							tcBestCandidate.Y = tcIntersect.Y 
+						Else 
+							fDistCurrent = Distance(tcBestCandidate.X, tcBestCandidate.Y, tcTargetStart.X, tcTargetStart.Y, "m")
+							fDistNew     = Distance(tcIntersect.X,     tcIntersect.Y,   tcTargetStart.X, tcTargetStart.Y, "m")							
+							If fDistNew < fDistCurrent Then  
+								' This potential point of intersection appears to be better than any
+								' we calculated previously, as it is closer to the original node location.
+				          	tcBestCandidate.X = tcIntersect.X
+								tcBestCandidate.Y = tcIntersect.Y 
+							End If 
+						End if 
+						bGotCandidatePoint = TRUE  
+						bLinesIntersect = PointIsOnLineSegment(tcTargetStart, tcTargetEnd, tcIntersect)
+					End If 
+				End If 
+			End If 
+		Next 
+	Next 
+
+	If bGotCandidatePoint = TRUE Then 
+
+		' If either the target object or the cutter object is a polyline, 
+		' draw markers highlighting the node we're about to move and the proposed
+		' new location, so user knows which node we're moving to where. 
+		If bCutterObjectIsSingleSegment = FALSE Or bTargetObjectIsSingleSegment = FALSE Then 
+			If ObjectInfo(objTarget, OBJ_INFO_TYPE) = OBJ_TYPE_LINE Then
+				If bStartNode = TRUE Then 
+					tcOldCoords.X = ObjectGeography(objTarget, OBJ_GEO_LINEBEGX)
+					tcOldCoords.Y = ObjectGeography(objTarget, OBJ_GEO_LINEBEGY)
+				Else 
+					tcOldCoords.X = ObjectGeography(objTarget, OBJ_GEO_LINEENDX)
+					tcOldCoords.Y = ObjectGeography(objTarget, OBJ_GEO_LINEENDY)
+				End If 
+			Else
+				tcOldCoords.X = ObjectNodeX(objTarget, iSectionNumberToModify, iNodeNumberToModify)
+				tcOldCoords.Y = ObjectNodeY(objTarget, iSectionNumberToModify, iNodeNumberToModify)
+			End If 
+			' Draw points to the cosmetic layer to highlight the proposed node move
+			Call ShowHighlights(tcOldCoords, tcBestCandidate)
+		End If 
+
+		If ConfirmNodeEdit(bStartNode, bCutterObjectIsSingleSegment, bTargetObjectIsSingleSegment) Then 
+			' The user approves, so proceed and move the starting or ending node position 
+			If ObjectInfo(objTarget, OBJ_INFO_TYPE) = OBJ_TYPE_LINE Then
+				If bStartNode = TRUE Then 
+					Alter Object objTarget Geography OBJ_GEO_LINEBEGX, tcBestCandidate.X
+					Alter Object objTarget Geography OBJ_GEO_LINEBEGY, tcBestCandidate.Y
+				Else 
+					Alter Object objTarget Geography OBJ_GEO_LINEENDX, tcBestCandidate.X
+					Alter Object objTarget Geography OBJ_GEO_LINEENDY, tcBestCandidate.Y
+				End If 
+			Else 
+				Alter Object objTarget Node Set Position iSectionNumberToModify, iNodeNumberToModify (tcBestCandidate.X, tcBestCandidate.Y)
+			End If 
+			ProcessLineSegment = TRUE
+		End if
+
+		' Clear the highlighting objects we added to the Cosmetic layer
+		If bCutterObjectIsSingleSegment = FALSE Or bTargetObjectIsSingleSegment = FALSE Then 
+			Call ClearHighlights
+		End If 
+	End if
+End Function 
+
+
+Function PointIsOnLineSegment(segmentStart As tCoords, segmentEnd As tCoords, pnt As tCoords) As Logical 
+'---------------------------------------------------------------------------
+' Given two points that represent the start and end of a line segment,
+' and another point which is either "on" the line or which represents 
+' an extrapolation of the line, return TRUE if the point is on the line.
+'---------------------------------------------------------------------------
+	If segmentStart.X = segmentEnd.X  And  segmentStart.Y = segmentEnd.Y Then 
+		' Testing for a point on a point 
+		If pnt.X = segmentStart.X  And  pnt.Y = segmentStart.Y  Then 
+			PointIsOnLineSegment = TRUE
+		Else
+			PointIsOnLineSegment = FALSE 
+		End If 
+	ElseIf segmentStart.X = segmentEnd.X Then
+		' Testing for a point on a vertical line 
+		If IsBetween(pnt.Y, segmentStart.Y, segmentEnd.Y) = TRUE   Then 
+			PointIsOnLineSegment = TRUE
+		Else 
+			PointIsOnLineSegment = FALSE
+		End If 
+	ElseIf segmentStart.Y = segmentEnd.Y Then
+		' Testing for a point on a horizontal line 
+		If IsBetween(pnt.X, segmentStart.X, segmentEnd.X) = TRUE   Then 
+			PointIsOnLineSegment = TRUE
+		Else 
+			PointIsOnLineSegment = FALSE
+		End If 
+	ElseIf IsBetween(pnt.X, segmentStart.X, segmentEnd.X) = TRUE Or  
+		' Normal case: see if a point is on a non-vertical, non-horizontal line
+		IsBetween(pnt.Y, segmentStart.Y, segmentEnd.Y) = TRUE   Then 
+		PointIsOnLineSegment = TRUE
+	Else 
+		PointIsOnLineSegment = FALSE
+	End If 
+End Function 
+
+
+Function IsBetween( num As Float,  n1 As Float,  n2 As Float) As Logical 
+'-------------------------------------------------------------------------
+' Given three numbers, return true if the first number is with the range 
+' of values defined by the other two numbers. 
+'-------------------------------------------------------------------------
+	If n1 <= n2 Then 
+		If (num >= n1) And (num <= n2) Then 
+			IsBetween = TRUE
+		Else 
+			IsBetween = FALSE
+		End If 
+	Else 
+		If (num >= n2) And (num <= n1) Then 
+			IsBetween = TRUE
+		Else 
+			IsBetween = FALSE
+		End If 
+	End If 
+End Function 
+
+
+Function ConfirmNodeEdit(
+		bStartNode As Logical, bSingleSegmentCutter As Logical, bSingleSegmentTarget As Logical) As Logical
+'--------------------------------------------------------------------------
+' Display a dialog asking the user to confirm the proposed node adjustment.
+' Return true if the user approves the move. 
+' If both the target line and the cutter line are simple, single-segment
+' objects, then don't bother prompting the user, just return true. 
+' Display a different prompt based on whether the proposed node move
+' will affect the starting node vs. the ending node. 
+'--------------------------------------------------------------------------
+	Dim msg As String 
+	If bSingleSegmentCutter And bSingleSegmentTarget Then 
+		ConfirmNodeEdit = TRUE
+		Exit Function
+	End If 
+
+	If bStartNode = TRUE Then 
+		msg = GetResString(IDS_CONFIRM_STARTING_NODE) ' "Do you want to move the starting node?"
+	Else
+		msg = GetResString(IDS_CONFIRM_ENDING_NODE) ' "Do you want to move the ending node?"
+	End If 
+
+	If Ask(msg, GetResString(IDS_BUTTON_MOVE), GetResString(IDS_BUTTON_CANCEL) ) Then 
+		ConfirmNodeEdit = TRUE
+	Else
+		ConfirmNodeEdit = FALSE
+	End If 
+End Function 
+
+
+Function EA_GetEditableLayer(ByVal lWinId As Integer, strLayer As String) As  Logical
+'------------------------------------------------------------------------------
+'	Description:	Returns the name of the editable layer within the
+'					given Window identifier.
+'
+'	Input:			lWinId		Window to scan
+'	Output:			strLayer	Name of the editable layer
+'
+'	Pre:			lWinId identifies a mappable window
+'	Post:
+'------------------------------------------------------------------------------
+DIM
+	i			AS Integer,
+	nLayers		AS SmallInt
+	
+	OnError Goto ErrorHandler
+
+	strLayer = ""
+
+	Do Case WindowInfo(lWinID, WIN_INFO_TYPE)
+	Case WIN_LAYOUT
+		' in a layout window, the LayoutN "cosmetic" table is always editable
+		strLayer=WindowInfo(lWinID, WIN_INFO_TABLE)
+		EA_GetEditableLayer=TRUE
+	Case WIN_MAPPER
+		nLayers = MapperInfo(lWinId, MAPPER_INFO_LAYERS)
+	
+		For i = 0 TO nLayers
+	
+			If LayerInfo(lWinId, i, LAYER_INFO_EDITABLE) Then
+				strLayer = LayerInfo(lWinId, i, LAYER_INFO_NAME)
+				Exit For
+			End If
+			
+		Next
+	
+		If strLayer = "" Then
+			EA_GetEditableLayer = FALSE
+		Else
+			EA_GetEditableLayer = TRUE
+		End If
+	Case Else
+		Note GetResString(IDS_ERROR_OCCURRED)
+		EA_GetEditableLayer = FALSE
+	End Case
+	Exit Sub				
+
+ErrorHandler:
+	EA_GetEditableLayer = FALSE
+		
+End Function 'EA_GetEditableLayer
+
+
+Function SelectClosestObjectInMap(ByVal strLayer As  String, fX As  Float, fY As Float) As  Logical
+'------------------------------------------------------------------------------
+'	Description:	Selects the closest object in the specified map layer within
+'					a preset tolerance of the given point.  This function assumes
+'               that the layer being queried is a layer in a Map window. 
+'------------------------------------------------------------------------------
+   Dim i, i_found, i_editable_found, i_edit_tablenum As Integer 
+   Dim s_table, s_edit_tablename, s_query As String
+
+   i_found = SearchPoint(FrontWindow(), fX, fY) 
+
+   For i = 1 to i_found 
+     If SearchInfo(i, SEARCH_INFO_TABLE) = strLayer Then 
+        i_editable_found = i_editable_found + 1 
+        If i_editable_found = 1 Then 
+           s_query = "Select * from " + strLayer + " where ROWID = " + SearchInfo(i, SEARCH_INFO_ROW) + " Into TmpSel NoSelect"
+        End If 
+     End If 
+   Next 
+
+   If i_editable_found = 1 Then 
+      Run Command s_query 
+      If TableInfo(TmpSel, TAB_INFO_NROWS) = 1 Then 
+			SelectClosestObjectInMap = TRUE
+		Else
+			SelectClosestObjectInMap = FALSE 
+		End If 
+	ElseIf i_editable_found > 1 Then 
+		Note GetResString(IDS_TOO_MANY_ObjectS)
+   Else 
+		SelectClosestObjectInMap = FALSE 
+   End If 
+End Function  ' SelectClosestObjectInMap
+
+
+Function SelectClosestObject(ByVal strLayer As  String, fX As  Float, fY As Float) As  Logical
+'------------------------------------------------------------------------------
+'	Description:	Selects the closest object in the specified layer within
+'					a preset tolerance of the given point.  This function 
+'               uses a slower algorithm than the SelectClosestObjectInMap
+'               function; however this function can be used on a Layout window.
+'------------------------------------------------------------------------------
+DIM
+	fRadius		AS Float,
+	intFound		AS SmallInt,
+	objCircle		AS Object,
+	intCounter   As  Integer,	'DMG [added next several variables]
+	fLastGoodRad	as Float,
+	fMaxRadius	as Float,
+	fMinRadius	as Float,
+	fLimitRadius	as Float,
+	fLastRadius	as Float,
+	intStartTime	as Integer
+	
+	OnError Goto ErrorHandler
+	
+	intFound=0
+	fMinRadius=0
+	if WindowInfo(FrontWindow(), WIN_INFO_TYPE)=WIN_LAYOUT then
+		' hard to get useful information out of a Layout window, so use slower method:
+		fMaxRadius=TableInfo(strLayer, TAB_INFO_MAXX)-TableInfo(strLayer, TAB_INFO_MINX)
+		fLimitRadius=fMaxRadius
+		fRadius=fMaxRadius/200 ' a wild guess, since we aren't looking at zoom level
+	else
+		fMaxRadius=-1 ' If set to limit value, wouldn't need fLimitRadius --
+						'  but the algorithm might be slower on average, because
+						'  the user _will_ generally click very close to a line.
+		fLimitRadius=MapperInfo(FrontWindow(), MAPPER_INFO_ZOOM) / 20
+		fRadius = MapperInfo(FrontWindow(), MAPPER_INFO_ZOOM) / 200
+	end if
+
+	'Create a circle around the point of interest
+	objCircle = CreateCircle( fX, fY, fRadius )
+
+	'Select any Lines or Polylines in the editable table
+	Select * From strLayer Where Instr(1, "polyline", lcase$(str$(obj)))<>0 Into LinesQuery NoSelect
+	If TableInfo(LinesQuery, TAB_INFO_NROWS)=0 Then
+		SelectClosestObject=FALSE
+		Exit Function
+	End If
+	Select * from LinesQuery Where obj Intersects objCircle Into TmpSel NoSelect
+	intStartTime=Timer()
+	Do ' outer loop: will be executed until one "closest" object is found
+		fLastRadius=fRadius
+		Do Case TableInfo(TmpSel, TAB_INFO_NROWS)
+		Case 0
+			'Enlarge search radius and try again
+			fMinRadius=fRadius
+			If fMaxRadius=-1 Then ' no objects have been found yet
+				fRadius=fRadius * 2
+				If fRadius>fLimitRadius Then
+					intFound=FALSE
+
+					Exit Do
+				End If
+			Else
+				fRadius = fRadius + (fMaxRadius-fRadius) / 2
+			End If
+		Case 1
+			'Got the object of interest
+			intFound = 1
+			Exit Do
+		Case Else	
+			fMaxRadius=fRadius
+			fLastGoodRad=fRadius ' save this radius in case we can't find a better one...
+			'Reduce the circle radius and try again
+			fRadius = fRadius - (fRadius-fMinRadius) / 2
+
+		End Case
+
+' diagnostic line --
+'print fMinRadius & "  " & fRadius & "  " & fMaxRadius & "  " & TableInfo(TmpSel, TAB_INFO_NROWS)
+
+		'Create a circle around the point of interest
+		objCircle = CreateCircle(fX, fY, fRadius)
+		'Select any objects passing through the buffer circle
+	Select * From LinesQuery Where obj Intersects objCircle Into TmpSel NoSelect
+		intCounter=intCounter+1
+		' Generally the binary search should stop before the counter reaches 60, since
+		' it will have reached the limits of floating-point precision; but it's worth
+		' throwing in an explicit limit in case the algorithm switches indefinitely
+		' between two values.
+		If intCounter = 100 or fRadius = fLastRadius Then
+			intFound = 2
+			Exit Do
+		End If
+		' For large tables the buffer search may take a long time -- we should not 
+		'  do a full 100 iterations of the binary search algorithm in this case!
+		'  Rather than picking at random, tell user the point wasn't specific enough:
+		If Timer()-intStartTime > 7 Then
+			Note GetResString(IDS_TOO_MANY_ObjectS)
+			intFound=0
+			Exit Do
+		End If
+	Loop
+
+	Do Case intFound
+	Case 0
+		SelectClosestObject=FALSE
+	Case 1
+		SelectClosestObject = TRUE
+	Case 2
+		' can't find a unique closest object:
+		' pick the first object from the smallest list found
+		objCircle = CreateCircle(fX, fY, fLastGoodRad)
+		'Re-select the objects passing through the buffer circle
+		Select * From LinesQuery Where obj Intersects objCircle Into TmpSel NoSelect
+		' make the first object the current selection
+		Select * from TmpSel where RowID=1 into TmpSel
+		SelectClosestObject = TRUE
+	End Case
+	' If the LinesQuery table is based on a Cosmetic layer, it can't be closed...
+	OnError Goto IgnoreError
+	Close Table LinesQuery
+	
+	Exit Function
+IgnoreError:
+	Resume Next
+ErrorHandler:
+	Call ErrorMessage("SelectClosestObject", Error$())
+		
+End Function
+
+
+Sub GetLineNodes(objCurr As Object, tcStartNode, tcEndNode As tCoords)
+'------------------------------------------------------------------------------
+'	Description:	Returns the start and End node of the given line.
+'------------------------------------------------------------------------------
+
+	tcStartNode.X = ObjectGeography(objCurr, OBJ_GEO_LINEBEGX)
+	tcStartNode.Y	 = ObjectGeography(objCurr, OBJ_GEO_LINEBEGY)
+	tcEndNode.X = ObjectGeography(objCurr, OBJ_GEO_LINEENDX)
+	tcEndNode.Y = ObjectGeography(objCurr, OBJ_GEO_LINEENDY)
+
+	Exit Sub
+
+ErrorHandler:
+	Call ErrorMessage("GetLineNodes", Error$() )
+		
+End Sub
+
+
+Function CalcIntersection(tcSegAFrom, tcSegATo, tcSegBFrom, tcSegBTo, tcIntersect As tCoords) As Logical
+'------------------------------------------------------------------------------
+'	Description:	Calculates the theoretical intersection between two
+'					straight line segments.
+'------------------------------------------------------------------------------
+Dim m1, m2, c1, c2, fDeltaX, fDeltaY	 As Float
+	
+	OnError Goto ErrorHandler
+
+	'If either line segment is vertical, adjust slope to avoid a divide-by-zero error
+	'The error introduced should be insignificant in most cases.
+
+	'Calculate parameters of the first segment	
+	fDeltaX = tcSegAFrom.X - tcSegATo.X
+	fDeltaY = tcSegAFrom.Y - tcSegATo.Y
+
+	If fDeltaX = 0 Then
+		fDeltaX = 1E-7
+	End If
+
+	m1 = fDeltaY / fDeltaX
+	c1 = tcSegAFrom.Y - (m1 * tcSegAFrom.X)
+
+	'Calculate parameters of the second segment	
+	fDeltaX = tcSegBFrom.X - tcSegBTo.X
+	fDeltaY = tcSegBFrom.Y - tcSegBTo.Y
+
+	If fDeltaX = 0 Then
+		fDeltaX = 1E-7
+	End If
+
+	m2 = fDeltaY / fDeltaX
+	c2 = tcSegBFrom.Y - (m2 * tcSegBFrom.X)
+	
+
+	'Check if lines are virtually parallel
+	If Abs( tan(m2) - tan(m1) ) < 0.01 Then
+		tcIntersect.X = 0
+		tcIntersect.Y = 0
+
+		CalcIntersection = FALSE
+	Else
+		'Find simultaneous solution of the lines
+		tcIntersect.X = ( c2 - c1 ) / ( m1 - m2 )	
+		tcIntersect.Y = (m1 * tcIntersect.X) + c1
+
+	
+		CalcIntersection = TRUE
+	End If
+
+	Exit Function
+	
+ErrorHandler:
+	Call ErrorMessage("CalcIntersection", Error$() )
+		
+End Function
+
+
+Sub ShowHighlights(oldLocation As tCoords, newLocation As tCoords)
+'------------------------------------------------------------------------
+'  Draw two point objects (a red X and a green + sign) to the Cosmetic
+'  layer, to indicate an old location and proposed new location. 
+'------------------------------------------------------------------------
+	Dim strCosmetic As String 
+	Dim oldPoint As Object
+	Dim newPoint As Object 
+
+	Create Point Into Variable oldPoint  (oldLocation.X, oldLocation.Y) Symbol (71, 16711680, 18,"MapInfo Cartographic",1,0) 
+	Create Point Into Variable newPoint  (newLocation.X, newLocation.Y) Symbol (69, 40960, 18,"MapInfo Cartographic",1,0)    
+
+	strCosmetic = WindowInfo(FrontWindow(), WIN_INFO_TABLE)
+
+	Insert Into strCosmetic (Object) Values (oldPoint)
+	Insert Into strCosmetic (Object) Values (newPoint) 
+End Sub
+
+
+Sub ClearHighlights
+'------------------------------------------------------------------------
+'  Remove the last two objects from the Cosmetic layer. 
+'  This cancels the effects of calling ShowHighlights.   
+'------------------------------------------------------------------------
+	Dim strCosmetic As String 
+	Dim iRowCount As Integer 
+
+	strCosmetic = WindowInfo(FrontWindow(), WIN_INFO_TABLE)
+
+	iRowCount = TableInfo(strCosmetic, TAB_INFO_NROWS) 
+	If iRowCount >= 2 Then 
+		Delete From strCosmetic Where Rowid = iRowCount 
+		Delete From strCosmetic Where Rowid = iRowCount - 1 
+	End If
+End Sub 
+

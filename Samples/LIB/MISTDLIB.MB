@@ -1,0 +1,340 @@
+'***************************************************************************
+' NOTE! These routines are provided as is and cannot be supported by MapInfo
+' Technical support.  
+'
+' MiStdLib.MB
+' Source for MiStdlib.mbo
+' Version 1.0
+' Oct. 8, 1995
+'***************************************************************************
+
+Include "..\Inc\MIStdLib.def"
+Include "MAPBASIC.DEF"
+
+'****************************************************************************
+' Given a fully qualified path, this routine creates a tab file that can 
+' be used to open an unregister raster table.
+'****************************************************************************
+Function CreateRastTab(ByVal sFileName As String) As Logical
+  Dim sTabName As String
+
+  If FileExists(sFileName) Then
+    CreateRastTab = False
+  Else
+    sTabName = PathToDirectory$(sFileName)
+      + PathToTableName$(sFileName) + ".Tab"
+  	Open File sTabName For Output As #1
+  	Print #1, "!table"
+  	Print #1, "!version 300"
+  	Print #1, "!charset WindowsLatin1"
+  	Print #1, ""
+  	Print #1, "Definition Table"
+  	Print #1, "  File """ + PathToFileName$(sFileName) + """"
+  	Print #1, "  Type ""RASTER"""
+  	Print #1, "  (0,0) (0,0) Label ""Top Left"","
+  	Print #1, "  (0,1) (0,1) Label ""Bottom Left"","
+  	Print #1, "  (1,1) (1,1) Label ""Bottom Right"","
+  	Print #1, "  (1,0) (1,0) Label ""Top Right"""
+  	Print #1, "  CoordSys NonEarth Units ""ft"""
+  	Print #1, "  Units ""ft"""
+	  Close File #1
+    CreateRastTab = True
+  End If
+End Function
+
+
+'****************************************************************************
+' Call this routine to remove all of the thematic layers from the front map
+' window.
+'****************************************************************************
+Sub RemoveAllThematics
+  Dim i As SmallInt
+  
+  i = RemoveThematics(FrontWindow(),"")
+
+End Sub
+
+
+'****************************************************************************
+' Given a window id and the name of a thematic layer in the window,
+' this routine removes the layer from the mapper.
+'
+' Pass a null string as sTabName to remove all thematic layers.
+' Returns the number of themes removed.
+'****************************************************************************
+Function RemoveThematics(ByVal nMapWinID As Integer, ByVal sTabName As String) As SmallInt
+Dim i, iLayCount As SmallInt
+Dim sLayerList As String
+
+  OnError Goto BAD_CMND
+  If sTabName Then
+    For i = 1 To MapperInfo(nMapWinID, MAPPER_INFO_LAYERS)
+      If InStr(1, UCase$(LayerInfo(nMapWinID, i, LAYER_INFO_NAME)), UCase$(sTabName)) Then
+        If LayerInfo(nMapWinID, i, LAYER_INFO_TYPE) = LAYER_INFO_TYPE_THEMATIC Then
+          sLayerList = sLayerList + Str$(i) + ", "
+          iLayCount = iLayCount + 1
+        End If
+      End If
+    Next  
+  Else
+    For i = 1 To MapperInfo(nMapWinID, MAPPER_INFO_LAYERS)
+      If LayerInfo(nMapWinID, i, LAYER_INFO_TYPE) = LAYER_INFO_TYPE_THEMATIC Then
+        sLayerList = sLayerList + Str$(i) + ", "
+        iLayCount = iLayCount + 1
+      End If
+    Next
+    Close Window Legend
+  End If
+
+  If sLayerList Then
+    Run Command "Remove Map Window "+nMapWinID+" Layer "+Left$(sLayerList, Len(sLayerList)-2)
+  End If
+
+  RemoveThematics = iLayCount
+  Exit Function
+BAD_CMND:
+  Note Error$()
+
+
+
+  RemoveThematics = iLayCount
+End Function
+
+'****************************************************************************
+' Given the name of an open table, a column name, and a column type, returns
+' true if the column exists and is of the expected type.
+'****************************************************************************
+Function ColumnExists(ByVal sTabName As String, ByVal sColName As String, ByVal iColType As smallint) As Logical
+Dim bFound As Logical
+
+  OnError GoTo NOT_FOUND
+  bFound = True
+  If iColType <> ColumnInfo(sTabName,sColName,COL_INFO_TYPE) Then
+	  bFound = False         
+	End If
+  ColumnExists = bFound
+  Exit Function
+NOT_FOUND:
+  ColumnExists = False
+End Function
+
+'****************************************************************************
+' Returns a string containing a list of all open street files.
+'****************************************************************************
+Function OpenStreets() As String
+	Dim i As SmallInt
+	Dim sTabName, sStreetList As String
+
+	For i = 1 to NumTables()
+		sTabName = tableinfo(i,TAB_INFO_NAME)
+		If ColumnExists(sTabName,"FromLeft",COL_TYPE_SMALLINT) or ColumnExists(sTabName,"FromLeft",COL_TYPE_INTEGER) Then
+			If ColumnExists(sTabName,"ToLeft",COL_TYPE_SMALLINT) or ColumnExists(sTabName,"ToLeft",COL_TYPE_INTEGER) Then
+				If ColumnExists(sTabName,"FromRight",COL_TYPE_SMALLINT) or ColumnExists(sTabName,"FromRight",COL_TYPE_INTEGER) Then
+					If ColumnExists(sTabName,"ToRight",COL_TYPE_SMALLINT) or ColumnExists(sTabName,"ToRight",COL_TYPE_INTEGER) Then
+						If ColumnExists(sTabName,"Street",COL_TYPE_CHAR) Then
+ 							sStreetList = sStreetList + sTabName + ";"
+						End If
+					End If
+
+				End If
+			End If
+		End If
+	Next
+  OpenStreets = Left$(sStreetList,Len(sStreetList) - 1)
+End Function
+
+'****************************************************************************
+' Given a time in seconds, returns a string containing the time formatted
+' with hours, minutes, and seconds.
+'****************************************************************************
+Function ConvTime$(ByVal fElapsedTime As Float) As String
+Dim iHrs, iMins, iSecs as Integer
+	
+	OnError Goto ERR_HANDLER
+	iHrs = Fix(fElapsedTime/3600)
+	iMins = Fix((fElapsedTime - (iHrs * 3600))/60)
+	iSecs = Fix((fElapsedTime - (iHrs * 3600)) - (iMins * 60)) 
+	ConvTime$ = Format$(iHrs, "##0")+":"+Format$(iMins, "00")+":"+Format$(iSecs, "00")
+
+	Exit Function
+	ERR_HANDLER:
+	Note Error$()
+	ConvTime$ = 0
+
+End Function
+
+'****************************************************************************
+' Clear the cosmetic layer of the front map window.
+'****************************************************************************
+Sub ClearCosmetic
+  If FrontWindow() Then
+    If WindowInfo(FrontWindow(),WIN_INFO_TYPE) = WIN_MAPPER Then
+   	  Delete Object From WindowInfo(FrontWindow(),WIN_INFO_TABLE)
+    End If	
+  End If
+End Sub
+
+'****************************************************************************
+' Close all temporary tables
+'****************************************************************************
+Sub CloseTempTabs
+  Dim i As SmallInt
+
+  If NumTables() Then 
+    For i = NumTables() To 1 Step -1
+		  If TableInfo(i,TAB_INFO_TEMP) Then
+			  Close Table TableInfo(i,TAB_INFO_NAME)
+		  End If
+    Next
+  End If
+End Sub
+
+'****************************************************************************
+' Returns a string containing a semi-colon delimited list of all open tables.
+' If OnlyMappable is TRUE, the list contains only mappable tables.
+'****************************************************************************
+Function MakeOpenTabsList$(ByVal OnlyMappable As Logical) As String
+  Dim i, iNumOpen as smallint
+  Dim sTabList as string
+	    
+	iNumOpen = NumTables()
+	For i = 1 to iNumOpen
+    If OnlyMappable Then
+      If TableInfo(i,TAB_INFO_MAPPABLE) Then
+        sTabList = sTabList + tableinfo(i,TAB_INFO_NAME) + ";"
+      End If
+    Else    
+      sTabList = sTabList + tableinfo(i,TAB_INFO_NAME) + ";"
+    End If
+	Next
+	MakeOpenTabsList$ = sTabList
+End Function   
+
+'****************************************************************************
+' Given a window ID, Returns a list of the layers in a map window.
+'****************************************************************************
+Function MakeLayList$(ByVal WinID as Integer) as String
+  Dim i, iNumLayers as SmallInt
+  Dim sLayName, sLayList, sSep as String
+
+  If WinID <> 0 Then
+    sSep = ""
+    OnError Goto ERR_HANDLER
+    iNumLayers = MapperInfo(WinID,MAPPER_INFO_LAYERS)   
+    for i = 1 to iNumLayers
+      sLayName = layerinfo(WinID,i,LAYER_INFO_NAME)
+      If sLayName <> "" Then
+        sLayList = sLayList + sSep + sLayName
+        sSep = ";"
+      End If
+    Next
+  End If
+  MakeLayList$ = sLayList
+
+  Exit Function
+  ERR_HANDLER:
+  Note Error$()
+  MakeLayList$ = ""
+
+End Function
+
+'****************************************************************************
+' Given the name of a table, return a list of all the columns in that table.
+'****************************************************************************
+Function MakeColList$(ByVal Table as string) as String
+Dim iColNum as SmallInt
+Dim sTempList as String
+   
+  OnError GoTo RASTER_FILE
+  	sTempList = ColumnInfo(Table,"col1",COL_INFO_NAME)
+  OnError GoTo 0
+	For iColNum = 2 to NumCols(Table)
+		sTempList = sTempList+";"+ColumnInfo(Table,"col"+Str$(iColNum),COL_INFO_NAME)
+	Next
+	MakeColList$ = sTempList
+  Exit Function
+RASTER_FILE:
+	MakeColList$ = ""
+End Function
+
+
+'****************************************************************************
+' Given the name of an open table and the name of a column in that table,
+' returns a semi-colon delimited string containing the values in that col.
+'****************************************************************************
+Function MakeValueList$(ByVal table as string, ByVal colname as string) as string
+	Dim aCol as Alias
+	Dim ssTempList as String
+
+	If TableInfo(Table,TAB_INFO_NROWS) = 0 Then
+		MakeValueList$ = ""
+	Else
+		aCol = table+"."+colname
+		Fetch First From Table
+		ssTempList = aCol
+		Fetch Next From Table
+		While Not EOT(Table)
+			ssTempList = ssTempList+";"+aCol
+			Fetch Next From Table
+		Wend
+		MakeValueList$ = ssTempList
+	End If
+End Function
+
+
+'*****************************************************************************
+' This function checks the table metadata to determine if the table is of type
+' seamless.  This is opposed to calling TableInfo which tells you whether the
+' seamless state is on or off.
+'*****************************************************************************
+Function IsTableSeamless(ByVal tableName as String) as Logical
+
+  If GetMetaData$(tableName, "\IsSeamless") = "TRUE" Then
+    IsTableSeamless = TRUE
+  Else
+    IsTableSeamless = FALSE
+  End if	
+
+End Function
+
+
+'*****************************************************************************
+' This routine returns true if there is a mappable selection.  You can verify 
+' that at least one object of a specific type is selected by passing the type 
+' object as the obyType param.  You can also verify that only one object is 
+' is selected by passing true as oneObjOnly.
+'
+' EX: To verify that only a single point is selected:
+' CheckForSelection("point", TRUE)
+'*****************************************************************************
+Function CheckForSelection(byVal objtype as String, byVal oneObjOnly as Logical) as Logical
+Dim rowsInSelection, i as Integer
+
+  rowsInSelection = SelectionInfo(SEL_INFO_NROWS)
+  If NumTables() = 0 Then 
+    CheckForSelection = FALSE
+    Exit Function
+  End If
+
+  If rowsInSelection  = 0 Then
+      CheckForSelection = FALSE
+      Exit Function
+  End If
+
+  If oneObjOnly AND rowsInSelection <> 1 Then
+      CheckForSelection = FALSE
+      Exit Function
+  End If
+
+  If objType <> "" Then 
+    Fetch First From selection
+      For i = 1 to rowsInSelection
+        If Str$(selection.obj) = objType Then
+          CheckForSelection = TRUE
+          Exit Function
+        End If 					
+      Next
+  End If
+
+End Function  
+

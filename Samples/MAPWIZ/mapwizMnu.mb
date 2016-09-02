@@ -1,0 +1,93 @@
+'****************************************************************************
+'
+' mapwizMnu.mb
+'
+' This file is based on a template for a MapInfo Tool Manager application.
+' MapInfo Professional ships with a number of utility applications which 
+' enhance product functionality. To make it easier for users to understand
+' and use these applications, all tools share a common user interface.
+'
+' The characteristics of a Tool Manager application include:
+' -- The application adds whatever menu options are required
+'    to a sub-menu of the tools menu
+'
+' -- Every tool adds an About box which describes the application.
+'
+' This template can be used to create a Tool Manager application which follows
+' these rules.  We encourage you to create Tool Manager applications where
+' applicable.  Since users are familiar with the Tool Manager concept they,
+' will find your application easier to use.
+'
+'*************************************************************************************
+
+' The auto_lib library contains the routines needed to support autoloading of your
+' application.
+Include "ICONS.def"
+Include "..\inc\Auto_lib.def"
+
+' The MiStdLib library contains many useful general purpose MapBasic routines.
+' Note that MiStdLib includes MapBasic.def so you don't need to include it here
+Include "..\inc\MiStdLib.Def"
+Include "WizFunc.MB"
+
+Declare Sub Main
+Declare Sub tool_app_handler
+Declare Sub exit_toolapp
+Declare Sub about_toolapp
+
+'*****************************************************************************
+Sub Main
+
+	' Auto-Load support global variables.
+	gsAppDescription = "Mapping Wizard Tool"
+	gsAppFilename = "MapWiz.mbx"
+
+	Create Menu "&Mapping Wizard Tool" as
+		"&Run Mapping Wizard Tool..."    Calling tool_app_handler,
+		"(-",
+		"&About Mapping Wizard Tool..."		Calling about_toolapp,
+		"E&xit Mapping Wizard Tool"			  Calling exit_toolapp
+	
+	Alter ButtonPad "Tools"
+	Add PushButton
+		HelpMsg "MapWizard.\n Run Mapping Wizard Tool"
+		Calling StartWiz
+
+		Icon   MI_ICON_MB_8
+
+	Call set_tools_menu("&Mapping Wizard Tool")
+
+End Sub
+
+
+'******************************************************************************
+Sub tool_app_handler
+	' Implement your applications interface here
+	Call StartWiz
+End Sub
+
+
+'******************************************************************************
+Sub exit_toolapp
+	End Program
+End Sub
+
+
+'******************************************************************************
+Sub about_toolapp
+	Dialog Title "About Mapping Wizard Tool"
+	Height 111
+	Width 200
+
+	Control StaticText Title "MapInfo Professional Mapping Wizard Tool" Position 10, 10
+
+	Control StaticText Title "The Mapping Wizard Tool was designed to help you get" Position 10, 28
+	Control StaticText Title "started mapping. It guides you through a few of the most" Position 10, 37
+	Control StaticText Title "basic steps required to successfully map your own data." Position 10, 46
+
+	Control StaticText Title "For more detailed instructions, consult the hard copy" Position 10, 64
+	Control StaticText Title "MapInfo Professional Users' Guide." Position 10, 73
+
+	Control OKButton Position 80, 91
+
+End Sub

@@ -1,0 +1,159 @@
+'*****************************************************************************
+'       Copyright © 2009 Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 66276 $
+'
+' Module Description:
+'
+' MapBasic functions/subs to help on map-associated activities
+'
+'*****************************************************************************
+Include "../inc/Mapbasic.def"
+Include "MapUtils.def"
+
+Function IsLayerInMap(ByVal WindowID As Integer, ByVal LayerName As String) As Logical
+Dim NumLayers, i As SmallInt
+  OnError Goto ErrorTrap
+
+  IsLayerInMap = False
+  If WindowInfo(WindowID, WIN_INFO_TYPE) = WIN_MAPPER Then
+    NumLayers = MapperInfo(WindowID, MAPPER_INFO_LAYERS)
+    For i = 1 To NumLayers
+      If LayerName = LayerInfo(WindowID, i, LAYER_INFO_NAME) Then
+        IsLayerInMap = True
+        Exit For
+      End If
+    Next
+  End If
+Exit Function
+ErrorTrap:
+  IsLayerInMap = False
+End Function
+
+Function GetLayerNum(ByVal WindowID As Integer, ByVal LayerName As String) As SmallInt
+Dim NumLayers, i As SmallInt
+  OnError Goto ErrorTrap
+
+  GetLayerNum = -1
+  If WindowInfo(WindowID, WIN_INFO_TYPE) = WIN_MAPPER Then
+    NumLayers = MapperInfo(WindowID, MAPPER_INFO_LAYERS)
+    For i = 1 To NumLayers
+      If LayerName = LayerInfo(WindowID, i, LAYER_INFO_NAME) Then
+        GetLayerNum = i
+        Exit For
+      End If
+    Next
+  End If
+Exit Function
+ErrorTrap:
+  GetLayerNum = -1
+End Function
+
+Function IsTableOpen(ByVal LayerName As String) As Logical
+Dim Temp As SmallInt
+  OnError Goto ErrorTrap
+
+  IsTableOpen = True
+  Temp = TableInfo(LayerName, TAB_INFO_NUM)
+Exit Function
+ErrorTrap:
+  IsTableOpen = False
+End Function
+
+Sub ApplyLabelClause(ByVal WindowID As Integer, ByVal LayerName As String, ByVal LabelFont As Font)
+ 'Need to set a Label Style In Preferences at some point
+  Set Map Window WindowID Layer LayerName
+    Label
+      Auto On
+      Line None
+      Font LabelFont
+      Overlap On
+End Sub
+
+Sub PackTempLayer(ByVal LayerName As String)
+Dim i, j, LayerNum As SmallInt
+Dim WindowArray(0) As Integer
+Dim LayerFont(0) As Font
+
+ 'Remember which Maps the Temp layer was in because Pack will remove it
+  j = 0
+  For i = 1 To NumWindows()
+    If IsLayerInMap(WindowID(i), LayerName) Then
+      j = j + 1
+      ReDim WindowArray(j)
+      ReDim LayerFont(j)
+      If MapperInfo(WindowID(i),MAPPER_INFO_LAYERS) = 1 Then   'Determine if TempLayer was open in it's own window, if so, use 0 as marker
+        WindowArray(j) = 0
+      Else
+        WindowArray(j) = WindowID(i)
+      End If
+
+      LayerNum = GetLayerNum(WindowID(i), LayerName)
+      If LayerNum = -1 Then
+        LayerFont(j) = MakeFont("Arial",257,8,0,16777215)
+      Else
+        LayerFont(j) = LayerInfo(WindowID(i), LayerNum, LAYER_INFO_LBL_FONT)
+      End If
+
+    End If
+  Next
+
+ 'Pack Table
+  Set ProgressBars Off
+  Commit Table LayerName
+  Pack Table LayerName Graphic Data
+  Set ProgressBars On
+
+ 'Put Layer back in any maps it WAS in and keep label settings
+  For i = 1 To UBound(WindowArray())
+    If WindowArray(i) = 0 Then
+      Map From LayerName
+      Call ApplyLabelClause(FrontWindow(), LayerName, LayerFont(i))
+    Else
+      Add Map Window WindowArray(i) Auto Layer LayerName
+      Call ApplyLabelClause(WindowArray(i), LayerName, LayerFont(i))
+    End If
+  Next
+End Sub
+
+Sub ShowOnMap(ByVal LayerName As String, ByVal LabelFont As Font, ByVal bLabel As Logical)
+Dim ObjCol As Alias
+
+  ObjCol = LayerName + ".Obj"
+
+  If NumWindows() = 0 Then
+    Map From LayerName
+  End If
+
+  If NumWindows() > 0 Then
+    If WindowInfo(FrontWindow(),WIN_INFO_TYPE) = WIN_MAPPER Then
+
+      Set Map Redraw Off
+
+      If Not IsLayerInMap(FrontWindow(), LayerName) Then
+        Add Map Auto Layer LayerName
+      End If
+
+      If TableInfo(LayerName, TAB_INFO_NROWS) > 0 Then
+        Set Map Zoom Entire Layer LayerName 'This will set the center point
+        If TableInfo(LayerName, TAB_INFO_NROWS) = 1 Then
+          Fetch First From LayerName
+          If ObjectInfo(ObjCol, OBJ_INFO_TYPE) = OBJ_TYPE_POINT Then
+            Set Map Zoom 0.5 Units "mi"
+          End If
+        End If
+      End If
+
+      If bLabel Then
+      Set Map Redraw Off
+        Call ApplyLabelClause(FrontWindow(), LayerName, LabelFont)
+      Else
+        Set Map Layer LayerName Label Auto Off
+      End If
+
+      Set Map Redraw On
+
+    End If
+  End If
+End Sub

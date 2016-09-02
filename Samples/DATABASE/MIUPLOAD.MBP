@@ -1,0 +1,9 @@
+[Link]
+application=MIUPLOAD.MBX
+module=MIUPLOAD.MBO
+module=MIUPLDDB.MBO
+module=DLSUTIL.MBO 
+module=SQLUTIL.MBO 
+module=GETMITAB.MBO
+module=CONNECT.MBO
+module=..\LIB\AUTO_LIB.MBO

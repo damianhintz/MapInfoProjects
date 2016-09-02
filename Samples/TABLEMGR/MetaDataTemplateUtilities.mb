@@ -1,0 +1,325 @@
+'/*****************************************************************************
+'*       Copyright © 2011 Pitney Bowes Software Inc.
+'*       All rights reserved.
+'*****************************************************************************/
+Include "TableManager.def"
+
+'*****************************************************************************
+' AddMetaDataKeyToTemplate
+'
+' This procedure is called from the Template Manager dialog box.  This procedure
+' was added in v2.4.  This is to have different behavior when adding a template
+' from the Template Manager as compared to the Table Manager dialog box.
+' The version called for the Template Manager does not append values returned from 
+' the PUM_FUNCTIONS into the template.  It only stores the reference.
+'*****************************************************************************
+
+Sub AddMetaDataKeyToTemplate
+
+  OnError Goto HandleError
+
+  Dim sNewValue, sNewKey, sKeyList As String
+  Dim iNewFunction As Integer
+
+  sNewKey = STR_BACK_SLASH
+  sNewValue = GetResString(IDS_EMPTY)
+  iNewFunction = 1
+
+  Dialog
+    Title GetResString(IDS_ADD_NEW_KEY)
+    Control StaticText
+      Title GetResString(IDS_NEW_KEY_NAME)
+      Position 10, 3
+    Control EditText
+      Value sNewKey
+      Into sNewKey
+      Width 345
+      Position 10, 15
+      ID ET_NEWKEY
+    Control StaticText
+      Title GetResString(IDS_USE_SLASHES)
+      Position 20, 30
+    Control StaticText
+      Title GetResString(IDS_NEW_KEY_VALUE)
+      Position 10, 48
+    Control EditText
+      Value sNewValue
+      Into sNewValue
+      Width 345
+      Height 50
+      Position 10, 60
+      ID TB_VALUE
+ 
+    Control StaticText
+      Position 10, 113
+      Title GetResString(IDS_APPEND)
+    Control PopUpMenu
+      Position 10, 125
+      Width 345
+      Title From Variable gaLocalisedAppendValue()
+      Value iNewFunction
+      Into iNewFunction
+      ID PUM_FUNCTIONS
+      'Calling AppendFunction  '*** v2.4 have removed this in order to avoid some errors
+									  '  when editing templates live values will not be appended.
+
+    Control OKButton
+      Title GetResString(IDS_OK)
+      Calling AddNewKeyOKButtonHandler
+    Control CancelButton
+      Title GetResString(IDS_CANCEL)
+
+  If CommandInfo(CMD_INFO_DLG_OK) Then 
+    giMetaDataCount = giMetaDataCount + 1
+    Redim gaMetaData(giMetaDataCount)
+    gaMetaData(giMetaDataCount).sKeyName = sNewKey
+    gaMetaData(giMetaDataCount).sKeyValue = sNewValue
+    gaMetaData(giMetaDataCount).sKeyFunction = Str$(iNewFunction-1)
+    giCurKeyIndex = giMetaDataCount 'v2.4: Ensure that this key is not zero
+
+    sKeyList = BuildMetaDataKeyList()
+    Alter Control LB_KEYLIST Title sKeyList Enable
+    Alter Control LB_KEYLIST Value giMetaDataCount Enable
+    Alter Control TB_VALUE Value sNewValue Enable
+    Alter Control PUM_FUNCTIONS Value iNewFunction Enable
+
+    glMetaDataModified = TRUE
+    glMetaDataTemplateModified = TRUE
+    Alter Control BT_DELETE Enable  '*** Added in v2.4 to ensure Delete and Clear buttons 
+    Alter Control BT_CLEAR Enable   '***    are enabled after a new key is added
+
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_ADD_METADATA_KEY_TO_TMPLT + Error$()
+  Resume Next
+
+End Sub
+
+
+'****************************************************************************
+' Sub procedure: SaveMetadataTemplate
+'****************************************************************************
+
+Sub SaveMetadataTemplate
+
+  OnError Goto HandleError
+
+  Dim sTemplate as string
+  Dim sPath as string
+  Dim sKeyName as string
+  Dim sKeyValue as string
+  Dim index as integer
+
+  If gsMetaDataTemplate <> STR_EMPTY_STR Then
+    sPath = PathToDirectory$(gsMetaDataTemplate)
+    sTemplate = PathToFileName$(gsMetaDataTemplate)
+  Else
+    sPath = PathToDirectory$(TempFileName$(STR_EMPTY_STR))
+    sTemplate = STR_EMPTY_STR
+  End If
+  sTemplate = FileSaveAsDlg(sPath, sTemplate, META_DATA_TEMPLATE, GetResString(IDS_SAVE_CURRENT_METADATA))
+
+  If sTemplate <> STR_EMPTY_STR Then
+
+    Call WriteMetadataToTemplate(sTemplate)
+
+  End If
+
+  glMetaDataTemplateModified = FALSE
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_SAVE_METADATA_TEMPLATE + Error$()
+  Resume Next
+
+End Sub
+'****************************************************************************
+' Sub procedure: SaveMetadataTemplateAs
+'****************************************************************************
+Sub SaveMetadataTemplateAs
+
+  OnError Goto HandleError
+
+  Dim sTemplate as string
+  Dim sPath as string
+  Dim sKeyName as string
+  Dim sKeyValue as string
+  Dim index as integer
+
+  If gsCurTable <> STR_EMPTY_STR Then
+    sTemplate = TableInfo(gsCurTable, TAB_INFO_TABFILE)
+    sPath = PathToDirectory$(sTemplate)
+    sTemplate = PathToFileName$(sTemplate)
+    index = instr(1, sTemplate, STR_DOT)
+    sTemplate = Left$(sTemplate, index-1)
+  ElseIf gsMetaDataTemplate <> STR_EMPTY_STR Then
+    sPath = PathToDirectory$(gsMetaDataTemplate)
+    sTemplate = PathToFileName$(gsMetaDataTemplate)
+  Else
+    sPath = PathToDirectory$(TempFileName$(STR_EMPTY_STR))
+    sTemplate = STR_EMPTY_STR
+  End If
+  sTemplate = FileSaveAsDlg(sPath, sTemplate, META_DATA_TEMPLATE, GetResString(IDS_SAVE_CURRENT_METADATA))
+
+  If sTemplate <> STR_EMPTY_STR Then
+
+    Call WriteMetadataToTemplate(sTemplate)
+
+    glMetaDataTemplateModified = FALSE
+
+  End If
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_SAVE_METADATA_TEMPLATE_AS + Error$()
+  Resume Next
+
+End Sub
+'****************************************************************************
+' Sub procedure: LoadMetaDataTemplate
+'****************************************************************************
+Sub LoadMetaDataTemplate(lEvaluate As Logical)
+
+  Dim sTemplate As String
+
+  sTemplate = FileOpenDlg(STR_EMPTY_STR, STR_EMPTY_STR, META_DATA_TEMPLATE, GetResString(IDS_SPECIFY_METADATA)) 
+
+  If sTemplate <> STR_EMPTY_STR Then
+
+   Call ReadMetadataFromTemplate(sTemplate, lEvaluate) 
+
+   gsMetaDataTemplate = sTemplate
+
+  End If
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_LOAD_METADATA_TEMPLATE + Error$()
+  Resume Next
+End Sub
+'****************************************************************************
+' Sub procedure: ReadMetadataFromTemplate
+'****************************************************************************
+Sub ReadMetadataFromTemplate(sTemplate as String, lEvaluate As Logical)
+
+  dim fContinue as logical
+  dim stLineItems as string
+  dim lNextPipe as integer
+  dim lPrevPipe as integer
+
+  dim sKeyName as string
+  dim sKeyValue as string
+  dim sKeyFunction as string
+
+  Dim iFunction As Integer
+
+  dim lcounter as integer
+
+  fContinue = 1
+'  giMetaDataCount = 0 'Not if we want to append!!!!!
+
+  Open File sTemplate For Input as #50
+
+  Line Input # 50, stLineItems
+
+  While fContinue
+
+    lPrevPipe = 0
+    lNextPipe = instr((lPrevPipe+1), stLineItems, STR_PIPE) 
+    sKeyName = left$(stLineItems, (lNextPipe - 1))
+
+    lPrevPipe = lNextPipe
+    lNextPipe = instr((lPrevPipe+1), stLineItems, STR_PIPE)
+    sKeyValue = mid$(stLineItems, (lPrevPipe+1),(lNextPipe - lPrevPipe - 1))
+
+    lPrevPipe = lNextPipe
+    lNextPipe = instr((lPrevPipe+1), stLineItems, STR_PIPE)
+    sKeyFunction = mid$(stLineItems, (lPrevPipe+1),(lNextPipe - lPrevPipe - 1))
+
+    If Val(sKeyFunction) <> 0 Then
+      iFunction = Val(sKeyFunction)+1
+      If lEvaluate Then
+        sKeyValue = PerformFunction(iFunction)
+        sKeyFunction = 0
+      End If
+    End If
+
+    giMetaDataCount = giMetaDataCount + 1
+    Redim gaMetaData(giMetaDataCount)
+    gaMetaData(giMetaDataCount).sKeyName = sKeyName
+    gaMetaData(giMetaDataCount).sKeyValue = sKeyValue
+    gaMetaData(giMetaDataCount).sKeyFunction = val(sKeyFunction)
+
+    Line Input # 50, stLineItems
+    If EOF(50) Then
+    	fContinue = 0
+    End If
+
+  Wend
+
+  Close File #50
+
+  If giMetaDataCount = 1 and gaMetaData(1).sKeyName = STR_EMPTY_STR Then
+    giMetaDataCount = 0
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_READ_METADATA_FROM_TEMPLATE + Error$()
+  Resume Next
+End Sub
+'****************************************************************************
+' Sub procedure: WriteMetadataToTemplate
+'   called from SaveMetaDataTemplate 
+'   called from SaveMetaDataTemplateAs
+'****************************************************************************
+Sub WriteMetadataToTemplate(sTemplate as String)
+
+  OnError Goto HandleError
+
+  Dim sKeyName, sKeyValue, sKeyFunction As String
+  Dim i, iKeyFunction As Integer
+  Open File sTemplate For Output As #100
+
+'***************************************************************************************
+'***** ADDED IN V2.4 The purpose of the following is to save the last key that was edited.
+'*****   This is needed because a final edit is not saved into the array unless another 
+'*****   item is clicked on in the list of keys. The KeyListHandler is not automatically 
+'*****   called when the user clicks the 'Done' button.
+
+  If gaMetaData(giCurKeyIndex).sKeyName <> STR_BACK_SLASH + STR_IS_READ_ONLY Then
+    sKeyValue = ReadControlValue(TB_VALUE)
+    If gaMetaData(giCurKeyIndex).sKeyValue <> sKeyValue Then
+      gaMetaData(giCurKeyIndex).sKeyValue = sKeyValue
+      iKeyFunction = ReadControlValue(PUM_FUNCTIONS)
+      If iKeyFunction <> 1 Then
+        gaMetaData(giCurKeyIndex).sKeyFunction = Str$(iKeyFunction-1)
+      End If
+    End If
+  End If
+
+'***** The above was added in v2.4.
+'***************************************************************************************
+
+  For i = 1 to giMetaDataCount 
+    sKeyName = gaMetaData(i).sKeyName
+    sKeyValue = gaMetaData(i).sKeyValue
+    sKeyFunction = gaMetaData(i).sKeyFunction
+    Print #100, (sKeyName + STR_PIPE + sKeyValue + STR_PIPE + sKeyFunction + STR_PIPE) 
+
+  Next
+
+  Close File #100
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_SAVE_TEMPLATE + Error$()
+  Resume Next
+
+End Sub

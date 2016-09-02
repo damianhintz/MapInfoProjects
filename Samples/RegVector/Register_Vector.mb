@@ -1,0 +1,1475 @@
+'
+'       Copyright (c) 2007, Pitney Bowes MapInfo Corporation
+'       All rights reserved.
+'       Confidential Property of Pitney Bowes MapInfo Corporation
+'
+
+Include "Mapbasic.def"
+Include "menu.def"
+Include "Icons.def"
+include "..\inc\auto_lib.def"
+include "register.def"
+include "Register_Strings.def"
+include "..\inc\Resstrng.def"
+
+Sub Main
+
+
+	If LoadStrings((ApplicationDirectory$() + "Register_Vector.str")) = FALSE Then
+		Note "Unable to access resource string file: " + ApplicationDirectory$() + "Register_Vector.str"
+		Exit Sub
+	End If
+
+	gsAppDescription = GetResString(IDS_Title)		'** Globals for Auto_lib.def
+	gsAppFilename = "Register_Vector.mbx"		'** and set_tools_menu
+	
+
+	Create Menu GetResString(IDS_Title) As                  
+	GetResString(IDS_Menu_Title)  Calling start,
+	"(-",
+	GetResString(IDS_Menu_About) Calling About,
+	'"&Help.." Calling helptext,
+	GetResString(IDS_Menu_Exit) Calling ExitProgram
+
+	Call set_tools_menu(GetResString(IDS_SubTitle))      	'** Calls sub from Auto_lib.def
+
+End Sub
+
+
+
+Sub Start
+
+	Call Initialize
+	
+	'#######################################################################################
+	'######## Set UP AN ARRAY TO HOLD MAP WINDOWS AND AN ARRAY TO HOLD THE WIN_ID ##########
+	'#######################################################################################
+	
+	Dim intMapWindow , intCurrentMapper as integer
+	Dim x1b,x2b,x3b,y1b,y2b,y3b,x1d,x2d,x3d,y1d,y2d,y3d as float
+	Dim f_cntrPoint_1_X ,f_cntrPoint_2_X ,f_cntrPoint_3_X ,f_cntrPoint_1_Y ,f_cntrPoint_2_Y ,f_cntrPoint_3_Y as float
+	Dim strMifLoc,strTableSelected,str_cntrPoint_1_X ,str_cntrPoint_2_X ,str_cntrPoint_3_X ,str_cntrPoint_1_Y ,str_cntrPoint_2_Y ,str_cntrPoint_3_Y as string
+	Dim f_RefPoint_1_X ,f_RefPoint_2_X ,f_RefPoint_3_X ,f_RefPoint_1_Y ,f_RefPoint_2_Y ,f_RefPoint_3_Y as float
+	Dim str_RefPoint_1_X ,str_RefPoint_2_X ,str_RefPoint_3_X ,str_RefPoint_1_Y ,str_RefPoint_2_Y ,str_RefPoint_3_Y as string
+	Dim int_mainA, int_mainB, int_mainC, int_mainD, int_mainE, int_mainF as float
+	Dim intTest1, intTest2,intTest3 as float
+	
+	'#######################################################################################
+	'####################  Check for an open Mapper Window  ################################
+	'#######################################################################################
+	
+	Call MapWindows_mod
+	
+		If ubound(strMappables) = 0 then
+			note GetResString(IDS_Open_Mapper)
+	
+			Call Cleanup(strmifloc,strTableSelected)
+	
+			Exit Sub
+		End If
+	
+		
+	'#######################################################################################
+	'################## BUILD AN ARRAY OF OPEN MAPPABLE TABLES   ###########################
+	'#######################################################################################
+	
+	Call MapTables_mod
+	
+	If ubound(strTableList) = 0 then
+		note GetResString(IDS_No_Vector)
+		Call Cleanup(strmifloc,strTableSelected)
+		Exit Sub
+	End If
+	
+	
+	'#######################################################################################
+	'################### CREATE THE TOOLBUTTONS TO DROP POINTS #############################
+	'#######################################################################################
+	
+	Create Buttonpad GetResString(IDS_Control) as
+		ToolButton
+			Calling DropPoint1
+			ID 69
+			Icon MI_ICON_CROSSHAIR
+			Cursor MI_CURSOR_CROSSHAIR
+	
+		ToolButton
+			Calling DropPoint2
+			ID 71
+			Icon MI_ICON_CROSSHAIR
+			Cursor MI_CURSOR_CROSSHAIR
+	
+			Title GetResString(IDS_Control)
+			Width 2
+			Hide
+	'###########################################################################################
+	'######################  Create Temporary Tables to house control points.###################
+	'###########################################################################################
+	
+	Call Table_Create
+	
+	
+	Do
+	
+		g_l_Valid = true
+		
+		Dialog
+			Title GetResString(IDS_Register_Table)
+				Calling DialogHandler
+		
+			Control DocumentWindow
+				ID 1
+				position 153,10
+					height 140
+					width 200
+			
+			Control DocumentWindow
+				ID 2
+				position 153,188
+					height 140
+					width 200
+		
+		'################################## Control Window Section #########################
+		
+			Control GroupBox
+				position 1,1
+				Width 452
+				Height 175
+		
+		
+			Control StaticText
+				Title GetResString(IDS_Select_Transform)
+				Position 5,10
+		
+			Control PopUpMenu
+				Title from variable strTableList
+				Value intTableID
+				Position 5,20
+				Width 143
+				Height 40
+				Into intTableID
+				ID 59
+				Calling ChangeControlDoc
+			
+			Control StaticText
+				Title GetResString(IDS_Select_Control)
+				Position 5,50
+			Control StaticText
+				Title GetResString(IDS_Select_Con2)
+				Position 5,58
+		
+			Control ListBox
+				Title GetResString(IDS_Control_List)
+				position 5,70
+				width 143
+				height 28
+				Value intControlSelected
+				ID 49
+				Into intControlSelected
+				Calling ManualControlSelect
+		
+		'################################## Reference Section ###################################
+		
+			Control GroupBox
+				position 1,180
+				Width 452
+				Height 175
+		
+			Control StaticText
+				Title GetResString(IDS_Select_Map)
+				Position 5,188
+			
+			Control StaticText
+				Title GetResString(IDS_Select_Map2)
+				Position 5,196
+		
+			Control PopUpMenu
+				Title from variable strMappables
+				Value intMapWindow
+				Position 5,206
+				Width 143
+				Height 40
+				Into intMapWindow
+				ID 61
+				Calling ChangeReferenceDoc
+		
+			Control Statictext
+				Title GetResString(IDS_Select_Ref)
+				Position 5,226
+			Control staticText
+				Title GetResString(IDS_Select_Ref2)
+				Position 5,234
+		
+			Control ListBox
+				Title GetResString(IDS_Ref_List)
+				position 5,246
+				width 143
+				height 28
+				Value intReferenceSelected
+				ID 39
+				Into intReferenceSelected
+				Calling ManualReferenceSelect
+		
+		'############################# Control Point 1 edit Text ###########################
+		
+			Control GroupBox
+				Position 357,6
+				Width 90
+				Height 47
+		
+			Control StaticText
+				Title GetResString(IDS_Con1)
+				Position 362,12
+		
+			Control StaticText
+				Title GetResString(IDS_X)
+				Position 362,24
+		
+			Control StaticText
+				Title GetResString(IDS_Y)
+				Position 362,38
+			
+			Control Edittext
+				Value f_cntrPoint_1_X
+				position 372,22
+				ID 1011
+				Width 70
+				into str_CntrPoint_1_X
+				Disable
+		
+			Control Edittext
+				Value f_CntrPoint_1_Y
+				position 372,36
+				ID 1012
+				Width 70
+				into str_CntrPoint_1_Y
+				Disable
+		'############################ Control Point 2 edit Text ################################3333
+		
+			Control GroupBox
+				Position 357,54
+				Width 90
+				Height 47
+		
+			Control StaticText
+				Title GetResString(IDS_Con2)
+				Position 362,60
+		
+			Control StaticText
+				Title GetResString(IDS_X)
+				Position 362,72
+		
+			Control StaticText
+				Title GetResString(IDS_Y)
+				Position 362,86
+			
+			Control Edittext
+				Value f_CntrPoint_2_X
+				position 372,70
+				ID 1021
+				Width 70
+				into str_CntrPoint_2_X
+				Disable
+		
+			Control Edittext
+				Value f_CntrPoint_2_Y
+				position 372,84
+				ID 1022
+				Width 70
+				into str_CntrPoint_2_Y
+				Disable
+		
+		'############## Control Point 3 edit Text
+		
+			Control GroupBox
+				Position 357,104
+				Width 90
+				Height 47
+		
+			Control StaticText
+				Title GetResString(IDS_Con3)
+				Position 362,110
+		
+			Control StaticText
+				Title GetResString(IDS_X)
+				Position 362,122
+		
+			Control StaticText
+				Title GetResString(IDS_Y)
+				Position 362,136
+			
+			Control Edittext
+				Value f_CntrPoint_3_X
+				position 372,120
+				ID 1031
+				Width 70
+				into str_CntrPoint_3_X
+				Disable
+		
+			Control Edittext
+				Value f_CntrPoint_3_Y
+				position 372,134
+				ID 1032
+				Width 70
+				into str_CntrPoint_3_Y
+				Disable
+		
+		'############## Reference Point 1 edit Text
+		
+			Control GroupBox
+				Position 357,184
+				Width 90
+				Height 47
+		
+			Control StaticText
+				Title GetResString(IDS_Ref1)
+				Position 362,190
+		
+			Control StaticText
+				Title GetResString(IDS_X)
+				Position 362,202
+		
+			Control StaticText
+				Title GetResString(IDS_Y)
+				Position 362,216
+			
+			Control Edittext
+				Value f_RefPoint_1_X
+				position 372,200
+				Width 70
+				ID 2011
+				into str_RefPoint_1_X
+				Disable
+		
+			Control Edittext
+				Value f_RefPoint_1_Y
+				position 372,214
+				ID 2012
+				Width 70
+				into str_RefPoint_1_Y
+				Disable
+		
+		'############## Reference Point 2 edit Text
+		
+			Control GroupBox
+				Position 357,234
+				Width 90
+				Height 47
+		
+			Control StaticText
+				Title GetResString(IDS_Ref2)
+				Position 362,240
+		
+			Control StaticText
+				Title GetResString(IDS_X)
+				Position 362,252
+		
+			Control StaticText
+				Title GetResString(IDS_Y)	
+				Position 362,266
+			
+			Control Edittext
+				Value f_RefPoint_2_X
+				position 372,250
+				ID 2021
+				Width 70
+				into str_RefPoint_2_X
+				Disable
+		
+			Control Edittext
+				Value f_RefPoint_2_Y
+				position 372,264
+				ID 2022
+				Width 70
+				into str_RefPoint_2_Y
+				Disable
+		'############## Reference Point 3 edit Text
+		
+			Control GroupBox
+				Position 357,282
+				Width 90
+				Height 47
+		
+			Control StaticText
+				Title GetResString(IDS_ref3)
+				Position 362,288
+		
+		
+			Control StaticText
+				Title GetResString(IDS_X)
+				Position 362,300
+		
+			Control StaticText
+				Title GetResString(IDS_Y)	
+				Position 362,314
+			
+			Control Edittext
+				Value f_RefPoint_3_X
+				position 372,298
+				ID 2031
+				Width 70
+				into str_RefPoint_3_X
+				Disable
+		
+			Control Edittext
+				Value f_RefPoint_3_Y
+				position 372,312
+				ID 2032
+				Width 70
+				into str_RefPoint_3_Y
+				Disable
+		
+		
+		'###################### Button Construction Doc win 1
+		
+			Control GroupBox
+				position 153,150
+				height 22
+				width 197
+		
+			Control Button
+				title GetResString(IDS_Zoom_In)
+				position 69,103
+				height 12
+				width 81
+				Calling ZoomIn
+		
+			Control Button
+				title GetResString(IDS_Zoom_Out)
+				position 69,118
+				height 12
+				width 81
+				Calling ZoomOut
+		
+			Control Button
+				title GetResString(IDS_Select)
+				position 5,103
+				height 12
+				width 64
+				Calling Select
+		
+			Control Button
+				title GetResString(IDS_Pan)
+				position 5,118
+				height 12
+				width 64
+				Calling Pan
+		
+			Control Button
+				Title GetResString(IDS_Refresh_Label)
+				position 5,133
+				height 12
+				width 145
+				Calling Refresh_Labels
+		
+			Control Button
+				title GetResString(IDS_Place_ConA)
+				position 162,157
+				ID 1070
+				height 12
+				width 110
+				Calling ControlPoint
+			
+			Control Button
+				Title GetResString(IDS_Snap)
+				Position 283,157
+				Height 12
+				Width 60
+				Calling Snap
+		
+		'###################### Buttons for Doc Win 2
+		
+			Control GroupBox
+				position 151,328
+				height 22
+				width 197
+		
+			Control Button
+				title GetResString(IDS_Zoom_In)
+				position 69,281
+				height 12
+				width 81
+				Calling ZoomIn
+		
+			Control Button
+				title GetResString(IDS_Zoom_Out)
+				position 69,296
+				height 12
+				width 81
+				Calling ZoomOut
+		
+			Control Button
+				title GetResString(IDS_Select)
+				position 5,281
+				height 12
+				width 64
+				Calling Select
+		
+			Control Button
+				title GetResString(IDS_Pan)
+				position 5,296
+				height 12
+				width 64
+				Calling Pan
+		
+		
+			Control Button
+				Title GetResString(IDS_Refresh_Label)
+				position 5,311
+				height 12
+				width 145
+				Calling Refresh_Labels
+		
+		
+			Control Button
+				title GetResString(IDS_Place_Ref1)
+				position 162,335
+				height 12
+				width 110
+				ID 1080
+				Calling ControlPoint2
+			
+			Control Button
+				Title GetResString(IDS_Snap)
+				Position 283,335
+				Height 12
+				Width 60
+				Calling Snap2
+		
+			Control CancelButton
+				Title GetResString(IDS_Cancel)
+				Position 5,332
+				width 138
+				Height 18
+				Calling Cancel
+		
+			Control OKButton
+				Title GetResString(IDS_Finish)
+				Position 357,332
+				width 90
+				height 18
+		
+		If CommandInfo(CMD_INFO_DLG_OK) then
+		
+			x1b = val(str_cntrPoint_1_X)
+			x2b = val(str_cntrPoint_2_X)
+			x3b = val(str_cntrPoint_3_X)
+			y1b = val(str_cntrPoint_1_y)
+			y2b = val(str_cntrPoint_2_y)
+			y3b = val(str_cntrPoint_3_y)
+			x1d = val(str_refPoint_1_X)
+			x2d = val(str_refPoint_2_X)
+			x3d = val(str_refPoint_3_X)
+			y1d = val(str_refPoint_1_y)
+			y2d = val(str_refPoint_2_y)
+			y3d = val(str_refPoint_3_y)
+			
+			strTableSelected = strTableList(intTableID)
+			strMifLoc = ApplicationDirectory$()
+			intCurrentMapper = intMapID(intMapWindow)
+			
+			'note intCurrentMapper
+			
+			Call Calc3Unknowns(x1b,y1b,x2b,y2b,x3b,y3b,x1d,x2d,x3d,int_mainA,int_mainB,int_mainC)
+			
+			If g_L_Valid = false then
+				Call Cleanup(strmifloc,strTableSelected)
+				exit sub
+			end if
+			
+			Call Calc3Unknowns(x1b,y1b,x2b,y2b,x3b,y3b,y1d,y2d,y3d,int_mainD,int_mainE,int_mainF)
+			
+			If g_L_Valid = false then
+				Call Cleanup(strmifloc,strTableSelected)
+				exit sub
+			end if
+			
+			Call Calc3Unknowns(x1d,y1d,x2d,y2d,x3d,y3d,y1b,y2b,y3b,intTest1, intTest2, intTest3)
+			
+		End If
+			
+		If g_L_Valid = false then
+			Call Cleanup(strmifloc,strTableSelected)
+			exit sub
+		end if
+	
+	Loop While g_L_Valid = false
+	
+	If CommandInfo(CMD_INFO_DLG_OK) then
+	
+		Call ConvertToRegion(strTableSelected)
+		call ExportToMif(strmifloc,strTableSelected)
+		Call OpenMif(strmifloc,strTableSelected)
+		
+		Call Find_Coord(int_mainA , int_mainB , int_mainC, int_mainD, int_mainE, int_mainF)
+		
+		g_l_running = false
+		
+		Call ImportMif(strmifloc,strTableSelected, intCurrentMapper)
+	
+	End If
+	
+	g_l_running = false
+	
+	
+	Call Cleanup(strmifloc,strTableSelected)
+ 
+End Sub
+
+'#########################################################################################################
+'#########################################################################################################
+'#########################      DIALOG HANDLER                  ##########################################
+
+Sub DialogHandler
+
+OnError goto whats_wrong
+
+	Alter Control 1 enable Show
+	Alter Control 2 enable show
+
+	Dim iHwnd, iHwnd2, intSelection As Integer
+	Dim strMapFrom as string
+
+'  Alter Control ID_CLONEWINDOW Enable Show
+'  Alter Control ID_LEGENDWINDOW Enable Show
+
+  ' clone the front window
+	iHwnd = ReadControlValue(1)
+	iHwnd2 = ReadControlValue(2)
+
+	intSelection = 1
+
+	strMapFrom = "Map From " & strTableList(readcontrolvalue(59))	
+
+	Set Next Document Parent iHwnd Style WIN_STYLE_CHILD
+	Run Command strMapFrom
+
+		iWin_Id1 = WindowID(frontwindow())
+		Set Window iWin_ID1 scrollbars on
+
+'#####################################################################
+'######## Add the control point layer to doc window 1
+
+	Add Map layer cntr_bannus
+	set map layer 1 editable on  
+	set map layer 1 label auto on
+	Set Map Layer 1 Label Font ("Arial",1,10,255)
+	Set Map Layer 1 Display Global Global Symbol (35,255,18)
+
+'#####################################################################
+
+
+
+	Set Next Document Parent iHwnd2 Style WIN_STYLE_CHILD
+	Run Command WindowInfo(intMapId(1), WIN_INFO_CLONEWINDOW)
+		iWin_Id2 = WindowID(frontwindow())
+		Set Window iWin_ID2 scrollbars on
+
+	g_strMapperCoord2 = MapperInfo(iWin_ID2,Mapper_INFO_COORDSYS_CLAUSE_WITH_BOUNDS)
+	' Print "g_strMapperCoord2 : " & g_strMapperCoord2
+
+'##################################################################
+'#### Add the reference layer to doc window 2
+
+	Add Map layer ref_bannus
+	set map layer 1 editable on  
+	set map layer 1 label auto on
+	Set Map Layer 1 Label Font ("Arial",1,10,255)
+	Set Map Layer 1 Display Global Global Symbol (35,255,18)
+
+'##################################################################
+
+	Alter Button 1701 check
+
+Exit Sub
+
+whats_wrong:
+
+	'note "An Error occured in Register_Vector/DialogHandler"
+
+		
+End Sub
+
+'###############################################################################
+'###############################################################################
+'############################# Zoom In #########################################
+'###############################################################################
+'###############################################################################
+
+Sub ZoomIn
+
+OnError goto whats_wrong
+
+	Dim l_in as logical
+	
+		l_in = true
+		
+	Call Zoom_mod(l_in)
+
+Exit Sub
+
+whats_wrong:
+	'note "An error occured in sub Register_Vector/ZoomIn"
+
+End Sub
+
+Sub ZoomOut
+
+OnError goto whats_wrong
+
+
+	Dim l_out as logical
+	
+		l_out = false
+		
+	Call Zoom_mod(l_out)
+
+Exit Sub
+
+whats_wrong:
+	'note "An error occured in sub Register_Vector/ZoomOut"
+
+End Sub
+
+
+'##############################################################################################
+'##############################################################################################
+'####################### CONTROL POINT PLACEMENT   ############################################
+'##############################################################################################
+'##############################################################################################
+
+Sub ControlPoint
+
+OnError goto whats_wrong
+	Alter Control 1 enable
+	Run Menu Command 1701
+	Alter Button 1701 uncheck
+	Alter Button ID 69 check
+	Alter Control 2 disable
+	run menu command ID 69
+	log_Active = true
+	l_handler = true
+
+Exit Sub
+
+whats_wrong:
+	'note "Error: Register_Vector/ControlPoint"
+
+End Sub
+
+Sub ControlPoint2
+
+OnError goto whats_wrong
+	Alter Control 2 enable
+	Run Menu Command 1701
+	Alter Button 1701 uncheck
+	Alter Button ID 71 check
+	Alter control 1 disable
+	run menu command ID 71
+	log_Active = true
+	l_handler = true
+
+Exit Sub
+
+whats_wrong:
+	'note "Error: Register_Vector/ControlPoint2"
+
+End Sub
+
+
+Sub DocWindow1
+
+	Alter Button 1701 check
+
+End Sub
+
+'###############################################################################################
+'###############################################################################################
+'######################## The two Subs to Drop The Control Points ##############################
+'###############################################################################################
+'###############################################################################################
+
+Sub DropPoint1
+
+OnError goto whats_wrong
+
+Dim f_cntrPoint_1_X ,f_cntrPoint_2_X ,f_cntrPoint_3_X ,f_cntrPoint_1_Y ,f_cntrPoint_2_Y ,f_cntrPoint_3_Y as float
+dim strCurrentCoordsys as string
+Dim strSetCoord as string
+
+'strCurrentCoordSys = TableInfo(strTableList(readControlValue(59)),TAB_INFO_COORDSYS_CLAUSE)
+'strSetCoord = "set coordsys " & strCurrentCoordSys
+
+'Run command strSetCoord
+
+Set CoordSys Window iWin_ID1
+
+l_handler = true
+log_Active = true
+	Do Case intControlSelected
+		Case 1
+			f_cntrPoint_1_X = commandInfo(cmd_info_x)
+			f_cntrPoint_1_Y = commandInfo(cmd_info_y)
+			Alter control 1011 value str$(f_cntrPoint_1_X)
+			Alter control 1012 value str$(f_cntrPoint_1_Y)
+			intControlSelected = 2
+			Alter control 49 value intControlSelected
+			Alter Control 1070 title GetResString(IDS_Place_Con2)
+		
+			L_Dropping = true
+			
+			Select * from cntr_bannus where id = 1 into temp
+		If tableInfo("temp",8) > 0 then
+			update temp set obj = createpoint(f_cntrPoint_1_X,f_cntrPoint_1_Y)
+		Else 
+			Insert into temp(control_points,id,obj) values (GetResString(IDS_Pt1),1, createPoint(f_cntrPoint_1_X,f_cntrPoint_1_Y))
+		End If
+			Set map layer 1 label auto on offset 8
+			Close Table Temp
+			'Select * from cntr_bannus where cntr_bannus.id = 1
+			
+		Case 2
+			f_cntrPoint_2_X = commandInfo(cmd_info_x)
+			f_cntrPoint_2_Y = commandInfo(cmd_info_y)
+			Alter control 1021 value str$(f_cntrPoint_2_X)
+			Alter control 1022 value str$(f_cntrPoint_2_Y)
+			intControlSelected = 3
+			Alter control 49 value intControlSelected
+			Alter Control 1070 title GetResString(IDS_Place_Con3)
+			
+			Select * from cntr_bannus where id = 2 into temp
+		If tableInfo("temp",8) > 0 then
+			update temp set obj = createpoint(f_cntrPoint_2_X,f_cntrPoint_2_Y)
+		Else 
+			Insert into temp(control_points,id,obj) values (GetResString(IDS_Pt2),2, createPoint(f_cntrPoint_2_X,f_cntrPoint_2_Y))
+		End If
+			Set map layer 1 label auto on offset 8
+			Close Table Temp
+			'Select * from cntr_bannus where cntr_bannus.id = 2
+
+
+		Case 3	
+			f_cntrPoint_3_X = commandInfo(cmd_info_x)
+			f_cntrPoint_3_Y = commandInfo(cmd_info_y)
+			Alter control 1031 value str$(f_cntrPoint_3_X)
+			Alter control 1032 value str$(f_cntrPoint_3_Y)
+			intControlSelected = 1
+			Alter control 49 value intControlSelected
+			Alter Control 1070 title GetResString(IDS_Place_Con1)
+			Select * from cntr_bannus where id = 3 into temp
+		If tableInfo("temp",8) > 0 then
+			update temp set obj = createpoint(f_cntrPoint_3_X,f_cntrPoint_3_Y)
+		Else 
+			Insert into temp(control_points,id,obj) values (GetResString(IDS_Pt3),3, createPoint(f_cntrPoint_3_X,f_cntrPoint_3_Y))
+		End If
+			Set map layer 1 label auto on offset 8
+			Close Table Temp
+
+
+	End Case
+
+	Alter button ID 69 uncheck 
+	Alter button 1701 check
+	Run menu command 1701
+	Alter control 2 enable
+	log_Active = false
+	Select * from cntr_bannus where cntr_bannus.id = intControlSelected
+
+Exit Sub
+
+whats_wrong:
+	'note "Error: Register_Vector/DropPoint"
+
+End Sub
+
+'#######################################################################################################
+'#######################################################################################################
+'##############################   Drop Points in Doc Window 2  #########################################
+'#######################################################################################################
+
+Sub DropPoint2
+
+OnError goto whats_wrong
+
+Dim f_RefPoint_1_X ,f_RefPoint_2_X ,f_RefPoint_3_X ,f_RefPoint_1_Y ,f_RefPoint_2_Y ,f_RefPoint_3_Y as float
+Dim strSetCoord as string
+
+	'set coordsys Window iWin_ID2
+	strSetCoord = "Set " & strDoc2CoordSys
+	run command strSetCoord
+
+	l_handler = true
+	log_active = true
+
+	Do Case intReferenceSelected
+		Case 1
+			f_RefPoint_1_X = commandInfo(cmd_info_x)
+			f_RefPoint_1_Y = commandInfo(cmd_info_y)
+			Alter control 2011 value str$(f_RefPoint_1_X)
+			Alter control 2012 value str$(f_RefPoint_1_Y)
+			intReferenceSelected = 2
+			Alter control 39 value intReferenceSelected
+			Alter Control 1080 title GetResString(IDS_Ref2)
+	
+			Select * from ref_bannus where id = 1 into temp
+		If tableInfo("temp",8) > 0 then
+			update temp set obj = createpoint(f_refPoint_1_X,f_refPoint_1_Y)
+		Else 
+			Insert into temp(reference_points,id,obj) values (GetResString(IDS_Pt1),1, createPoint(f_refPoint_1_X,f_refPoint_1_Y))
+		End If
+			Set map layer 1 label auto on offset 8
+			Close Table Temp
+
+
+		Case 2
+			f_RefPoint_2_X = commandInfo(cmd_info_x)
+			f_RefPoint_2_Y = commandInfo(cmd_info_y)
+			Alter control 2021 value str$(f_RefPoint_2_X)
+			Alter control 2022 value str$(f_RefPoint_2_Y)
+			intReferenceSelected = 3
+			Alter control 39 value intReferenceSelected
+			Alter Control 1080 title GetResString(IDS_ref3)
+
+			Select * from ref_bannus where id = 2 into temp
+		If tableInfo("temp",8) > 0 then
+			update temp set obj = createpoint(f_refPoint_2_X,f_refPoint_2_Y)
+		Else 
+			Insert into temp(reference_points,id,obj) values (GetResString(IDS_Pt2),2, createPoint(f_refPoint_2_X,f_refPoint_2_Y))
+		End If
+			Set map layer 1 label auto on offset 8
+			Close Table Temp
+
+
+		Case 3	
+			f_RefPoint_3_X = commandInfo(cmd_info_x)
+			f_RefPoint_3_Y = commandInfo(cmd_info_y)
+			Alter control 2031 value str$(f_RefPoint_3_X)
+			Alter control 2032 value str$(f_RefPoint_3_Y)
+			intReferenceSelected = 1
+			Alter control 39 value intReferenceSelected
+			Alter Control 1080 Title GetResString(IDS_Ref1)
+
+			Select * from ref_bannus where id = 3 into temp
+		If tableInfo("temp",8) > 0 then
+			update temp set obj = createpoint(f_refPoint_3_X,f_refPoint_3_Y)
+		Else 
+			Insert into temp(reference_points,id,obj) values (GetResString(IDS_Pt3),3, createPoint(f_refPoint_3_X,f_refPoint_3_Y))
+		End If
+			Set map layer 1 label auto on offset 8
+			Close Table Temp
+
+
+	End Case
+
+	
+	Alter button ID 71 uncheck 
+	Alter button 1701 check
+	Run menu command 1701
+	Alter Control 1 Enable
+	log_Active = false
+
+Exit Sub
+
+whats_wrong:
+	'note "Error: Register_Vector/DropPoint"
+
+End Sub
+
+'#######################################################################################
+'#######################################################################################
+'############## Manually Select Points from the listboxes         ######################
+'#######################################################################################
+'#######################################################################################
+
+Sub ManualControlSelect
+
+OnError goto whats_wrong
+
+	intControlSelected = readcontrolvalue(49)
+	Alter control 1070 Title GetResString(IDS_Place_Control) & intControlSelected
+	select * from cntr_bannus where cntr_bannus.id = intControlSelected
+	Call ControlPoint
+
+Exit Sub
+
+whats_wrong:
+	'note "Error: Register_Vector/ManualControlSelect"
+
+End Sub
+
+'######################################################################################
+
+Sub ManualReferenceSelect
+
+OnError goto whats_wrong
+
+	intReferenceselected = readcontrolvalue(39)
+	Alter control 1080 Title GetResString(IDS_Ref_Point) & intReferenceSelected
+	select * from ref_bannus where ref_bannus.id = intReferenceSelected
+	Call ControlPoint2
+
+Exit Sub
+
+whats_wrong:
+	'note "Error: Register_Vector/ManualReferenceSelect"
+
+End Sub
+
+
+'#######################################################################################
+'#######################################################################################
+'############## Changes The Map Window Displayed in Doc Window 1  ######################
+'#######################################################################################
+'#######################################################################################
+
+Sub ChangeControlDoc
+
+OnError goto whats_wrong
+
+	Dim intSelection, iHwnd1 as integer
+	Dim strMapFrom as string
+	Dim strCurrentCoordSys as string
+	Dim strCreateCntrMap as string
+
+'Close table SelectionInfo(SEL_INFO_SELNAME)
+'Close table selection
+'Close table SelectionInfo(SEL_INFO_SELNAME)
+
+	strCurrentCoordSys = TableInfo(strTableList(readControlValue(59)),TAB_INFO_COORDSYS_CLAUSE)
+
+	Close window iWin_ID1
+
+	intSelection = ReadControlValue(59)
+	iHwnd1 = ReadControlValue(1)
+	strMapFrom = "Map From " & strTableList(intSelection)	
+
+	Set Next Document Parent iHwnd1 Style WIN_STYLE_CHILD
+	Run Command strMapFrom
+	iWin_Id1 = WindowID(frontwindow())
+	Set Window iWin_ID1 scrollbars on
+	'Set Map Coordsys Earth projection 1,74
+
+	g_strMapperCoord1 = MapperInfo(iWin_ID1,Mapper_INFO_COORDSYS_CLAUSE_WITH_BOUNDS)
+
+	set coordsys Window iWin_ID1
+
+	Drop Map cntr_bannus
+	strCreateCntrMap = "Create Map for cntr_bannus " & strCurrentCoordSys
+	Run Command strCreateCntrMap
+
+	Add Map layer cntr_bannus
+	set map layer 1 editable on  
+
+	set map layer 1 label auto on 
+	Set Map Layer 1 Label Font ("Arial",1,10,255)
+	Set Map Layer 1 Display Global Global Symbol (35,255,18)
+
+	Alter control 1011 value "0"
+	Alter Control 1012 value "0"
+	Alter Control 1021 value "0"
+	Alter Control 1022 value "0"
+	Alter Control 1031 value "0"
+	Alter Control 1032 value "0"
+
+Exit Sub
+
+whats_wrong:
+	'note "Error: Register_Vector/ChangeControlDoc"
+
+End Sub
+
+
+'#######################################################################################
+'#######################################################################################
+'############## Changes The Map Window Displayed in Doc Window 2  ######################
+'#######################################################################################
+'#######################################################################################
+
+Sub ChangeReferenceDoc
+
+OnError goto whats_wrong
+
+	Dim intSelection, iHwnd2 , intGetBounds as integer
+	Dim strChangeCoord as string
+	Dim strCurrentRefCoord , strCreateRefMap as string
+
+	l_handler = false
+
+	Close window iWin_ID2
+
+	intSelection = ReadControlValue(61)
+	iHwnd2 = ReadControlValue(2)
+
+	Set Next Document Parent iHwnd2 Style WIN_STYLE_CHILD
+	Run Command WindowInfo(intMapId(intSelection), WIN_INFO_CLONEWINDOW)
+	iWin_Id2 = WindowID(frontwindow())
+	Set Window iWin_ID2 scrollbars on
+
+	strDoc2CoordSys = MapperInfo(intMapId(readcontrolvalue(61)),MAPPER_INFO_COORDSYS_CLAUSE)
+
+	If mid$(strDoc2CoordSys,10,3) = "non" then
+		intGetBounds = GetBounds(intMapId(1))
+		l_NonEarth = true
+	Else
+		l_NonEarth = False
+	End If
+
+	Drop Map ref_bannus
+	strCreateRefMap = "Create Map for ref_bannus " & strDoc2CoordSys
+	Run Command strCreateRefMap
+
+	Add Map layer ref_bannus
+	set map layer 1 editable on  
+	set map layer 1 label auto on offset 4
+	Set Map Layer 1 Label Font ("Arial",1,10,255)
+	Set Map Layer 1 Display Global Global Symbol (35,255,18)
+
+	g_strMapperCoord2 = MapperInfo(iWin_ID2,Mapper_INFO_COORDSYS_CLAUSE_WITH_BOUNDS)
+	
+set coordsys Window iWin_ID2
+
+	Alter control 2011 value "0"
+	Alter Control 2012 value "0"
+	Alter Control 2021 value "0"
+	Alter Control 2022 value "0"
+	Alter Control 2031 value "0"
+	Alter Control 2032 value "0"
+
+Exit Sub
+
+whats_wrong:
+	'note "Error: Register_Vector/ChangeReferenceDoc"
+
+End Sub
+
+'#################################################################################################
+'#################################################################################################
+'#################Initialize any Global Variables ################################################
+'#################################################################################################
+'#################################################################################################
+
+Sub Initialize
+
+OnError goto whats_wrong
+
+	Alter button 1701 check
+	Run menu command 1701
+
+	g_L_Valid = true
+	g_l_running = true
+	l_handler = false
+	'set handler WinChangedHandler off
+	intControlSelected = 1
+	intReferenceSelected = 1
+	
+	Create Menu GetResString(IDS_Mapper_Short) as "(-"
+
+'Call Table_Create
+	'Open Table applicationdirectory$() & "cntr_bannus.tab"
+	'Open Table applicationdirectory$() & "ref_bannus.tab"
+
+Exit Sub
+
+whats_wrong:
+	'note "Error: Register_Vector/Initialize"
+
+End Sub
+
+'##################################################################################################
+'##################################################################################################
+'####################### Change Selection #########################################################
+'##################################################################################################
+'##################################################################################################
+
+Sub SelChangedHandler
+
+
+OnError goto whats_wrong
+
+Dim intControlChange , intReferenceChange as integer
+onerror goto not_selected		
+
+
+
+If not log_Active then
+	If WindowID(frontwindow()) = iWin_Id1 then
+		
+		
+		If SelectionInfo(sel_Info_TableName) = "cntr_bannus" then
+
+			select * from selection into tempSelect noselect
+			fetch first from tempSelect
+			intControlChange = tempSelect.id
+			Close table tempSelect
+			
+			If intControlChange = 0 then 
+				intControlChange = readcontrolvalue(49)
+			 end if
+				
+			Alter Control 49 value intControlChange
+			Alter Control 1070 Title GetResString(IDS_Place_Control) & intControlChange
+		End If	
+					
+	End If
+
+	If WindowID(frontwindow()) = iWin_Id2 then
+		If SelectionInfo(sel_Info_TableName) = "ref_bannus" then
+			intReferenceChange = commandInfo(cmd_info_rowid)
+			Alter Control 39 value intReferenceChange
+			Alter Control 1080 Title GetResString(IDS_Place_Ref) & intReferenceChange
+		End If
+	End If
+End If
+
+
+exit sub
+
+not_selected:
+'log_Active = true
+Exit Sub
+
+Exit Sub
+
+whats_wrong:
+	'note "Error: Register_Vector/SelectChangeHandler"
+
+End Sub
+
+'##################################################################################################
+'##################################################################################################
+'####################### Window Change Handler ####################################################
+'##################################################################################################
+'##################################################################################################
+
+Sub WinChangedHandler
+
+
+OnError goto whats_wrong
+
+	dim f_x, f_y as float
+If g_l_running then
+
+	If l_handler then
+
+if selectioninfo(3) > 0 then
+
+		Dim intControlChange , intReferenceChange , intCurrentControl, intCurrentReference as integer
+
+OnError goto no_selection
+			
+			Select * from selection into tempSelect noselect
+			fetch first from tempSelect
+			intControlChange = tempSelect.id
+			close table tempSelect
+			
+				If intControlChange = 0 then intControlChange = readcontrolvalue(49) end if
+
+			intReferenceChange = selection.id
+
+				If intReferenceChange = 0 then intReferenceChange = readcontrolvalue(39) end if
+			
+			Set coordsys Window frontwindow()
+
+'#######################################################################################################
+								
+			If WindowID(FrontWindow()) = iWin_Id1 then
+
+OnError goto no_selection
+				
+				Select * from cntr_bannus where cntr_bannus.id = intControlchange into temp2 
+			If tableinfo("temp2",8) > 0 then
+				fetch first from temp2
+			
+				f_x = centroidx(temp2.obj)
+				f_y = centroidy(temp2.obj)
+			Else
+				f_x = 0
+				f_y = 0
+			End If	
+				Close table temp2
+
+				Do Case intControlChange
+					Case 1
+						Alter Control 1011 value str$(f_x)
+						Alter Control 1012 value str$(f_y)
+					Case 2
+						Alter Control 1021 value str$(f_x)
+						Alter Control 1022 value str$(f_y)
+					Case 3
+						Alter Control 1031 value str$(f_x)
+						Alter Control 1032 value str$(f_y)
+				End Case
+			End If
+
+'#########################################################################################################
+
+		If WindowID(FrontWIndow()) = iWin_ID2 then
+
+OnError goto no_selection
+		
+				Select * from ref_bannus where ref_bannus.id = intReferencechange into temp2 
+			If tableinfo("temp2",8) > 0 then
+				fetch first from temp2
+			
+				f_x = centroidx(temp2.obj)
+				f_y = centroidy(temp2.obj)
+			Else
+				f_x = 0
+				f_y = 0
+			End If	
+				Close table temp2
+
+
+
+			Do Case intReferenceChange
+				Case 1
+					Alter Control 2011 value str$(f_x)
+					Alter Control 2012 value str$(f_y)
+				Case 2
+					Alter Control 2021 value str$(f_x)
+					Alter Control 2022 value str$(f_y)
+				Case 3
+					Alter Control 2031 value str$(f_x)
+					Alter Control 2032 value str$(f_y)
+			End Case
+		End If
+	End If
+End If
+end if
+
+
+Exit Sub
+
+no_selection:
+Exit Sub
+
+whats_wrong:
+'note "Error: Register_Vector/WinChangeHandler"
+
+End Sub		
+
+
+'##############################################################################################
+'##############################################################################################
+'##############################################################################################
+'##############################################################################################
+
+
+
+'################################################################################################
+'#################################	Snap ########################################################
+'################################################################################################
+
+Sub Snap
+			
+	Call Snap_mod(iWin_ID1)
+	
+End Sub
+
+Sub Snap2
+			
+	Call Snap_mod(iWin_ID2)
+	
+End Sub
+
+'################################################################################################
+'#########################  EXIT PROGRAM  #######################################################
+
+Sub ExitProgram
+	End Program
+End Sub
+
+'#################################################################################################
+'################################## SUB CLEANUP  #################################################
+
+Sub CleanUp(strFileLocation as string, strTableName as string)
+
+OnError goto whats_wrong
+
+If FileExists(strFileLocation & strTableName & ".mif") then
+	Kill strFileLocation & strTableName & ".mif"
+End If
+
+If FileExists(strFileLocation & strTableName & ".mif.old") then
+	Kill strFileLocation & strTableName & ".mif.old"
+End If
+
+If FileExists(strFileLocation & strTableName & ".mid") then
+	Kill strFileLocation & strTableName & ".mid"
+End If
+
+OnError goto CloseSelection
+Close table SelectionInfo(Sel_INFO_SELNAME)
+Close Table Selection
+After_Selection:
+
+OnError goto TempSelect
+close table tempSelect
+After_TempSelect:
+
+OnError goto Cntr_notOpen
+drop table cntr_bannus
+
+After_cntr:
+
+OnError goto Ref_notOpen
+drop table ref_bannus
+
+After_ref:
+
+Create Menu GetResString(IDS_Mapper_Short) ID 17 As
+  GetResString(IDS_Layer_Con)
+   HelpMsg GetResString(IDS_Layer_Hlp)
+   calling 801,
+  "(-",
+  GetResString(IDS_AutoScroll)
+   HelpMsg GetResString(IDS_AutoScroll_Hlp)
+   calling 815,
+  "(-",
+  GetResString(IDS_Clear_Cosmetic)
+   HelpMsg GetResString(IDS_Clr_Cosmetic_Hlp)
+   calling 810,
+  "(-",
+  GetResString(IDS_Change_View)	
+   HelpMsg GetResString(IDS_Change_View_Hlp)
+   calling 805,
+  GetResString(IDS_Clone_View)
+   HelpMsg GetResString(IDS_Clone_View_Hlp)
+   calling 811,
+  GetResString(IDS_Previous_View)
+   HelpMsg GetResString(IDS_Previous_View_Hlp)
+   calling 806,
+  GetResString(IDS_View_Entire)
+   HelpMsg GetResString(IDS_View_Entire_Hlp)
+   calling 807,
+  "(-",
+  GetResString(IDS_Edit_Obj) as GetResString(IDS_Object),
+  "(-",
+	'###Fixed the Edit Objects dialog not being recreated
+  GetResString(IDS_Get_Info)
+   HelpMsg GetResString(IDS_Get_Info_Hlp)
+   calling 207
+
+Exit Sub
+
+whats_wrong:
+	'note "Error: Register_Vector/CleanUp"
+Exit Sub
+
+CloseSelection:
+	Resume After_Selection
+TempSelect:
+	Resume After_TempSelect
+cntr_notOpen:
+	Resume after_cntr
+ref_notOpen:
+	Resume after_ref
+
+End Sub
+
+'###########################################################################
+Sub Cancel
+
+	g_L_Valid = true
+
+End Sub

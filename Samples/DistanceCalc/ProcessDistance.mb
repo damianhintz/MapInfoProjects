@@ -1,0 +1,275 @@
+'*****************************************************************************
+'       Copyright (c) 2004, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: ProcessDistance.mb $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+'Helper functions and sub routines for the Distance Calculator tool.
+'
+' Revision History:
+'
+'    Rev 1.0   10 June 2004               Salmon
+'                Initial version.
+'        1.1   30 July 2004               Johnson
+'                Fixes for T11888 and T11554
+'        1.2   03 April 2008              Rajan Batra
+'                Fix for T24972
+'*****************************************************************************
+Include "DistanceCalc.def"
+
+Sub StartProcess
+
+  OnError goto HandleError
+
+  Dim strOriginTab, strDestTab, strOriginCol, strDestCol as string
+  Dim intCrit as integer
+  Dim strCritArg1 as string, strCritArg2 as string
+  Dim strCreateMap as string
+  Dim strSelect as string
+  Dim createTempDest as logical
+
+  strOriginTab = strTableList(readcontrolvalue(42))
+  strDestTab = strTableList(ReadControlValue(43))
+  strOriginCol = "col" & str$(readControlValue(44))
+  strDestCol = "col" & str$(readControlValue(45))
+  createTempDest = FALSE
+
+  If StringCompare(TableInfo(strOriginTab, TAB_INFO_MAPPABLE_TABLE), TableInfo(strDestTab, TAB_INFO_MAPPABLE_TABLE)) = 0 Or
+     TableInfo(strOriginTab, TAB_INFO_TEMP) Or TableInfo(strDestTab, TAB_INFO_TEMP) then
+	  strSelect = "Select * from " & strOriginTab & " into TempOrigin noselect"
+	  run command strSelect
+	  Commit table TempOrigin as strTempPath & "TempOrigin.tab"
+	  Close Table TempOrigin
+	  Open Table strTempPath & "TempOrigin.tab"
+	  strOriginTab = "TempOrigin"
+  End If
+
+  If not TableInfo(TempBrowser, TAB_INFO_MAPPABLE) then	  
+  	strCreateMap = "Create Map for TempBrowser Using " & strOriginTab
+	run command strCreateMap
+  End IF
+
+  if not SetCriteria(strOriginTab,strDestTab,intCrit, strCritArg1, strCritArg2) then
+    Call CleanUp
+    Dialog Remove
+    Exit Sub
+  End If
+
+  if not Calculate_Distance(strOriginTab, strDestTab, strOriginCol, strDestCol, intCrit, strCritArg1, strCritArg2) then
+    Call CleanUp
+    Dialog Remove
+    Exit Sub
+  End If
+
+  OnError goto removeTable
+
+  If strDestTab = "criteria" then
+    Drop table Criteria
+  End If
+  If strOriginTab = "TempOrigin" then
+    Drop table TempOrigin
+  End If
+
+  Exit Sub
+
+RemoveTable:
+  Exit Sub
+
+CleanUp:
+  Call CleanUp
+  Dialog Remove
+  Exit Sub
+
+HandleError:
+  Dim ErrorString as string
+  ErrorString = Error$()
+  Note "StartProcess: " & GetResString(IDS_Operation_Interrupted) & chr$(13) & ErrorString
+  Resume CleanUp
+
+End Sub
+
+
+
+Function SetCriteria(strOriginTab as string,strDestTab as string, intCrit as integer, strCritArg1 as string, strCritArg2 as string) as logical
+
+  OnError goto HandleError
+
+  Dim strCol1, strCol2, strOp1, strOp2, strSelect as string
+  Dim strCrit1, strCrit2, strFinCrit1, strFinCrit2 as string
+  Dim strColName1 , strColName2 as string
+
+  strColName1 = strColumnListDest(readControlValue(46))
+  strColName2 = strColumnListDest(readControlValue(47))
+
+  strCol1 = "col" & str$(readControlValue(46))
+  strCol2 = "col" & str$(readControlValue(47))
+
+  strOp1 = Operators(readControlValue(48))
+  strOp2 = Operators(readControlValue(49))
+  strCrit1 = readControlValue(Criteria1)
+  strCrit2 = ReadControlValue(Criteria2)
+  intCrit = 0
+  strCritArg1 = " "
+  strCritArg2 = " "
+  strFinCrit1 = readControlValue(Criteria1)
+  strFinCrit2 = ReadControlValue(Criteria2)
+
+  strCrit1 = RemoveQuotes(strFinCrit1)
+  strCrit2 = RemoveQuotes(strFinCrit2)
+  strFinCrit1 = strCrit1
+  strFinCrit2 = strCrit2
+
+  If ColumnInfo(strDestTab,strCol2,COL_INFO_TYPE) = 1 then
+    strCrit2 = chr$(34) + strCrit2 + chr$(34)
+  End If
+
+  If strCrit1 <> "" then 
+    Do Case ReadControlValue(50)
+      Case 1
+        If ColumnInfo(strDestTab,strCol1,COL_INFO_TYPE) = 1 then
+          strCrit1 = chr$(34) + strCrit1 + chr$(34)
+        End If
+        strSelect = "Select * from " & strDestTab & " where " & strCol1 & " " & strOp1 & " " & strCrit1 & " into criteria noselect"
+        run command strSelect
+        intCrit = 1
+        strCritArg1 = strColName1 + " " + strOp1 + " " + strFinCrit1
+      Case 2
+        If ColumnInfo(strDestTab,strCol1,COL_INFO_TYPE) = 1 then
+          strCrit1 = chr$(34) + strCrit1 + chr$(34)
+        End If
+        strSelect = "Select * from " & strDestTab & " where " & strCol1 & " " & strOp1 & " " & strCrit1 & " and " & strCol2 & " " & strOp2 & " " & strCrit2 & " into criteria noselect"
+        run command strSelect
+        intCrit = 2
+        strCritArg1 = strColName1 + " " + strOp1 + " " + strFinCrit1
+        strCritArg2 = "And " + strColName2 + " " + strOp2 + " " + strFinCrit2
+      Case 3
+        If ColumnInfo(strDestTab,strCol1,COL_INFO_TYPE) = 1 then
+          strCrit1 = chr$(34) + strCrit1 + chr$(34)
+        End If
+        strSelect = "Select * from " & strDestTab & " where " & strCol1 & " " & strOp1 & " " & strCrit1 & " or " & strCol2 & " " & strOp2 & " " & strCrit2 & " into criteria noselect"
+        run command strSelect
+        intCrit = 2
+        strCritArg1 = strColName1 + " " + strOp1 + " " + strFinCrit1
+        strCritArg2 = "Or " + strColName2 + " " + strOp2 + " " + strFinCrit2
+    End Case
+    strDestTab = "Criteria"
+  End If
+  SetCriteria = true
+  Exit Sub
+
+CleanUp:
+  Call CleanUp
+  SetCriteria = false
+  Exit Sub
+
+HandleError:
+  Dim ErrorString as string
+  ErrorString = Error$()
+  Note "SetCriteria: " & GetResString(IDS_Operation_Interrupted) & chr$(13) & ErrorString
+  Resume CleanUp
+
+End Function
+
+
+
+Function Calculate_Distance(strOriginTab as string, strDestTab as string, strOriginCol as string, strDestCol as string, intCrit as integer, strCritArg1 as string, strCritArg2 as string) as logical
+
+  Dim s, strSelectOrigin , strunits2, strCritCol1, strCritCol2, strOrder, strSelectDest as string
+  Dim intRows, intNumDist as integer
+  Dim strNearest as string
+  Dim colOrigin, colDest, colDist, colCriteria1, colCriteria2, colUnit as string
+
+  OnError goto HandleError
+
+  strUnits2 = strUnits(readControlValue(81))
+  intNumDist = val(readControlValue(79)) + 1
+  strCritCol1 = strColumnListDest(readcontrolvalue(46))
+  strCritCol2 = strColumnListDest(readcontrolvalue(47))
+
+  colOrigin = GetResString(IDS_COL_ORIGIN)
+  colDest =  GetResString(IDS_COL_DEST)
+  colDist = GetResString(IDS_COL_DIST)
+  colCriteria1 = GetResString(IDS_COL_C1)
+  colCriteria2 = GetResString(IDS_COL_C2)
+  colUnit = GetResString(IDS_COL_DISTUNIT)
+
+  Do Case readControlValue(83)
+    Case 1
+	  If ReadcontrolValue(82) then
+	  	strNearest = "Nearest " & str$(intNumDist-1) & " From Table " & strOriginTab & " To " & strDestTab & " Into TempBrowser"
+			& " Ignore Min 0 Units """ & strUnits2 & """"
+	  		& " Data " & colOrigin & "=" & strOriginTab & "." & strOriginCol & "," & colDest & "=" & strDestTab & "." & strDestCol
+	        & "," & colDist & "= ObjectDistance(" & strOriginTab & ".obj," & strDestTab & ".obj,""" & strUnits(readControlValue(81)) & """)"
+            & "," & colUnit & "=""" & UnitName$(strUnits(readControlValue(81))) & """," & colCriteria1 & "=""" & strCritArg1 & """," & colCriteria2 & "=""" 
+            & strCritArg2 & """"
+     Else
+	  	strNearest = "Nearest " & str$(intNumDist-1) & " From Table " & strOriginTab & " To " & strDestTab & " Into TempBrowser"
+	  		& " Data " & colOrigin & "=" & strOriginTab & "." & strOriginCol & "," & colDest & "=" & strDestTab & "." & strDestCol
+	        & "," & colDist & "= ObjectDistance(" & strOriginTab & ".obj," & strDestTab & ".obj,""" & strUnits(readControlValue(81)) & """)"
+            & "," & colUnit & "=""" & UnitName$(strUnits(readControlValue(81))) & """," & colCriteria1 & "=""" & strCritArg1 & """," & colCriteria2 & "=""" 
+            & strCritArg2 & """"
+     End If
+     strOrder = "Asc"
+    Case 2
+	  If ReadcontrolValue(82) then
+	  	strNearest = "Farthest " & str$(intNumDist-1) & " From Table " & strOriginTab & " To " & strDestTab & " Into TempBrowser"
+			& " Ignore Min 0 Units """ & strUnits2 & """"
+	  		& " Data " & colOrigin & "=" & strOriginTab & "." & strOriginCol & "," & colDest & "=" & strDestTab & "." & strDestCol
+	        & "," & colDist & "= ObjectDistance(" & strOriginTab & ".obj," & strDestTab & ".obj,""" & strUnits(readControlValue(81)) & """)"
+            & "," & colUnit & "=""" & UnitName$(strUnits(readControlValue(81))) & """," & colCriteria1 & "=""" & strCritArg1 & """," & colCriteria2 & "=""" 
+            & strCritArg2 & """"
+     Else
+	  	strNearest = "Farthest " & str$(intNumDist-1) & " From Table " & strOriginTab & " To " & strDestTab & " Into TempBrowser"
+	  		& " Data " & colOrigin & "=" & strOriginTab & "." & strOriginCol & "," & colDest & "=" & strDestTab & "." & strDestCol
+	        & "," & colDist & "= ObjectDistance(" & strOriginTab & ".obj," & strDestTab & ".obj,""" & strUnits(readControlValue(81)) & """)"
+            & "," & colUnit & "=""" & UnitName$(strUnits(readControlValue(81))) & """," & colCriteria1 & "=""" & strCritArg1 & """," & colCriteria2 & "=""" 
+            & strCritArg2 & """"
+     End If
+     strOrder = "Desc"
+  End Case
+
+  run command strNearest
+
+  Calculate_Distance = true
+  
+  Exit Sub
+
+CleanUp:
+  Call CleanUp
+  Calculate_Distance = false
+  Exit Sub
+
+HandleError:
+  Dim ErrorString as string
+  ErrorString = Error$()
+  Note "Calculate_Distance: " & GetResString(IDS_Operation_Interrupted) & chr$(13) & ErrorString
+  Resume CleanUp
+
+End Function
+
+
+
+Sub CleanUp
+
+  OnError goto Tab1
+  Drop table Criteria
+AfterTab1:
+  OnError goto Tab2
+  Drop table TempOrigin
+AfterTab2:
+  OnError goto Tab3
+  Drop Table TempBrowser
+  Exit Sub
+
+Tab1:
+  Resume afterTab1
+Tab2:
+  Resume afterTab2
+Tab3:
+
+End Sub  

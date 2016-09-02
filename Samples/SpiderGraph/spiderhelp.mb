@@ -1,0 +1,171 @@
+'*****************************************************************************
+'       Copyright (c) 2004, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: spiderhelp.mb $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+'The Spider Graph help code.
+'
+' Revision History:
+'
+'    Rev 1.0   10 June 2004               Salmon
+'                Initial version.
+'        1.1   30 July 2004               Johnson
+'                Fixes for T11554
+'*****************************************************************************
+
+Include "SpiderGraph.def"
+
+Sub HelpText
+
+  Dialog
+    Title GetResString(IDS_Help_Title)
+
+    Control StaticText
+      Title GetResString(IDS_Help1)
+      position 5,10
+
+    Control StaticText
+      Title GetResString(IDS_Help2)
+      position 5,18
+
+    Control StaticText
+      Title GetResString(IDS_Help3)
+      position 5,26
+
+    Control StaticText
+      Title GetResString(IDS_Help4)
+      position 5,34
+
+    Control StaticText
+      Title GetResString(IDS_Help5)
+      position 5,42
+
+    Control StaticText
+      Title GetResString(IDS_Help6)
+      position 5,50
+
+    Control StaticText
+      Title GetResString(IDS_Help7)
+      position 5,66
+
+    Control StaticText
+      Title GetResString(IDS_Help8)
+      position 5,74
+
+    Control StaticText
+      Title GetResString(IDS_Help9)
+      position 5,82
+
+    Control StaticText
+      Title GetResString(IDS_Help10)
+      position 5,90
+
+    Control StaticText
+      Title GetResString(IDS_Help11)
+      position 5,98
+
+    Control StaticText
+      Title GetResString(IDS_Help12)
+      position 5,106
+
+    Control StaticText
+      Title GetResString(IDS_Help13)
+      position 5,114
+
+    Control StaticText
+      Title GetResString(IDS_Help14)
+      position 5,130
+
+    Control StaticText
+      Title GetResString(IDS_Help15)
+      position 5,138
+
+    Control StaticText
+      Title GetResString(IDS_Help16)
+      position 5,146
+
+    Control StaticText
+      Title GetResString(IDS_Help17)
+      position 5,162
+
+    Control StaticText
+      Title GetResString(IDS_Help18)
+      position 5,170
+
+    Control StaticText
+      Title GetResString(IDS_Help19)
+      position 5,178
+
+    Control StaticText
+      Title GetResString(IDS_Help20)
+      position 5,186
+
+    Control StaticText
+      Title GetResString(IDS_Help21)
+      position 5,194
+
+    Control StaticText
+      Title GetResString(IDS_Help22)
+      position 5,202
+
+    Control StaticText
+      Title GetResString(IDS_Help23)
+      position 5,218
+
+    Control StaticText
+      Title GetResString(IDS_Help24)
+      position 5,226
+
+    Control StaticText
+      Title GetResString(IDS_Help25)
+      position 5,234
+  
+    Control StaticText
+      Title GetResString(IDS_Help26)
+      position 5,250
+
+    Control StaticText
+      Title GetResString(IDS_Help27)
+      position 5,258
+
+    Control StaticText
+      Title GetResString(IDS_Help33)
+      position 5,274
+
+    Control StaticText
+      Title GetResString(IDS_Help34)
+      position 5,282
+
+    Control StaticText
+      Title GetResString(IDS_Help28)
+      position 5,298
+
+    Control StaticText
+      Title GetResString(IDS_Help29)
+      position 5,306
+
+    Control StaticText
+      Title GetResString(IDS_Help30)
+      position 5,314
+
+    Control StaticText
+      Title GetResString(IDS_Help31)
+      position 5,322
+
+    Control StaticText
+      Title GetResString(IDS_Help32)
+      position 5,330
+
+    Control OKBUTTON
+      Title GetResString(IDS_Exit_Help)
+      position 150,336
+      Width 50
+
+End Sub
+  

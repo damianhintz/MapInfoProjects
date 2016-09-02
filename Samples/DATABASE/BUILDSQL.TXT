@@ -1,0 +1,109 @@
+BUILDSQL.MBX information file
+----------------------------------------------------------------------------
+BUILDSQL.MBX is a MapInfo ODBC sample application for connecting to your ODBC Database,
+building and running SQL.
+
+It Contains an "SQL Runner" and an "SQL Query Builder". 
+
+The "SQL Runner" is a Dialog that allows you to
+connect to a data source, Type, Load, Save and 
+Execute an SQL statement.   If SQL Execute produces a result set, you can
+chose to preview the results, or download then into a MapInfo linked table.
+
+The SQL Runner provides a simple "Parameter" capability. 
+The Parameter capability allows users who do not know SQL to Load and Execute statements 
+developed by others.  They can obtain custom results without needing to understand and
+modify the SQL query. 
+This allows SQL Statements to contain parameters for data that is
+ bound (resolved and replaced with a value) when the statement is executed.
+A Parameter is delimited by square brackets [Parameter].
+When an SQL Statement containing parameters is executed,
+for each parameter in the SQL Statement, the Paramater is interpreted and the desired dialog is
+displayed, and the value entered or selected by the user is substituted within the
+SQL Statement for the parameter placeholder.
+
+There are several types of parameters supported:
+
+   [EditText Prompt]                     EditText  
+   [LIST:item1;item2;item3:List Prompt]  Constant list picker
+   [LISTTAB:Table List prompt]           Table Picker
+   [LISTQRY:List Query:List Prompt]      Query results list picker
+
+Be sure to define the parameter within the SQL so that the substitution yields a valid
+SQL Statement.  
+Enclose the parameter in single quotes in your query if it is intended 
+ to define a string literal.
+e.g.
+ '[Enter Customer Name]'
+Do NOT delimit with single quotes if the result is intended to be a number. 
+e.g.
+  [Enter Order Amount]
+Enclose the parameter in  identifier quotes in your query if it is intended 
+ to define an identifier like a table name which may be mixed case or contain blanks . 
+ eg. "[Enter Table Name]"
+
+The Edit Text parameter type format puts up a dialog with an edittext and a prompt.
+It replaces the parameter with the value the user types.
+
+Format:  [Edit Text Prompt]  
+eg.      [Enter Country Name]  
+See EDITPARM.SQL for example
+
+Note:  all the sample .QRY files will work against the MS Access Northwind sample database.
+
+The Table Picker parameter puts up an ODBC Table picker which allows you to make a single selection.
+The table name selected replaces the parameter.
+
+Format:  [LISTTAB:List Prompt]  
+eg.      [LISTTAB:Select a table to get the number of records in]  
+See COUNTAB.SQL and DROPTAB.SQL for examples
+
+'The  Constant list picker paramater puts up a list of string constants which allows you to make a single selection.
+The list item string selected replaces the parameter.
+
+Format:  [LIST:item1;item2;item3:Select Item]  
+The  list must be in MapBasic string list format i.e. separated by ;
+eg.      [LIST:USA;Canada;Mexico:Select Country]  
+See LISTPARM.SQL for an example
+
+The Query results list picker executes a query and builds a list from the results of the first column selected.
+It then puts up the list which allows you to make a single selection. 
+The list item string selected replaces the parameter.
+
+Format:  [LISTQRY:Query:List Prompt]  
+eg.      [LISTQRY:Select Country from Customer group by Country:Select Country]  
+SeeQRYPARM.SQL for an example
+
+The "SQL Builder" is an application that helps you build your SQL Select statements using
+Table and Column dictionary information from your server database.  
+
+The SQL Builder is modeled after the MapInfo SQL Select Dialog. See your MapInfo Users Guide for details
+on using the dialog.  
+
+The SQL Builder differs from that dialog as follows: 
+ 1. Picked data is placed into the clause where the check box is checked. (Not where teh cursor is)
+ 2. Picked data is appended to the target clause (Not inserted at the cursor)
+ 3. You may only pick columns from the 'current table' shown in the
+ top right of the Builder dialog.
+ 4. The current table is set using the table picker.
+
+For query building, you can shift back and forth
+from the SQL Builder to the SQL Runner and your query
+is carried with you.
+When you save a query it is written in a formatted SQL style
+
+The source files for BUILDSQL.MBX are included in the Mapinfo\Datalink directory.
+Source file descriptions
+-----------------------------------------------------
+BUILDSQL MB       Main source for BUILDSQL.MBX - SQL Runner/Builder
+SQLUTIL MB         Some GeneralSQL utility functions
+CONNECT.MB      Connect functions	
+DLSUTIL  MB        Some utility routines
+PREPSQL  MB        SQL [argument] prompter and replacer function for the SQL Runner
+PICKCOL  MB        SQL Builder Column Picker
+PICKTAB  MB        SQL Builder Table Picker 
+PICKSEL  MB        Generic dialog picker for Builder Operators, Aggregates 
+                                and  Functions 
+
+
+

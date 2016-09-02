@@ -1,0 +1,110 @@
+' Resource String Ids
+Define IDS_STR_RES_RANGE_ERR              1
+Define IDS_APP_DESCRIPTION                2
+Define IDS_MENU_NAME                      3
+Define IDS_MENU_ITEM_NAME_1               4
+Define IDS_MENU_ITEM_HELP_MSG_1           5
+Define IDS_ABOUT_MENU_ITEM_NAME           6
+Define IDS_ABOUT_MENU_ITEM_HELP_MSG       7
+Define IDS_EXIT_MENU_ITEM_NAME            8
+Define IDS_EXIT_MENU_ITEM_HELP_MSG        9
+Define IDS_NO_TABLES_OPEN                 10
+Define IDS_ONE_TABLES_OPEN                11
+Define IDS_CALCULATE_PROPORTION_DATA      12
+Define IDS_WITHIN_EACH_OBJECT             13
+Define IDS_CALCULATE_THE                  14
+Define IDS_NO_OBJECTS_IN_TABLE            15
+Define IDS_NO_OBJECTS_IN_SELECTION        16
+Define IDS_VERSION                        17
+Define IDS_UPDATE_COLUMN                  18
+Define IDS_SELECT_COLUMN                  19
+Define IDS_NO_SELECTION                   20
+Define IDS_ABOUT                          21
+Define IDS_ABOUT_1                        22
+Define IDS_ABOUT_2                        23
+Define IDS_ABOUT_3                        24
+Define IDS_ABOUT_4                        25
+Define IDS_ABOUT_5                        26
+Define IDS_ABOUT_6                        27
+Define IDS_ABOUT_7                        28
+Define IDS_NAME_AND_PATH                  29
+Define IDS_TABLE_NAME                     30
+Define IDS_PATH                           31
+Define IDS_CALCULATE_STATS                32
+Define IDS_OK                             33
+Define IDS_CANCEL                         34
+Define IDS_HELP                           35
+Define IDS_ADD_TO_TABLE                   36
+Define IDS_ABOUT_8                        37
+Define IDS_ABOUT_9                        38
+Define IDS_ABOUT_10                       39
+Define IDS_ABOUT_11                       40
+Define IDS_ABOUT_12                       41
+Define IDS_ABOUT_13                       42
+Define IDS_CALCULATE                      43
+Define IDS_USE_DATA_FROM_TABLE            44
+Define IDS_UPDATE_TABLE                   45
+Define IDS_PROPORTION_SUM                 46
+Define IDS_PROPORTION_AVG                 47
+Define IDS_CANNOT_AGGREGATE_WITHOUT_OBJS  48
+Define IDS_CANNOT_AGGREGATE_RASTER        49
+Define IDS_WEIGHTING_EXPRESSION           50
+Define IDS_PROPORTION_WTAVG               51
+Define IDS_CANNOT_UPDATE_UNSAVED_EDITS    52
+Define IDS_CANNOT_AGGREGATE_UNSAVED_EDITS 53
+Define IDS_CANNOT_UPDATE_WITHOUT_OBJS     54
+Define IDS_CANNOT_UPDATE_RASTER           55
+Define IDS_UPDATE_SELECT_SAME_TABLE       56
+Define IDS_CANNOT_UPDATE_READONLY_TABLE   57
+Define IDS_CANNOT_AGGREGATE_WITHOUT_ROWS  58
+Define IDS_CANNOT_UPDATE_WITHOUT_ROWS     59
+Define IDS_NO_UPDATE_SELECTION            60
+Define IDS_SELECT_TEMP_TABLE              61
+Define IDS_UPDATE_SELECT_TEMP_TABLE       62
+Define IDS_CANNOT_ADDFIELD_LINK_TABLE     63
+Define IDS_NO_UPDATE_COLUMNS              64
+Define IDS_NO_SELECT_COLUMNS              65
+Define IDS_ABOUT_14                       66
+
+'Strings Not to be localized
+Define STR_RES_STR_FILE                   "ProportionalOverlap.str"
+Define STR_FILE_NOT_ACCESSIBLE            "Unable to access resource string file: "
+Define STR_APP_FILE_NAME                  "ProportionData.mbx"
+Define STR_MENU_ITEM_SEPERATOR            "(-"
+Define STR_BACK_SLASH                     "\"
+Define STR_EMPTY_STR1                     ""
+Define STR_EMPTY_STR2                     " "
+Define STR_EMPTY_STR3                     """"
+Define STR_OPEN_BRAC                      "("
+Define STR_CLOSE_BRAC                     ")"
+Define STR_COLON                          ":"
+Define STR_SEMI_COLON                     ";"
+Define STR_COMMA                          ","
+Define STR_UNDER_SCORE                    "_"
+Define STR_HASH_COLON                     "#: "
+Define STR_ADD_MAP                        "Add MAP AUTO LAYER "
+Define STR_FLOAT                          " float "
+Define STR_FROM                           " From "
+Define STR_WHERE                          " Where "
+Define STR_SUM                            "Sum"
+Define STR_PROPORTION_SUM                 "Proportion Sum"
+Define STR_AVG                            "Avg"
+Define STR_PROPORTION_AVG                 "Proportion Avg"
+Define STR_WEIGHTED_AVG                   "WtAvg"
+Define STR_SET_TO                         " Set To "
+Define STR_PLUS                           " + "
+Define STR_COL                            "Col"
+Define STR_ADD                            "Add "
+Define STR_COLUMN                         " column "
+Define STR_ALTER_TABLE                    "Alter Table "
+Define STR_SELECT                         "   Select "
+Define STR_STAR                           "*"
+Define STR_INTO                           " into "
+Define STR_UPDATE                         "update "
+Define STR_INSERT                         "insert "
+Define STR_EQUALS                         " = "
+Define STR_SET                            " set "
+Define STR_OBJECT_INTERSECT               "Objects Intersect Into Target Data "
+Define STR_PROPORTION                     " Proportion "
+Define STR_BROWSE                         "Browse "
+Define STR_OBJ                            "Obj"

@@ -1,0 +1,1441 @@
+'*****************************************************************************
+'       Copyright (c) 2000-2001, MAPINFO CORPORATION
+'       All rights reserved.
+'       Confidential Property of MAPINFO CORPORATION
+'
+' $Workfile: SCALEBAR.MB $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+'    This application lets the user draw a scale bar (e.g. :  
+'
+'       0    0.5     1
+'       --------------
+'           Miles 
+'
+'   on a Mapper window by clicking with the MapBasic tool. 
+'
+' Revision History:
+'
+'    Rev 3.5   4 Apr 2001            DRESSEL
+'     - fix poorly sized warning dialog
+'     - properly integrate fixes in v3.3 and 3.4
+'
+'    Rev 3.4   8 Mar 2001            DRESSEL
+'     - read and write preference file in W2K safe place
+'       Try GetFolderPath$(FOLDER_MI_LOCAL_APPDATA) first
+'       Try GetFolderPath$(FOLDER_MI_PREFERENCE) second
+'       Try ApplicationDirectory$() last
+'
+'    Rev 3.3  27 Feb 2001            DRESSEL
+'     - don't complain about old preference file
+'     - simplify about box for localization
+'
+'    Rev 3.2  21 Dec 2000            DRESSEL
+'     - add user control over height of scale bar
+'     - add user control over pen color of scale bar
+'
+'    Rev 3.1  15 Dec 2000            DRESSEL
+'     - Fix bug with layout containing frame tied to no map window
+'     - Fix bug with frame selected in non-current layout window
+'     - Fix bug with accuracy of user placed scales in layouts
+'     - Detect and prompt to correct frame not set to scale
+'
+'    Rev 3.0  14 Dec 2000            DRESSEL
+'     - Prepare new features for localization
+'     - Remove autoload button from about box
+'     - Add support for autoplacement on layout page
+'
+'    Rev 2.9  11 Dec 2000            DRESSEL
+'     - Create scale bars in layout windows
+'     - Improve text placement
+'
+'    Rev 2.8  21 Apr 2000 17:15      DRESSEL
+'     - Extract unit names for internationalization
+'
+'    Rev 2.7  1 Mar 2000 17:15      DRESSEL
+'     - Internationalize (extract strings)
+'     - Clean up About box
+'
+'    Rev 2.6.1  11 Feb 2000 17:15    DRESSEL
+'     - Handle non-earth maps (use _WITH_BOUNDS)
+'     - Clean up About box
+'     - Add autoload button to About box
+'
+'    Rev 2.6  12 Jan 2000 17:15      DRESSEL
+'     - Don't adjust number user enters at all!
+'     - Change name from 'Use font size' to 'Adjust font size'
+'     - Add above option to preferences file
+'
+'    Rev 2.5  19 Nov 1999 17:15      DRESSEL
+'     - Create horizontal scale bars even if latitude curves
+'     - Let users force font size
+'
+'    Rev 2.1  21 Oct 1999 17:15      DRESSEL
+'     - Make numbers a little bigger, as they used to be in 1.0
+'     - Don't round number unless units changed
+'
+'    Rev 2.0   2 Feb 1999 10:41:02   DRESSEL
+'     - Expand choice of units
+'     - Optionally read list of units and conversion factors from file
+'     - Draw polygons and polylines instead of rectangles to support projections
+'     - Automatically adjust scale to match selected units
+'     - Clean up variable and subroutine names
+'     - Add error handling
+'     - Use defines
+'     - Restore Editable Layer when done
+'     - Update about box
+'     - Remove up shift to make room for unit labels because of inaccuracy it causes
+'     - Allow correcting for curvature of projection
+'     - Save and restore preferences
+'     - Keep the same font independent of latitude
+'     - Don't correct for latitude on non-earth maps
+'
+' Conversions used
+' 69.171		miles/deg	
+' 5280		feet/mile	
+' 0.3048		meters/feet	
+' 111319.9338	meters/deg	
+' 1852		meters/NM	
+' 60.10795563	NM/Deg	
+' 0.30480061	meters/SF	
+' 365222.1496	SF/Deg	
+'
+'
+'
+'*****************************************************************************
+
+Include "MapBasic.def"
+Include "Icons.def"
+Include "Scalebar.def"
+Include "..\Inc\Auto_Lib.def"  ' include this file to access the AUTOLOAD library 
+                               ' The actual AUTOLOAD routines are in AUTOLOAD.MBO 
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+Include "..\Inc\GetPaperSize.Def"
+
+Declare Sub Main
+Declare Sub About
+Declare Sub Bye 
+Declare Sub DrawScale
+Declare Sub Setup
+Declare Sub CustomToolHandler 
+Declare Sub OkHandler
+Declare Sub AdjustFrameButtonHandler
+Declare Sub AdjustMapWindowButtonHandler
+Declare Sub CancelHandler 
+Declare Sub DialogHandler
+Declare Sub UseLonLatHandler
+Declare Sub SetUpDistanceUnits
+Declare Sub AdjustScaleWidth
+Declare Sub RoundScaleWidth
+Declare Sub ReadPreferences
+Declare Sub WritePreferences
+Declare Function fDistUnitsPerCoordUnits(Index As SmallInt, CoordUnit As String) As Float
+
+Global lGuessThePosition, lCorrect, lUseLonLat, lAdjustFontSize, lLayout, lNoWarning As Logical
+Global lAdjustFrame, lAdjustMapWindow, lNoPrompt As Logical
+Global fMapZoom, fOldMapZoom, fScaleWidth, fScaleInDegrees, fScaleWidthToHeightRatio As Float
+Global OnBrushStyle, OffBrushStyle As Brush
+Global OnPenStyle, OffPenStyle As Pen
+Global FontStyle As Font
+Global iUnit As SmallInt  
+Global OkButtonShift, CancelButtonShift, HelpButtonShift As SmallInt 'Amount to shift Cancel button to the right
+Global sUnitNames(0) As String
+Global fUnitsPerDegree(0) As Float
+
+Define AppVersion 3.5
+Define ButtonStart 110
+Define ButtonShift 45
+Define NoButtonShift 0
+Define ScaleBarConfigFile "ScaleBar.CFG"
+Define ScaleBarPreferenceFile "ScaleBar.PRF"
+Define MilesPerDegree 69.171
+Define EditTextID 601
+Define EditText2ID 602
+Define ListBoxID 603
+Define UseLonLatID 604
+Define CorrectID 605
+Define Correct2ID 606
+Define AdjustFontID 609
+
+'****************************************************************************
+' Sub Main
+'****************************************************************************
+Sub Main 
+
+  ' Assign some global variables needed by the AutoLoad library. 
+  ' these globals are defined in AUTO_LIB.DEF . 
+
+  OnError Goto HandleError
+
+  If LoadStrings((ApplicationDirectory$() + "ScaleBar.str")) = FALSE Then
+    Note "Unable to access resource string file: " + ApplicationDirectory$() + "ScaleBar.str"
+    Exit Sub
+  End If
+
+
+  gsAppFilename = "ScaleBar.mbx"    ' name of MapBasic app file  
+  gsAppDescription = GetResString(IDS_APP_DESCRIPTION)     ' description to appear in dialogs
+
+  If SystemInfo(SYS_INFO_PLATFORM) = PLATFORM_MAC Then 
+    OkButtonShift = ButtonShift      'On Mac, move the OK buttons to right of Cancel
+    CancelButtonShift = NoButtonShift 
+    HelpBUttonShift = ButtonShift * 2
+  Else 
+    OkButtonShift = NoButtonShift 
+    CancelButtonShift = ButtonShift  'On Win, move the Cancel button to right of OK 
+    HelpBUttonShift = ButtonShift * 2
+  End If 
+
+  Create Menu GetResString(IDS_MENU_NAME) As 
+    GetResString(IDS_MENU_ITEM_NAME) Calling DrawScale,    
+    GetResString(IDS_SET_UP_MENU_ITEM_NAME) Calling Setup,    
+    "(-",
+    GetResString(IDS_ABOUT_MENU_ITEM_NAME) Calling About,
+    GetResString(IDS_EXIT_MENU_ITEM_NAME) Calling Bye
+
+  If SystemInfo(SYS_INFO_MIVERSION) >= 450 Then
+    Call set_tools_menu(GetResString(IDS_MENU_NAME))
+  Else
+    Create Menu GetResString(IDS_TOOLS_MENU) As
+      GetResString(IDS_MENU_NAME) As GetResString(IDS_MENU_NAME)
+    Alter Menu Bar Add GetResString(IDS_TOOLS_MENU)
+  End If
+
+  Alter ButtonPad ID 3
+    Add 
+      Separator 
+      ToolButton 
+        Icon MI_ICON_MAPSYMB_3
+        HelpMsg GetResString(IDS_HELP_MESSAGE)  
+        Cursor MI_CURSOR_CROSSHAIR    ' the draw-mode mouse cursor 
+        DrawMode  DM_CUSTOM_POINT     ' let the user click, but not drag
+        Calling CustomToolHandler 
+    Show 
+
+  lGuessThePosition = FALSE 
+  FontStyle = CurrentFont()
+  OnPenStyle = MakePen(1, 2, BLACK)      ' default to black...
+  OffPenStyle = MakePen(1, 1, WHITE)     ' default to blank...
+  OnBrushStyle = MakeBrush(2, BLACK, WHITE)      ' default to black...
+  OffBrushStyle = MakeBrush(2, WHITE, BLACK)     ' default to white...
+  fOldMapZoom = 0
+  lUseLonLat = FALSE
+  lAdjustFontSize = TRUE
+  lNoWarning = FALSE
+  lNoPrompt = FALSE
+  fScaleWidthToHeightRatio = 20
+
+  Call SetUpDistanceUnits
+  Call ReadPreferences
+
+  Exit Sub
+
+HandleError:
+  Note "Main: " + Error$()
+  Resume Next
+
+End Sub 
+'****************************************************************************
+' Function fDistUnitsPerCoordUnits
+'
+'****************************************************************************
+Function fDistUnitsPerCoordUnits(Index As SmallInt, CoordUnit As String) As Float
+
+  OnError Goto HandleError
+
+  Dim sUnitName As String
+  Dim i As Integer
+  Dim x as float
+
+  sUnitName = UnitName$(CoordUnit)
+
+  For i = 1 To Ubound(sUnitNames)
+    If sUnitName = sUnitNames(i) Then
+      Exit For
+    End If
+  Next
+  If i <= Ubound(sUnitNames) Then
+    x = fUnitsPerDegree(Index)/fUnitsPerDegree(i)
+    fDistUnitsPerCoordUnits = x
+  Else
+    x = fUnitsPerDegree(Index)
+    fDistUnitsPerCoordUnits = x
+  End If
+  Exit Function
+
+HandleError:
+  Note "fDistUnitsPerCoordUnits: " + Error$()
+  Resume Next
+
+End Function
+
+'****************************************************************************
+' Sub SetUpDistanceUnits
+'
+'****************************************************************************
+Sub SetUpDistanceUnits
+
+  OnError Goto HandleError
+
+  Dim sConfPath As String
+
+  ReDim sUnitNames(1) 
+  ReDim fUnitsPerDegree(1)
+
+  sUnitNames(1) = GetResString(IDS_MILES)
+  fUnitsPerDegree(1) = MilesPerDegree
+  iUnit = 1
+  If FileExists(GetFolderPath$(FOLDER_MI_APPDATA) + ScaleBarConfigFile) Then
+    sConfPath = GetFolderPath$(FOLDER_MI_APPDATA) + ScaleBarConfigFile
+  ElseIf FileExists(GetFolderPath$(FOLDER_MI_PREFERENCE) + ScaleBarConfigFile) Then
+    sConfPath = GetFolderPath$(FOLDER_MI_PREFERENCE) + ScaleBarConfigFile
+  ElseIf FileExists(ApplicationDirectory$() + ScaleBarConfigFile) Then
+    sConfPath = ApplicationDirectory$() + ScaleBarConfigFile
+    OnError GoTo SkipFile
+    Open File sConfPath For Input As #1 
+    Do While Not EOF(1)  
+      iUnit = iUnit + 1 
+      ReDim sUnitNames(iUnit)
+      ReDim fUnitsPerDegree(iUnit)
+      Input #1, sUnitNames(iUnit), fUnitsPerDegree(iUnit)
+      If sUnitNames(iUnit) <> "" And fUnitsPerDegree(iUnit) = 0 Then
+        fUnitsPerDegree(iUnit) = 1
+      End If
+    Loop 
+    Close File #1 
+    Do While sUnitNames(iUnit) = "" Or fUnitsPerDegree(iUnit) = 0  
+      iUnit = iUnit - 1 
+      ReDim sUnitNames(iUnit)
+      ReDim fUnitsPerDegree(iUnit)
+    Loop 
+  End If
+NoFile:
+  If UBound(sUnitNames) < 2 Then
+    ReDim sUnitNames(12) 
+    ReDim fUnitsPerDegree(12)
+    sUnitNames(2) = GetResString(IDS_NAUTICAL_MILES)
+    fUnitsPerDegree(2) = 60.10795563
+    sUnitNames(3) = GetResString(IDS_YARDS)
+    fUnitsPerDegree(3) = 121604.19
+    sUnitNames(4) = GetResString(IDS_FEET)
+    fUnitsPerDegree(4) = 365222.88
+    sUnitNames(5) = GetResString(IDS_US_SURVEY_FEET)
+    fUnitsPerDegree(5) = 365222.161
+    sUnitNames(6) = GetResString(IDS_INCHES)
+    fUnitsPerDegree(6) = 4382674.5
+    sUnitNames(7) = GetResString(IDS_KILOMETERS)
+    fUnitsPerDegree(7) = 111.3199338
+    sUnitNames(8) = GetResString(IDS_KILOMETRES)
+    fUnitsPerDegree(8) = 111.3199338
+    sUnitNames(9) = GetResString(IDS_METERS)
+    fUnitsPerDegree(9) = 111319.9338
+    sUnitNames(10) = GetResString(IDS_METRES)
+    fUnitsPerDegree(10) = 111319.9338
+    sUnitNames(11) = GetResString(IDS_CM)
+    fUnitsPerDegree(11) = 11131993.38
+    sUnitNames(12) = GetResString(IDS_MM)
+    fUnitsPerDegree(12) = 111319933.8
+  End If
+
+  Set CoordSys Earth
+  Set Distance Units  "mi"
+  iUnit = 1   ' default to Miles
+
+Done: 
+    Exit Sub 
+
+SkipFile: 
+    Resume NoFile
+  Exit Sub
+
+HandleError:
+  Note "SetUpDistanceUnits: " + Error$()
+  Resume Next
+End Sub
+
+
+'***********************************************************************
+' Sub DrawScale 
+'    this is called if the user picks the Draw Scale item from 
+'    the Map menu.   We'll set a global flag, then call the 
+'    CustomToolHandler sub.  This way, the customtoolhandler sub   
+'    will ALWAYS get called, regardless of whether the user 
+'    clicked with the MapBasic tool or picked the menu item. 
+'***********************************************************************
+Sub DrawScale 
+
+  OnError Goto HandleError
+
+  lGuessThePosition = TRUE   
+  Call CustomToolHandler 
+  Exit Sub
+
+HandleError:
+  Note "DrawScale:" + Error$()
+  Resume Next
+
+End Sub 
+
+Sub Setup
+
+  OnError Goto HandleError
+
+  Dialog
+    Title GetResString(IDS_SETUP)
+    Control CheckBox
+      Title GetResString(IDS_CURVE_WITH_LATITUDE)
+      Value lUseLonLat
+      Into lUseLonLat
+      Position 10, 10 
+    Control StaticText 
+      Title GetResString(IDS_FILL_COLOR) 
+      Position 10, 35
+    Control BrushPicker 
+      Value OnBrushStyle 
+      Into OnBrushStyle 
+      Position 110, 30
+    Control StaticText 
+      Title GetResString(IDS_PEN_COLOR)
+      Position 10, 60
+    Control PenPicker 
+      Value OnPenStyle 
+      Into OnPenStyle 
+      Position 110, 55
+    Control StaticText 
+      Title GetResString(IDS_FONT_FOR_LABELS) 
+      Position 10, 85 
+    Control FontPicker 
+      Value FontStyle 
+      Into FontStyle 
+      Position 110, 80
+    Control CheckBox
+      Title GetResString(IDS_ADJUST_FONT)
+      Value lAdjustFontSize
+      Into lAdjustFontSize
+      Position 10, 105 
+    Control OKButton
+      Title GetResString(IDS_OK)
+    Control CancelButton 
+      Title GetResString(IDS_CANCEL)
+  Exit Sub
+
+HandleError:
+  Note "DrawScale:" + Error$()
+  Resume Next
+
+End Sub 
+
+'************************************************************************
+'  Sub CustomToolHandler
+'
+'      This is called if the user clicks with the 
+'      custom tool which we added to the TOOLS buttonpad.  
+' 
+'      We'll quit if the user clicked in a non-Mapper window. 
+'      If the user did click in a Mapper, we'll note the 
+'      (long, lat) coordinates where they clicked, 
+'      then we'll put up a dialog to let them specify 
+'      how big a scale bar to draw  (0 - 100 miles, 0 - 50 miles, etc.). 
+' 
+'      If the user OK's the dialog, we'll draw several rectangle and 
+'      text objects (to the mapper's Cosmetic layer) forming the scale. 
+'************************************************************************
+Sub CustomToolHandler
+  Dim minx, miny, maxx, maxy, fScaleDX, fScaleDY,
+      x, y, x2, y2, x3, y3, x4, y4, x5, y5, xLayout, yLayout,
+      fStringCentering, fError, fDelta, fMapperScale,
+      fHeight, fWidth As Float
+  Dim MapWindowID, LayoutWindowID, TargetWindowID, iEditLayer, iRowID, i As Integer
+  Dim sLabel, sUnits, sCmd, sDrawLayer As String
+  Dim oText, oFrame As Object
+  Dim aText, aFrame, aRowID as Alias
+
+  OnError Goto HandleError
+
+  If NumWindows() < 1 Then 
+    Note GetResString(IDS_OPEN_MAP_WINDOW) 
+    Exit Sub 
+  End If 
+
+  If WindowInfo(FrontWindow(), WIN_INFO_TYPE) = WIN_LAYOUT Then 
+    lLayout = TRUE
+    LayoutWindowID = FrontWindow()
+    If SelectionInfo(SEL_INFO_TABLENAME) <> WindowInfo(LayoutWindowID,WIN_INFO_TABLE) Then
+      Close Table Selection
+    End If
+    If SelectionInfo(SEL_INFO_NROWS) <> 1 Then
+      sDrawLayer = WindowInfo(LayoutWindowID,WIN_INFO_TABLE)
+      aFrame = sDrawLayer + ".Obj"
+      aRowID = sDrawLayer + ".RowID"
+      Fetch First From sDrawLayer
+      Do While Not EOT(sDrawLayer)
+        oFrame = aFrame
+        If Str$(oFrame) = "Frame" Then
+          iRowID = aRowID
+          Select * From sDrawLayer Where RowID = iRowID
+          Exit Do
+        End If
+        Fetch Next From sDrawLayer
+      Loop
+    End If
+    If SelectionInfo(SEL_INFO_NROWS) <> 1 Then
+      Note GetResString(IDS_MAP_WINDOW_FRAME)
+      Exit Sub
+    End If
+    Select * From Selection 'necessary for 2nd time around because inserting text objects below screws up selected obj
+    If Str$(Selection.Obj) <> "Frame" Then
+      Note GetResString(IDS_MAP_WINDOW_FRAME)
+      Exit Sub
+    End If
+    oFrame = Selection.Obj
+    MapWindowID = ObjectInfo(oFrame, OBJ_INFO_FRAMEWIN)
+    If MapWindowID = 0 Then
+      Note GetResString(IDS_MAP_WINDOW_FRAME)
+      Exit Sub
+    End If
+    Set CoordSys Layout Units "in"
+    If ObjectGeography(oFrame, OBJ_GEO_MAXX) - ObjectGeography(oFrame, OBJ_GEO_MINX) <> WindowInfo(MapWindowID, WIN_INFO_WIDTH) Then
+      If Not lNoPrompt Then
+        Set CoordSys Layout Units "in"
+        xLayout = CommandInfo(CMD_INFO_X) 
+        yLayout = CommandInfo(CMD_INFO_Y) 
+        lAdjustFrame = FALSE
+        lAdjustMapWindow = FALSE
+        Dialog
+          Title GetResString(IDS_WARNING)
+          Control StaticText
+            Title GetResString(IDS_FRAME_MAP_MISMATCH)
+            Width 200
+            Height 40
+          Control CheckBox
+            Title GetResString(IDS_SKIP_WARNING)
+            Value lNoPrompt
+            Into lNoPrompt
+          Control Button
+            Title GetResString(IDS_ADJUST_FRAME)
+            Calling AdjustFrameButtonHandler
+          Control Button
+            Title GetResString(IDS_ADJUST_MAP_WINDOW)
+            Calling AdjustMapWindowButtonHandler
+          Control OKButton
+            Title GetResString(IDS_IGNORE)
+          Control CancelButton
+            Title GetResString(IDS_CANCEL)
+          If lAdjustFrame Then
+            Alter Object oFrame Geography OBJ_GEO_MAXX, ObjectGeography(oFrame, OBJ_GEO_MINX) + WindowInfo(MapWindowID, WIN_INFO_WIDTH)
+            Update Selection Set Obj = oFrame
+          ElseIf lAdjustMapWindow Then
+            Set Window MapWindowID Width ObjectGeography(oFrame, OBJ_GEO_MAXX) - ObjectGeography(oFrame, OBJ_GEO_MINX)
+          Else
+            If CommandInfo(CMD_INFO_DLG_OK) = FALSE Then 
+              Exit Sub
+            End If
+          End If
+        Set Command Info CMD_INFO_X To xLayout
+        Set Command Info CMD_INFO_Y To yLayout 
+      End If
+    End If
+     
+  Else
+    lLayout = FALSE
+    MapWindowID = FrontWindow()
+    If WindowInfo(MapWindowID, WIN_INFO_TYPE) <> WIN_MAPPER Then 
+      Note GetResString(IDS_ACTIVATE_MAP_WINDOW) 
+      Exit Sub 
+    End If
+  End If
+
+  If lGuessThePosition = FALSE Then 'get where user clicked
+    If lLayout Then
+      Set CoordSys Layout Units "in"
+      xLayout = CommandInfo(CMD_INFO_X) 
+      yLayout = CommandInfo(CMD_INFO_Y) 
+    Else
+      If lUseLonLat Then
+        Set CoordSys Earth
+        x = CommandInfo(CMD_INFO_X) 
+        y = CommandInfo(CMD_INFO_Y) 
+      Else
+        sCmd = "Set " + MapperInfo(MapWindowID, MAPPER_INFO_COORDSYS_CLAUSE_WITH_BOUNDS)
+        Run Command sCmd
+        x = CommandInfo(CMD_INFO_X) 
+        y = CommandInfo(CMD_INFO_Y) 
+      End If
+    End If
+  End If
+
+  If lLayout Then
+    If Not lNoWarning Then
+      Dialog
+        Title GetResString(IDS_WARNING)
+        Control StaticText
+          Title GetResString(IDS_SCALE_INACCURATE)
+          Width 200
+          Height 40
+          Position 10, 10
+        Control StaticText
+          Title GetResString(IDS_SCALE_ACCURATE_AT_MIDDLE)
+          Width 200
+          Height 40
+          Position 10, 50
+        Control CheckBox
+          Title GetResString(IDS_SKIP_WARNING)
+          Value lNoWarning
+          Into lNoWarning
+        Control OKButton
+          Title GetResString(IDS_OK)
+        Control CancelButton
+          Title GetResString(IDS_CANCEL)
+      If Not CommandInfo(CMD_INFO_DLG_OK) Then 
+        Exit Sub
+      End If
+    End If
+  End If
+
+  ' Guess how large a scale to draw;  make the default size about
+  ' 1/4  the mapper's width.  But we should take steps to round 
+  ' off the distance - no one wants a scale to go from 
+  ' 0  to   1.15  miles...  
+
+  Set Distance Units "mi"
+
+  fMapZoom = MapperInfo(MapWindowID, MAPPER_INFO_ZOOM)
+  If fMapZoom <> fOldMapZoom Then
+    fScaleWidth = fMapZoom  / MilesPerDegree * fUnitsPerDegree(iUnit) / 4
+    fScaleInDegrees = fScaleWidth / fUnitsPerDegree(iUnit)
+    Call RoundScaleWidth
+    fOldMapZoom = fMapZoom
+  End If
+
+  Dialog
+    Title GetResString(IDS_DRAW_SCALE) + " (" + GetResString(IDS_VERSION) + " " + Str$(AppVersion) + ")"
+    Calling DialogHandler
+    Control StaticText
+      Title GetResString(IDS_WIDTH) 
+      Position 10, 10
+    Control EditText 
+      Value Str$(fScaleWidth) 
+      ID EditTextID 
+      Position 10, 20
+    Control StaticText
+      Title GetResString(IDS_UNITS)
+      Position 100, 10
+    Control ListBox
+      Title From Variable sUnitNames
+      Value iUnit
+      ID ListBoxID
+      Position 100, 20
+      Height 40
+      Calling AdjustScaleWidth
+    Control StaticText
+      Title GetResString(IDS_WIDTH_TO_HEIGHT_RATIO)
+      Position 10, 36
+    Control EditText 
+      Value Str$(fScaleWidthToHeightRatio)
+      ID EditText2ID
+      Position 10, 46
+      Width 60
+    Control StaticText
+      Title ":1"
+      Position 72, 48
+    Control CheckBox
+      Title GetResString(IDS_CURVE_WITH_LATITUDE)
+      Position 10, 65
+      Value lUseLonLat
+      Into lUseLonLat
+      ID UseLonLatID
+      Calling UseLonLatHandler
+    Control CheckBox
+      Title GetResString(IDS_ADJUST_DISTANCE)
+      Position 10, 85
+      Value lCorrect
+      Into lCorrect
+      ID CorrectID
+    Control StaticText
+      Title GetResString(IDS_ADJUST_DISTANCE_2)
+      Position 22, 95
+      ID Correct2ID
+    Control StaticText 
+      Title GetResString(IDS_FILL_COLOR)
+      Position 200, 15
+    Control BrushPicker 
+      Value OnBrushStyle 
+      Into OnBrushStyle 
+      Position 290, 10
+    Control StaticText 
+      Title GetResString(IDS_PEN_COLOR)
+      Position 200, 40
+    Control PenPicker 
+      Value OnPenStyle 
+      Into OnPenStyle 
+      Position 290, 35
+    Control StaticText 
+      Title GetResString(IDS_FONT_FOR_LABELS)
+      Position 200, 65
+    Control FontPicker 
+      Value FontStyle 
+      Into FontStyle 
+      Position 290, 60
+    Control CheckBox
+      Title GetResString(IDS_ADJUST_FONT)
+      Value lAdjustFontSize
+      Into lAdjustFontSize
+      Position 200, 85 
+      ID AdjustFontID
+    Control Button 
+      Title GetResString(IDS_HELP)
+      Position ButtonStart + HelpButtonShift, 120 
+      Calling About 
+    Control OKButton
+      Title GetResString(IDS_OK)
+      Position ButtonStart + OkButtonShift, 120
+      Calling OkHandler 
+    Control CancelButton 
+      Title GetResString(IDS_CANCEL)
+      Position ButtonStart + CancelButtonShift, 120
+      Calling CancelHandler 
+
+  If CommandInfo(CMD_INFO_DLG_OK) Then 
+
+  If lUseLonLat Then
+    Set CoordSys Earth
+  Else
+    sCmd = "Set " + MapperInfo(MapWindowID , MAPPER_INFO_COORDSYS_CLAUSE_WITH_BOUNDS)
+    Run Command sCmd
+  End If
+
+  minx = MapperInfo(MapWindowID, MAPPER_INFO_MINX)
+  miny = MapperInfo(MapWindowID, MAPPER_INFO_MINY)
+  maxx = MapperInfo(MapWindowID, MAPPER_INFO_MAXX)
+  maxy = MapperInfo(MapWindowID, MAPPER_INFO_MAXY)
+
+  If lLayout Then
+    x = minx + (maxx - minx) / 2
+    y = miny + (maxy - miny) / 2 
+  End If
+  
+  ' If the user picked the menu item, we'll guess where 
+  ' the scale should be located  (guess lower left corner). 
+
+  If lGuessThePosition = TRUE Then 
+    If lLayout Then
+      Call GetPaperSize(LayoutWindowID, fHeight, fWidth)
+      xLayout = fWidth / 20
+      yLayout = fHeight - (fHeight / fScaleWidthToHeightRatio)
+    Else
+      x = minx + ((maxx - minx) / 20)
+      y = miny + ((maxy - miny) / (fScaleWidthToHeightRatio / 2))
+    End If 
+    lGuessThePosition = FALSE 
+  End If
+
+  If lUseLonLat Then
+    i = 0
+  Else
+    i = InStr(1, sCmd, """")
+  End If
+  If i > 0 Then 'units specified in projection
+    sUnits = Mid$(sCmd, i+1, 10)
+    i = InStr(1, sUnits, """")
+    If i > 0 Then
+      sUnits = Left$(sUnits, i-1)
+    End if
+
+    fScaleDX = fScaleWidth / fDistUnitsPerCoordUnits(iUnit, sUnits)
+
+    ' A Scale looks good if the bar is about 1/20th as high 
+    ' as it is wide... (but do it before adjustment for latitude)
+
+    fScaleDY = fScaleDX / fScaleWidthToHeightRatio 
+
+    fScaleWidth = fScaleWidth/fUnitsPerDegree(iUnit)*MilesPerDegree 
+    fError = 1 - (Distance(x,y,x+fScaleDX,y, "mi")/fScaleWidth)
+    fError = fScaleWidth * fError ' correct for error
+    fScaleDX = fScaleDX + fError/(MilesPerDegree * cos(Abs(y) * DEG_2_RAD))
+    fError = 1 - (Distance(x,y,x+fScaleDX,y, "mi")/fScaleWidth)
+    fError = fScaleWidth * fError ' correct for error
+    fScaleDX = fScaleDX + fError/(MilesPerDegree * cos(Abs(y) * DEG_2_RAD))
+    fScaleWidth = fScaleWidth/MilesPerDegree*fUnitsPerDegree(iUnit) 
+
+
+  Else 'no units specified projection, do it all in lat/lon
+
+    ' The user chose some distance - either a number in Miles, 
+    ' or a number in kilometers.  We'll have to convert that distance
+    ' into degress before we can draw the scale.  To formula for 
+    ' converting miles to degrees uses the number  69.171; 
+    ' the formula for kilometers to degrees uses the number 111.3. 
+
+    ' The formula for converting miles or km to degrees 
+    ' is also affected by how far north or south you are. 
+    ' So we'll multiply by the cosine of whatever latitude the 
+    ' scale is being drawn at.  Note:  at the equator  (lat = 0), 
+    ' the cosine(0) = 1, meaning that at the equator, 
+    ' one degree equals 69.171 miles.  
+
+    fScaleDX = fScaleWidth / fUnitsPerDegree(iUnit)
+
+    ' A Scale looks good if the bar is about 1/20th as high 
+    ' as it is wide... (but do it before adjustment for latitude)
+
+    fScaleDY = fScaleDX / fScaleWidthToHeightRatio  
+
+    If InStr(1, MapperInfo(MapWindowID, MAPPER_INFO_COORDSYS_CLAUSE), "NonEarth") = 0 Then
+      fScaleDX = fScaleDX / cos(Abs(y) * DEG_2_RAD)
+      If lCorrect Then
+        fScaleWidth = fScaleWidth/fUnitsPerDegree(iUnit)*MilesPerDegree 
+        fError = 1 - (Distance(x,y,x+fScaleDX,y, "mi")/fScaleWidth)
+        fError = fScaleWidth * fError ' correct for error
+        fScaleDX = fScaleDX + fError/(MilesPerDegree * cos(Abs(y) * DEG_2_RAD))
+        fError = 1 - (Distance(x,y,x+fScaleDX,y, "mi")/fScaleWidth)
+        fError = fScaleWidth * fError ' correct for error
+        fScaleDX = fScaleDX + fError/(MilesPerDegree * cos(Abs(y) * DEG_2_RAD))
+        fScaleWidth = fScaleWidth/MilesPerDegree*fUnitsPerDegree(iUnit) 
+      End If
+    End If
+  End If
+
+    ' pre-calculate a bunch of x- and y-positions, representing 
+    ' the various prominent positions along the scale bar. 
+
+    x2 = x + fScaleDX / 4
+    x3 = x + fScaleDX / 2 
+    x4 = x + fScaleDX 
+    x5 = x + fScaleDX * 3/4
+
+    y = y ' causes error in distance + (2.5 * fScaleDY) 'raise bar position (make room for "Miles" label underneath)
+    y2 = y - fScaleDY / 2
+    y3 = y + fScaleDY / 2
+'    y4 = y3 + (1.5 * fScaleDY) Released w/ MI Pro 5.5
+    y4 = y3 + (2 * fScaleDY) 'new after version released w/ MI Pro 5.5
+    y5 = y - (3 * fScaleDY) 
+
+
+    If lLayout Then
+      TargetWindowID = LayoutWindowID
+      sUnits = MapperInfo(MapWindowID, MAPPER_INFO_DISTUNITS)
+      fMapperScale = MapperInfo(MapWindowID, MAPPER_INFO_SCALE)
+
+      x2 = xLayout + Distance(x2, y, x, y, sUnits) / fMapperScale
+      x3 = xLayout + Distance(x3, y, x, y, sUnits) / fMapperScale
+      x4 = xLayout + Distance(x4, y, x, y, sUnits) / fMapperScale
+      x5 = xLayout + Distance(x5, y, x, y, sUnits) / fMapperScale
+ 
+      y2 = yLayout + Distance(x, y2, x, y, sUnits) / fMapperScale
+      y3 = yLayout - Distance(x, y3, x, y, sUnits) / fMapperScale
+      y4 = yLayout - Distance(x, y4, x, y, sUnits) / fMapperScale
+      y5 = yLayout + Distance(x, y5, x, y, sUnits) / fMapperScale
+
+      x = xLayout
+      y = yLayout
+
+      Set CoordSys Layout Units "in"
+    Else
+      TargetWindowID = MapWindowID
+      ' Make the mapper's Cosmetic layer editable. 
+      iEditLayer = MapperInfo(MapWindowID, MAPPER_INFO_EDIT_LAYER)
+      Set Map Window MapWindowID Layer 0 Editable On 
+    End If
+
+    Create Region Into Window TargetWindowID 1
+      4 (x, y) (x2, y) (x2, y2) (x, y2)
+      Pen OnPenStyle   Brush OffBrushStyle
+    Create Region Into Window TargetWindowID 1
+      4 (x, y) (x, y3) (x2, y3) (x2, y)
+      Pen OnPenStyle   Brush OnBrushStyle
+
+    Create Region Into Window TargetWindowID 1
+      4 (x2, y) (x3, y) (x3, y2) (x2, y2)
+      Pen OnPenStyle   Brush OnBrushStyle
+    Create Region Into Window TargetWindowID 1
+      4 (x2, y) (x3, y) (x3, y3) (x2, y3)
+      Pen OnPenStyle   Brush OffBrushStyle
+
+    Create Region Into Window TargetWindowID 1
+      6 (x3, y) (x5, y) (x4, y) (x4, y2) (x5, y2) (x3, y2)
+      Pen OnPenStyle   Brush OffBrushStyle
+    Create Region Into Window TargetWindowID 1
+      6 (x3, y3) (x5, y3) (x4, y3) (x4, y) (x5, y) (x3, y)
+      Pen OnPenStyle   Brush OnBrushStyle
+
+    If lLayout Then
+      sDrawLayer = WindowInfo(LayoutWindowID,WIN_INFO_TABLE)
+    Else
+      sDrawLayer = WindowInfo(MapWindowID,WIN_INFO_TABLE)
+    End If
+    aText = sDrawLayer + ".Obj"
+    aRowID = sDrawLayer + ".RowID"
+    If Not lAdjustFontSize Then
+
+      Set style Font FontStyle
+      sLabel = "0"
+	oText = CreateText(MapWindowID, 0, 0, sLabel, 0, LAYER_INFO_LBL_POS_CC, 0)
+      If lLayout Then
+        Alter Object oText Geography OBJ_GEO_MINX, x - .5 * Distance(ObjectGeography(oText,OBJ_GEO_MAXX),ObjectGeography(oText,OBJ_GEO_MINY),ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MINY), sUnits) / fMapperScale
+        Alter Object oText Geography OBJ_GEO_MINY, y3 - 4 * Distance(ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MAXY),ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MINY), sUnits) / fMapperScale
+      Else
+        fDelta = ObjectGeography(oText,OBJ_GEO_MAXX)- ObjectGeography(oText,OBJ_GEO_MINX)
+        Alter Object oText Geography OBJ_GEO_MINX, x - .5 * fDelta
+        Alter Object oText Geography OBJ_GEO_MAXX, x + .5 * fDelta
+        Alter Object oText Geography OBJ_GEO_MINY, y3
+      End If
+      Insert Into sDrawLayer (obj)
+	  Values (oText)
+
+      sLabel = Str$(fScaleWidth / 2) 
+      sLabel = FormatNumber$(sLabel)
+	oText = CreateText(MapWindowID, 0, 0, sLabel, 0, LAYER_INFO_LBL_POS_CC, 0)
+      If lLayout Then
+        Alter Object oText Geography OBJ_GEO_MINX, x3 - 3 * Distance(ObjectGeography(oText,OBJ_GEO_MAXX),ObjectGeography(oText,OBJ_GEO_MINY),ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MINY), sUnits) / fMapperScale
+        Alter Object oText Geography OBJ_GEO_MINY, y3 - 4 * Distance(ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MAXY),ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MINY), sUnits) / fMapperScale
+      Else
+        fDelta = ObjectGeography(oText,OBJ_GEO_MAXX)- ObjectGeography(oText,OBJ_GEO_MINX)
+        Alter Object oText Geography OBJ_GEO_MINX, x3 - .5 * fDelta
+        Alter Object oText Geography OBJ_GEO_MAXX, x3 + .5 * fDelta
+        Alter Object oText Geography OBJ_GEO_MINY, y3
+      End If
+      Insert Into sDrawLayer (obj)
+	  Values (oText)
+
+      sLabel = Str$(fScaleWidth) 
+      sLabel = FormatNumber$(sLabel)
+	oText = CreateText(MapWindowID, 0, 0, sLabel, 0, LAYER_INFO_LBL_POS_CC, 0)
+      If lLayout Then
+        Alter Object oText Geography OBJ_GEO_MINX, x4 - 3 * Distance(ObjectGeography(oText,OBJ_GEO_MAXX),ObjectGeography(oText,OBJ_GEO_MINY),ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MINY), sUnits) / fMapperScale
+        Alter Object oText Geography OBJ_GEO_MINY, y3 - 4 * Distance(ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MAXY),ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MINY), sUnits) / fMapperScale
+      Else
+        fDelta = ObjectGeography(oText,OBJ_GEO_MAXX)- ObjectGeography(oText,OBJ_GEO_MINX)
+        Alter Object oText Geography OBJ_GEO_MINX, x4 - .5 * fDelta
+        Alter Object oText Geography OBJ_GEO_MAXX, x4 + .5 * fDelta
+        Alter Object oText Geography OBJ_GEO_MINY, y3
+      End If
+      Insert Into sDrawLayer (obj)
+	  Values (oText)
+
+      sLabel = sUnitNames(iUnit)
+	oText = CreateText(MapWindowID, 0, 0, sLabel, 0, LAYER_INFO_LBL_POS_CC, 0)
+      If lLayout Then
+        Alter Object oText Geography OBJ_GEO_MINX, x3 - 3 * Distance(ObjectGeography(oText,OBJ_GEO_MAXX),ObjectGeography(oText,OBJ_GEO_MINY),ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MINY), sUnits) / fMapperScale
+        Alter Object oText Geography OBJ_GEO_MINY, y2
+      Else
+        fDelta = ObjectGeography(oText,OBJ_GEO_MAXX)- ObjectGeography(oText,OBJ_GEO_MINX)
+        Alter Object oText Geography OBJ_GEO_MINX, x3 - .5 * fDelta
+        Alter Object oText Geography OBJ_GEO_MAXX, x3 + .5 * fDelta
+        Alter Object oText Geography OBJ_GEO_MINY, y2 - (ObjectGeography(oText,OBJ_GEO_MAXY)- ObjectGeography(oText,OBJ_GEO_MINY))
+      End If
+      Insert Into sDrawLayer (obj)
+	  Values (oText)
+
+    Else
+
+    ' fStringCentering represents how far we should shift a text label
+    ' left in order to center it over the appropriate "hot spot" 
+    ' on the scale bar.   Rough formula:  take the height of the
+    ' text area, divide it by two (since text is taller than it is wide). 
+    ' Then divide by 2 again, since we're centering the text.  
+    ' Multiply that value by the number of characters in the label. 
+   
+    sLabel = "0"
+    If lLayout Then
+      Create Text Into Window TargetWindowID 
+        sLabel
+        (x, y3) (x, y3)
+        Font FontStyle
+      Fetch Last From sDrawLayer
+      oText = aText
+      iRowID = aRowID      
+      Alter Object oText Geography OBJ_GEO_MINX, x - .5 * Distance(ObjectGeography(oText,OBJ_GEO_MAXX),ObjectGeography(oText,OBJ_GEO_MINY),ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MINY), "in")
+      Alter Object oText Geography OBJ_GEO_MINY, y3 - 1 * Distance(ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MAXY),ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MINY), "in")
+      Update sDrawLayer Set Obj = oText Where RowID = iRowID
+    Else
+      fStringCentering = .25 * (y4 - y3) 
+      Create Text Into Window TargetWindowID 
+        sLabel
+        (x - fStringCentering, y3) (x + fStringCentering, y4)
+        Font FontStyle
+    End if
+
+    sLabel = Str$(fScaleWidth / 2) 
+    sLabel = FormatNumber$(sLabel)
+    If lLayout Then
+      Create Text Into Window TargetWindowID 
+        sLabel
+        (x3, y3) (x3, y3)
+        Font FontStyle
+      Fetch Last From sDrawLayer
+      oText = aText
+      iRowID = aRowID      
+      Alter Object oText Geography OBJ_GEO_MINX, x3 - .5 * Distance(ObjectGeography(oText,OBJ_GEO_MAXX),ObjectGeography(oText,OBJ_GEO_MINY),ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MINY), "in")
+      Alter Object oText Geography OBJ_GEO_MINY, y3 - 1 * Distance(ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MAXY),ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MINY), "in")
+      Update sDrawLayer Set Obj = oText Where RowID = iRowID
+    Else
+      fStringCentering = .25 * (y4 - y3) * Len(sLabel) 
+      Create Text Into Window TargetWindowID 
+        sLabel
+        (x3 - fStringCentering, y3) (x3 + fStringCentering, y4) 
+        Font FontStyle
+    End If
+
+    sLabel = Str$(fScaleWidth) 
+    sLabel = FormatNumber$(sLabel)
+    If lLayout Then
+      Create Text Into Window TargetWindowID 
+        sLabel
+        (x4, y3) (x4, y3)
+        Font FontStyle
+      Fetch Last From sDrawLayer
+      oText = aText
+      iRowID = aRowID      
+      Alter Object oText Geography OBJ_GEO_MINX, x4 - .5 * Distance(ObjectGeography(oText,OBJ_GEO_MAXX),ObjectGeography(oText,OBJ_GEO_MINY),ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MINY), "in")
+      Alter Object oText Geography OBJ_GEO_MINY, y3 - 1 * Distance(ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MAXY),ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MINY), "in")
+      Update sDrawLayer Set Obj = oText Where RowID = iRowID
+    Else
+      fStringCentering = .25 * (y4 - y3) * Len(sLabel) 
+      Create Text Into Window TargetWindowID 
+        sLabel  
+        (x4 - fStringCentering, y3) (x4 + fStringCentering, y4) 
+        Font FontStyle 
+    End If
+
+    sLabel = sUnitNames(iUnit)
+    If lLayout Then
+      Create Text Into Window TargetWindowID 
+
+        sLabel
+        (x3, y2) (x3, y2)
+        Font FontStyle
+      Fetch Last From sDrawLayer
+      oText = aText
+      iRowID = aRowID      
+      Alter Object oText Geography OBJ_GEO_MINX, x3 - .5 * Distance(ObjectGeography(oText,OBJ_GEO_MAXX),ObjectGeography(oText,OBJ_GEO_MINY),ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MINY), "in")
+      Alter Object oText Geography OBJ_GEO_MINY, y2 + .25 * Distance(ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MAXY),ObjectGeography(oText,OBJ_GEO_MINX),ObjectGeography(oText,OBJ_GEO_MINY), "in")
+      Update sDrawLayer Set Obj = oText Where RowID = iRowID
+    Else
+      fStringCentering = .25 * (y4 - y3) * Len(sLabel) 
+      Create Text Into Window TargetWindowID 
+        sLabel
+'       (x3 - fStringCentering, y5) (x3 + fStringCentering, y - (.25 * fScaleDY))  released w/ MI Pro 5.5
+        (x3 - fStringCentering, y5) (x3 + fStringCentering, y2)  'new after version released w/ MI Pro 5.5
+        Font FontStyle
+    End If
+
+    End If
+
+    If Not lLayout Then
+      If iEditLayer <> -1 Then
+        Set Map Window MapWindowID Layer iEditLayer Editable On 
+      Else
+        Set Map Window MapWindowID Layer 0 Editable Off 
+      End If
+    End If
+
+  End If     
+  Exit Sub
+
+HandleError:
+  Note "CustomToolHandler: " + Error$()
+  Resume Next
+
+
+End Sub
+
+'*****************************************************************
+' RoundScaleWidth
+'*****************************************************************
+Sub RoundScaleWidth
+  Dim fMultiplier As Float
+
+  OnError Goto HandleError
+
+  fMultiplier = 1
+  If fScaleWidth >= 10 Then 
+    Do While fScaleWidth >= 10 
+      fScaleWidth = fScaleWidth / 10
+      fMultiplier = fMultiplier / 10
+    Loop 
+    fScaleWidth = Int(fScaleWidth)  /  fMultiplier 
+  ElseIf fScaleWidth < 1 Then 
+    Do While fScaleWidth < 1 
+      fScaleWidth = fScaleWidth * 10
+      fMultiplier = fMultiplier * 10
+    Loop 
+    fScaleWidth = Int(fScaleWidth)  /  fMultiplier 
+  Else 
+    fScaleWidth = Int(fScaleWidth) 
+  End If 
+  Exit Sub
+
+HandleError:
+  Note "RoundScaleWidth: " + Error$()
+  Resume Next
+
+End Sub
+
+'*****************************************************************
+' AdjustScaleWidth to be appropriate for the units selected
+'*****************************************************************
+Sub AdjustScaleWidth
+  Dim iNewUnit As Integer
+  Dim fTemp As Float
+
+  OnError Goto HandleError
+
+  fTemp = Val(ReadControlValue(EditTextID)) 
+  iNewUnit = ReadControlValue(ListBoxID)
+  If Abs(fTemp - fScaleWidth) > 1 Then
+    fScaleWidth = fTemp
+    fScaleInDegrees = fScaleWidth / fUnitsPerDegree(iUnit)
+  End If
+  If iUnit <> iNewUnit Then 'new after version released w/ MI Pro 5.5
+    fScaleWidth = fScaleInDegrees * fUnitsPerDegree(iNewUnit)
+    iUnit = iNewUnit
+    Call RoundScaleWidth
+  End If                    'new after version released w/ MI Pro 5.5
+  Alter Control EditTextID Value Str$(fScaleWidth)
+  Exit Sub
+
+HandleError:
+  Note "AdjustScaleWidth: " + Error$()
+  Resume Next
+
+End Sub
+
+'*****************************************************************
+' Sub DialogHandler
+'******************************************************************
+Sub DialogHandler 
+
+  OnError Goto HandleError
+
+  If lGuessThePosition = FALSE Then
+    Alter Control UseLonLatID Disable
+  End If
+  Call UseLonLatHandler
+  If lLayout Then
+    Alter Control AdjustFontID
+      Value FALSE
+      Disable
+  End If  
+  Exit Sub
+
+HandleError:
+  Note "DialogHandler: " + Error$()
+  Resume Next
+
+End Sub 
+'*****************************************************************
+' Sub UseLonLatHandler
+'******************************************************************
+Sub UseLonLatHandler 
+
+  OnError Goto HandleError
+
+  lUseLonLat = ReadControlValue(UseLonLatID)
+  If lUseLonLat Then
+    Alter Control CorrectID Enable
+    Alter Control Correct2ID Enable
+  Else
+    lCorrect = FALSE
+    Alter Control CorrectID Value lCorrect
+    Alter Control CorrectID Disable
+    Alter Control Correct2ID Disable
+  End If
+  Exit Sub
+
+HandleError:
+  Note "UseLonLatHandler: " + Error$()
+  Resume Next
+
+End Sub 
+'*****************************************************************
+' Sub OkHandler
+'   Called if the user clicks OK in the Scale dialog. 
+'   If the number the user chose is undesirable, 
+'   let's make them go back in the dialog and fix it. 
+'******************************************************************
+Sub OkHandler 
+
+  OnError Goto HandleError
+
+'  Call AdjustScaleWidth Don't mess with what the user enters!
+  fScaleWidth = Val(ReadControlValue(EditTextID)) 
+  If fScaleWidth / fUnitsPerDegree(iUnit) * MilesPerDegree <= 0 Then 
+    Note GetResString(IDS_SCALE_TOO_SMALL) 
+    Dialog Preserve
+  ElseIf fScaleWidth / fUnitsPerDegree(iUnit) * MilesPerDegree > fMapZoom Then 
+    Note GetResString(IDS_SCALE_TOO_LARGE) 
+    Dialog Preserve
+  End If 
+
+  fScaleWidthToHeightRatio = Val(ReadControlValue(EditText2ID))
+  If fScaleWidthToHeightRatio < 1 Then
+    fScaleWidthToHeightRatio = 1
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "OkHandler: " + Error$()
+  Resume Next
+
+End Sub 
+'*****************************************************************
+' 
+'******************************************************************
+Sub AdjustFrameButtonHandler
+  OnError Goto HandleError
+
+  lAdjustFrame = TRUE
+  Dialog Remove
+
+  Exit Sub
+HandleError:
+  Note "IgnoreButtonHandler: " + Error$()
+  Resume Next
+
+End Sub 
+'*****************************************************************
+' 
+'******************************************************************
+Sub AdjustMapWindowButtonHandler
+  OnError Goto HandleError
+
+  lAdjustMapWindow = TRUE
+  Dialog Remove
+
+  Exit Sub
+HandleError:
+  Note "IgnoreButtonHandler: " + Error$()
+  Resume Next
+
+End Sub 
+'*****************************************************************
+' 
+'******************************************************************
+Sub CancelHandler 
+  OnError Goto HandleError
+
+'  Call AdjustScaleWidth
+
+  Exit Sub
+
+HandleError:
+  Note "CancelHandler: " + Error$()
+  Resume Next
+
+End Sub 
+
+'****************************************************************************
+' Sub ReadPreferences
+'
+'****************************************************************************
+Sub ReadPreferences
+
+  Dim iBrushPattern, iBrushForeColor, iBrushBackColor As Integer
+  Dim iPenWidth, iPenPattern, iPenColor As Integer
+  Dim iFontStyle, iFontSize, iFontForeColor, iFontBackColor As Integer
+  Dim sFontName, sPrefPath As String
+  Dim fVersion as Float
+
+  OnError Goto HandleError
+
+  If FileExists(GetFolderPath$(FOLDER_MI_APPDATA) + ScaleBarPreferenceFile) Then
+    sPrefPath = GetFolderPath$(FOLDER_MI_APPDATA) + ScaleBarPreferenceFile
+  ElseIf FileExists(GetFolderPath$(FOLDER_MI_PREFERENCE) + ScaleBarPreferenceFile) Then
+    sPrefPath = GetFolderPath$(FOLDER_MI_PREFERENCE) + ScaleBarPreferenceFile
+  ElseIf FileExists(ApplicationDirectory$() + ScaleBarPreferenceFile) Then
+    sPrefPath = ApplicationDirectory$() + ScaleBarPreferenceFile
+  Else
+    GoTo SkipFile
+  End If
+
+  OnError GoTo SkipFile
+  Open File sPrefPath For Input As #2
+  If Not EOF(2) Then
+    Input #2, fVersion
+    Do Case fVersion 
+      Case AppVersion, 3.2, 3.3, 3.4, 3.5
+        Input #2, iUnit, lCorrect, lUseLonLat, iBrushPattern, iBrushForeColor, iBrushBackColor,
+                  sFontName, iFontStyle, iFontSize, iFontForeColor, iFontBackColor, lAdjustFontSize,
+                  lNoWarning, lNoPrompt, fScaleWidthToHeightRatio, iPenWidth, iPenPattern, iPenColor
+
+        OnBrushStyle = MakeBrush(iBrushPattern, iBrushForeColor, iBrushBackColor)
+        OnPenStyle = MakePen(iPenWidth, iPenPattern, iPenColor)
+        FontStyle = MakeFont(sFontName, iFontStyle, iFontSize, iFontForeColor, iFontBackColor)
+      Case 3.1
+        Input #2, iUnit, lCorrect, lUseLonLat, iBrushPattern, iBrushForeColor, iBrushBackColor,
+                  sFontName, iFontStyle, iFontSize, iFontForeColor, iFontBackColor, lAdjustFontSize,
+                  lNoWarning, lNoPrompt
+
+        OnBrushStyle = MakeBrush(iBrushPattern, iBrushForeColor, iBrushBackColor)
+        FontStyle = MakeFont(sFontName, iFontStyle, iFontSize, iFontForeColor, iFontBackColor)
+      Case 3.0
+        Input #2, iUnit, lCorrect, lUseLonLat, iBrushPattern, iBrushForeColor, iBrushBackColor,
+                  sFontName, iFontStyle, iFontSize, iFontForeColor, iFontBackColor, lAdjustFontSize,
+                  lNoWarning
+
+        OnBrushStyle = MakeBrush(iBrushPattern, iBrushForeColor, iBrushBackColor)
+        FontStyle = MakeFont(sFontName, iFontStyle, iFontSize, iFontForeColor, iFontBackColor)
+      Case 2.9, 2.8, 2.7
+        Input #2, iUnit, lCorrect, lUseLonLat, iBrushPattern, iBrushForeColor, iBrushBackColor,
+                  sFontName, iFontStyle, iFontSize, iFontForeColor, iFontBackColor, lAdjustFontSize
+
+        OnBrushStyle = MakeBrush(iBrushPattern, iBrushForeColor, iBrushBackColor)
+        FontStyle = MakeFont(sFontName, iFontStyle, iFontSize, iFontForeColor, iFontBackColor)
+      Case Else
+        Note GetResString(IDS_INCORRECT_VERSION) + " " + sPrefPath + GetResString(IDS_USING_INTERNAL_DEFAULTS)
+    End Case
+  End If 
+
+  Close File #2 
+
+  Exit Sub 
+
+SkipFile: 
+  'Note GetResString(IDS_UNABLE_TO_READ) + " " + sPrefPath + GetResString(IDS_USING_INTERNAL_DEFAULTS)
+  Exit Sub
+
+HandleError:
+  Note "ReadPreferences: " + Error$()
+  Resume Next
+End Sub
+'****************************************************************************
+' Sub WritePreferences
+'
+'****************************************************************************
+Sub WritePreferences
+
+  Dim iBrushPattern, iBrushForeColor, iBrushBackColor As Integer
+  Dim iPenWidth, iPenPattern, iPenColor As Integer
+  Dim iFontStyle, iFontSize, iFontForeColor, iFontBackColor As Integer
+  Dim sFontName As String
+
+  If FileExists(GetFolderPath$(FOLDER_MI_APPDATA)) then 
+    OnError GoTo SecondTry
+    Open File GetFolderPath$(FOLDER_MI_APPDATA) + ScaleBarPreferenceFile For Output As #2 
+    Goto OpenOkay
+  End If
+
+SecondTry:
+  If FileExists(GetFolderPath$(FOLDER_MI_PREFERENCE)) then 
+    OnError GoTo ThirdTry
+    Open File GetFolderPath$(FOLDER_MI_PREFERENCE) + ScaleBarPreferenceFile For Output As #2 
+    Goto OpenOkay
+  End If
+
+ThirdTry:
+  OnError GoTo SkipFile
+  Open File ApplicationDirectory$() + ScaleBarPreferenceFile For Output As #2 
+
+OpenOkay:
+      iBrushPattern = StyleAttr(OnBrushStyle, BRUSH_PATTERN)
+      iBrushForeColor = StyleAttr(OnBrushStyle, BRUSH_FORECOLOR)
+      iBrushBackColor = StyleAttr(OnBrushStyle, BRUSH_BACKCOLOR)
+      sFontName = StyleAttr(FontStyle, FONT_NAME)
+      iFontStyle = StyleAttr(FontStyle, FONT_STYLE)
+      iFontSize = StyleAttr(FontStyle, FONT_POINTSIZE)
+      iFontForeColor = StyleAttr(FontStyle, FONT_FORECOLOR)
+      iFontBackColor = StyleAttr(FontStyle, FONT_BACKCOLOR)
+      iPenWidth = StyleAttr(OnPenStyle, PEN_WIDTH)
+      iPenPattern = StyleAttr(OnPenStyle, PEN_PATTERN)
+      iPenColor = StyleAttr(OnPenStyle, PEN_COLOR)
+
+  
+      Write #2, AppVersion
+      Write #2, iUnit, lCorrect, lUseLonLat, iBrushPattern, iBrushForeColor, iBrushBackColor,
+                sFontName, iFontStyle, iFontSize, iFontForeColor, iFontBackColor, lAdjustFontSize,
+                lNoWarning, lNoPrompt, fScaleWidthToHeightRatio, iPenWidth, iPenPattern, iPenColor
+  Close File #2 
+
+NoFile: 
+    Exit Sub 
+
+SkipFile: 
+    Note GetResString(IDS_UNABLE_TO_WRITE) + " " + GetFolderPath$(FOLDER_MI_APPDATA) + ScaleBarPreferenceFile + GetResString(IDS_SKIPPING)
+    Resume NoFile
+  Exit Sub
+
+HandleError:
+  Note "WritePreferences: " + Error$()
+  Resume Next
+End Sub
+
+
+'****************************************************************************
+' Sub About
+'
+' Displays a little blurb explaining the purpose of this application.
+'****************************************************************************
+Sub About
+
+  ' Display an About dialog; called when the user chooses the About menu item. 
+
+  ' The About dialog contains a push-button that lets the user 
+  ' set up the app so that it always runs, whenever the user runs MapInfo. 
+  ' (This works by adding a line to the special file STARTUP.WOR). 
+  ' The push-button simply calls routines in the AutoLoad library, which 
+  ' does all the work associated with maintaining STARTUP.WOR.  
+
+  OnError Goto HandleError
+
+  Dialog 
+    Title GetResString(IDS_ABOUT) + " " + GetResString(IDS_APP_DESCRIPTION) + " (" + GetResString(IDS_VERSION) + " " + Str$(AppVersion) + ")"
+
+    Control StaticText  Title  GetResString(IDS_ABOUT_1)  Position 10, 10
+    Control StaticText  Title  GetResString(IDS_ABOUT_2)  Position 10, 18
+    Control StaticText  Title  GetResString(IDS_ABOUT_3)  Position 10, 26
+    Control StaticText  Title  GetResString(IDS_ABOUT_4)  Position 10, 34
+    Control StaticText  Title  GetResString(IDS_ABOUT_5)  Position 10, 42
+    Control StaticText  Title  GetResString(IDS_ABOUT_6)  Position 10, 50
+    Control StaticText  Title  GetResString(IDS_ABOUT_7)  Position 10, 58
+    Control StaticText  Title  GetResString(IDS_ABOUT_8)  Position 10, 66
+    Control StaticText  Title  GetResString(IDS_ABOUT_9)  Position 10, 74
+    Control StaticText  Title  GetResString(IDS_ABOUT_10) Position 10, 82
+    Control StaticText  Title  GetResString(IDS_ABOUT_11) Position 10, 90
+    Control StaticText  Title  GetResString(IDS_ABOUT_12) Position 10, 98
+    Control StaticText  Title  GetResString(IDS_ABOUT_13) Position 10, 106
+    Control StaticText  Title  GetResString(IDS_ABOUT_14) Position 10, 114
+    Control StaticText  Title  GetResString(IDS_ABOUT_15) Position 10, 122  
+    Control StaticText  Title  GetResString(IDS_ABOUT_16) Position 10, 130  
+    Control StaticText  Title  GetResString(IDS_ABOUT_17) Position 10, 138  
+    Control StaticText  Title  GetResString(IDS_ABOUT_18) Position 10, 146  
+    Control StaticText  Title  GetResString(IDS_ABOUT_19) Position 10, 164
+    Control StaticText  Title  GetResString(IDS_ABOUT_20) Position 10, 162
+    Control StaticText  Title  GetResString(IDS_ABOUT_21) Position 10, 170  
+    Control StaticText  Title  GetResString(IDS_ABOUT_22) Position 10, 178  
+
+    Control OKButton    Title  GetResString(IDS_OK) Width 45
+  Exit Sub
+
+HandleError:
+  Note "About: " + Error$()
+  Resume Next
+
+End Sub
+
+
+
+'*************************************************************************
+' Sub BYE  
+'    this terminates the SCALEBAR application and removes it from memory.
+'*************************************************************************
+Sub Bye
+  OnError Goto HandleError
+
+  Call WritePreferences
+  End Program
+
+  Exit Sub
+
+HandleError:
+  Note "Bye: " + Error$()
+  Resume Next
+
+End Sub 
+
+'///////////    End of SCALEBAR.MB     ////////////

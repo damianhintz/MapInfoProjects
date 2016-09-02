@@ -1,0 +1,118 @@
+Geoset.mb
+  Sub Main
+  Sub LoadGeoset
+  Sub CreateGeoset
+  Sub CreateGeosetAbout
+  Sub CreateGeosetDone
+  Function GetGeosetInfo(sGeosetName As String, sGeosetFile As String) As Logical
+  Sub EnableCreateGeoset
+  Function GetGeosetFileName( sGeosetFile As String ) As Logical
+  Function GetGeosetPath() As String
+  Sub WinFocusChangedHandler
+  Sub WinClosedHandler
+
+Reading
+Writing
+  GeosetData.mb
+    Function GetGeosetName() As String
+    Sub ResetGeoset()
+    Function SearchForGeosetTable( sTableName As String ) As Integer
+    Function AddGeosetTable( sTableName As String ) As Integer
+    Function MemorizeGeosetValue( sGKey As String, sGValue As String ) As Logical
+    Function ParseGeosetKey( sKey As String, sValue As String ) As Integer
+    Function ParseTableKey( lTableNumber As Integer, sKey As String, sValue As String ) As Integer
+    Function OpenGeosetTables( sGeosetPath As String ) As Logical
+    Function InterpretGoeset() As Logical
+    Function OpenMappperWnd( lWndID As Integer ) As Logical
+    Sub SetGeosetProjection( ByVal lWndID As Integer, sProjection As String )
+    Sub SetZoomLevelProperty( ByVal lWndID As Integer, sZoomLevel As String )
+    Sub SetMapCenterProperty( ByVal lWndID As Integer, vtGeoSet As tGeoSet )
+
+  GeosetKeys.mb
+    Function ParseZoomKey( vtZoom As tZoom, sKey As String, sValue As String ) As Integer
+    Function ParseBrushKey( vtBrush As tBrush, sKey As String, sValue As String ) As Integer
+    Function ParsePenKey( vtPen As tPen, sKey As String, sValue As String ) As Integer
+    Function ParseFontKey( vtFont As tFont, sKey As String, sValue As String ) As Integer
+    Function ParseBitmapKey( vtBitmap As tBitmap, sKey As String, sValue As String ) As Integer
+    Function ParseSymbolKey( vtSymbol As tSymbol, sKey As String, sValue As String ) As Integer
+    Function ParseDisplayKey( vtDisplay As tDisplay, sKey As String, sValue As String ) As Integer
+    Function ParseLabelKey( vtLabel As tLabel, sKey As String, sValue As String ) As Integer
+
+  GeosetLayer.mb
+    Function LogicalToString$(ByVal bValue As Logical) As String
+    Function CheckDescription(ByVal sTable As String, nType As SmallInt) As Logical
+    Sub CheckTable(ByVal sTable As String, nType As SmallInt)
+    Function CheckSeamlessForRaster(ByVal sTable As String) As SmallInt
+    Function DuplicateLayer(ByVal lMapWin As Integer, ByVal lLayer As Integer) As Logical
+    Function GetTableSourceType(sTableName As String) As String
+    Function ValidTableSourceType(sTableName As String) As Logical
+    Function GeosetLayerInfo(ByVal lMapWin As Integer, ByVal lLayer As Integer) As Logical
+
+  GeosetMapLayer.mb
+    Sub SetMapUnits( ByVal lWinID As Integer, sMapUnit As String ) ' 30.09.98
+    Sub SetLayerProperties( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+    Sub SetLayerSelectableMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+    Sub SetLayerEditableMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+    Sub SetLayerVisibleMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+    Sub SetLayerAutoLabelMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+    Sub SetLayerDisplayMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+    Function GetZoomValues( vtZoom As tZoom, lfMin As Float, lfMax As Float ) As Logical
+    Function GetBrushStyle( brBrush As Brush, vtBrush As tBrush ) As Logical
+    Function GetPenStyle( pnPen As Pen, vtPen As tPen ) As Logical
+    Function GetFontStyle( fnFont As Font, vtFont As tFont ) As Logical
+    Function GetSymbolStyle( smSymbol As Symbol, vtSymbol As tSymbol ) As Logical
+    Sub SetLayerLabelMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+    Sub SetLabelDuplicateMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+    Sub SetLabelOverlapMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+    Sub SetLabelParallelMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+    Sub SetLabelPartialSegmentMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+    Sub SetLabelLineTypeProperty( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+    Sub SetLabelMaxLabelsProperty( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+    Sub SetLabelOffsetProperty( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+    Sub SetLabelPositionProperty( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+    Sub InterpretGeosetMapUnits( sMapUnit As String )  
+    Function GetMapUnits() As String           
+
+  GeosetParser.mb
+    Function Parse( sLine As String ) As Integer
+    Function LookForDelimere( sLine As String, ByVal lLineLen As Integer ) As Logical
+    Function LookForGeosetKey( sLine As String, ByVal lLineLen As Integer ) As Logical
+    Function LookForGeosetValue( sLine As String, ByVal lLineLen As Integer ) As Logical
+    Function GetSubKey( sKey As String ) As String
+
+  GeosetRead.mb
+    Function ReadGeoSet( sGeoSetFile As String ) As Logical
+    Function CheckHeader( ByVal hGSTFile As Integer ) As Logical
+
+  GeosetStyle.mb
+    Function WriteGeosetMetadataBrush(ByVal sKey As String, ByVal styleBrush As Brush) As Logical
+    Function WriteGeosetMetadataPenStyle(ByVal sKey As String, ByVal sSubKey As String, ByVal stylePen As Pen) As Logical
+    Function WriteGeosetMetadataPen(ByVal sKey As String, ByVal stylePen As Pen) As Logical
+    Function WriteGeosetMetadataLinePen(ByVal sKey As String, ByVal stylePen As Pen) As Logical
+    Function WriteGeosetMetadataFont(ByVal sKey As String, ByVal styleFont As Font) As Logical
+    Function WriteGeosetMetadataSymbol(ByVal sKey As String, ByVal styleSymbol As Symbol) As Logical
+
+  GeosetWrite.mb
+    Function WriteGeosetOK As Logical
+    Function WriteGeosetMetadata(ByVal sKey As String, ByVal sValue As String) As Logical
+    Function NumListItems(ByVal sList As String, ByVal sDelimiter As String) As SmallInt
+    Function GetListString$(ByVal sList As String, ByVal nItem As Smallint, ByVal sDelimiter As String) As String
+    Function ReplaceListString$(ByVal sList As String, ByVal nItem As Smallint, ByVal sDelimiter As String, ByVal sReplacement As String) As String
+    Function UnitAbbrToUnitNumber(ByVal sUnitName As String) As SmallInt
+    Function CoordSysToProjection$(ByVal sCoordSys As String) As String
+    Function InitGeoset(ByVal lMapWin As Integer, ByVal sGeosetName As String, ByVal sGeosetFile As String) As Logical
+    Function CloseGeoset As Logical
+
+  Service.mb
+    Function OpenFile( lFileNumber As Integer, ByVal sPathName As String ) As Logical
+    Sub CloseFile( ByVal lFileNumber As Integer )
+    Function IsRelativePath( sPath As String ) As Logical
+    Function DirSeparatorChar() As String
+    Function MakeFullPath( ByVal sPrefix As String, ByVal sSuffix  As String ) As String
+    Function RemoveLastDirName( ByVal sPath As String, ByVal sDirSep  As String ) As String
+    Function GetSubDirName( sPath As String, ByVal sDirSep  As String ) As String
+    Function ConcatenatePath( sInitPath As String, sSuffix As String, ByVal sDirSep  As String ) As String
+    Function GetRegKeyValue( ByVal lKeyRoot As Integer, ByVal sKeyName As String, 
+    Function UnitNumberToUnitAbbr( ByVal lUnitNumber As Integer ) As String
+    Function MakeRelativePath( sDirName As String, sPath As String ) As String
+    Function GeoSetNameToFileName( ByVal sGeosetName As String ) As String

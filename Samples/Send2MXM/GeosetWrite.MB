@@ -1,0 +1,254 @@
+Include "MapBasic.def"
+Include "Geoset.def"
+Include "GeosetLoad.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+Dim mbWriteError As Logical 'has a write error occurred?
+Dim mnFile As SmallInt 'geoset file number
+
+'---------------------------------------
+' accessor function called externally so we don't have to expose
+' module-level variable
+'---------------------------------------
+Function WriteGeosetOK As Logical
+  WriteGeosetOK = Not mbWriteError
+End Function 'WriteGeosetOK
+
+'---------------------------------------
+' writes the specified key and value to the geoset
+'---------------------------------------
+Function WriteGeosetMetadata(ByVal sKey As String, ByVal sValue As String) As Logical
+  OnError Goto ErrorTrap
+
+  Print # mnFile, Chr$(34) + "\" + sKey + Chr$(34) + " = " + Chr$(34) + sValue + Chr$(34)
+  WriteGeosetMetadata = TRUE
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "WriteGeosetMetadata: " + Error$()
+  mbWriteError = TRUE
+  Resume Done
+End Function 'WriteGeosetMetadata
+
+'---------------------------------------
+' borrowed from MapBasic library
+'---------------------------------------
+Function NumListItems(ByVal sList As String, ByVal sDelimiter As String) As SmallInt
+  Dim nCount As SmallInt
+  Dim nPos As SmallInt
+
+  nCount = 0
+  If Len(sList) Then
+    nPos = Instr(1, sList, sDelimiter)
+    While nPos > 0 And nPos < Len(sList)
+      ' Count the Delimiter if it is not the last character in the string
+      nCount = nCount + 1
+      nPos = Instr(nPos + 1, sList, sDelimiter)
+    Wend 'nPos > 0 And nPos < Len(sList)
+    ' The number of items should be equal to the number of delimiters plus 1.
+    nCount = nCount + 1
+  End If 'Len(sList)
+  NumListItems = nCount
+End Function 'NumListItems
+
+'---------------------------------------
+' borrowed from MapBasic library
+'---------------------------------------
+Function GetListString$(ByVal sList As String, ByVal nItem As Smallint, ByVal sDelimiter As String) As String
+  Dim i As SmallInt
+  Dim nIndex1 As SmallInt
+  Dim nIndex2 As SmallInt
+
+  nIndex2 = 0
+  i = 1
+  While i <= nItem
+  	nIndex1 = nIndex2 + 1
+	  nIndex2 = Instr(nIndex1, sList, sDelimiter)
+  	i = i + 1
+  Wend 'i <= nItem
+
+  If nIndex2 = 0 Then
+  	GetListString$ = Right$(sList, Len(sList) - nIndex1 + 1)
+  Else
+	  GetListString$ = Mid$(sList, nIndex1, nIndex2 - nIndex1)
+  End If 'nIndex2 = 0
+End Function 'GetListString$
+
+'---------------------------------------
+' borrowed from MapBasic library
+'---------------------------------------
+Function ReplaceListString$(ByVal sList As String, ByVal nItem As Smallint, ByVal sDelimiter As String, ByVal sReplacement As String) As String
+  Dim i As SmallInt
+  Dim nIndex1 As SmallInt
+  Dim nIndex2 As SmallInt
+
+  nIndex2 = 0
+  i = 1
+  While i <= nItem
+  	nIndex1 = nIndex2 + 1
+	  nIndex2 = Instr(nIndex1, sList, sDelimiter)
+  	i = i + 1
+  Wend 'i <= nItem
+
+  If nIndex2 = 0 Then
+	  ReplaceListString$ = Left$(sList, nIndex1 - 1) + sReplacement
+  Else
+	  ReplaceListString$ = Left$(sList, nIndex1 - 1) + sReplacement + Right$(sList, Len(sList) - nIndex2 + 1)
+  End If 'nIndex2 = 0
+End Function 'ReplaceListString$
+
+'---------------------------------------
+' MB functions which return a CoordSys clause return the units as a string
+' representing an abbreviation of the unit name.  For geosets, we need the
+' internal numeric equivalent.  The numbers in this function come from
+' mfal.h.
+'---------------------------------------
+Declare Function UnitAbbrToUnitNumber(ByVal sUnitName As String) As SmallInt
+Function UnitAbbrToUnitNumber(ByVal sUnitName As String) As SmallInt
+  ' remove leading and trailing blanks
+  sUnitName = LTrim$(RTrim$(sUnitName))
+  ' strip quotes
+  sUnitName = Mid$(sUnitName, 2, Len(sUnitName) - 2)
+  Do Case sUnitName
+    Case "ch"
+      UnitAbbrToUnitNumber = 31
+    Case "cm"
+      UnitAbbrToUnitNumber = 6
+    Case "ft"
+      UnitAbbrToUnitNumber = 3
+    Case "in"
+      UnitAbbrToUnitNumber = 2
+    Case "km"
+      UnitAbbrToUnitNumber = 1
+    Case "li"
+      UnitAbbrToUnitNumber = 30
+    Case "m"
+      UnitAbbrToUnitNumber = 7
+    Case "mi"
+      UnitAbbrToUnitNumber = 0
+    Case "mm"
+      UnitAbbrToUnitNumber = 5
+    Case "nmi"
+      UnitAbbrToUnitNumber = 9
+    Case "rd"
+      UnitAbbrToUnitNumber = 32
+    Case "survey ft"
+      UnitAbbrToUnitNumber = 8
+    Case "yd"
+      UnitAbbrToUnitNumber = 4
+    Case Else
+      UnitAbbrToUnitNumber = -1
+  End Case 'sUnitName
+End Function 'UnitAbbrToUnitNumber
+
+'---------------------------------------
+' converts a CoordSys clause to a form which the geoset can use.
+' The left portion of the clause up to and including the word "Projection"
+' is stripped off, and the unit abbreviation (the third projection parameter)
+' is replaced with its numeric equivalant.
+'---------------------------------------
+Declare Function CoordSysToProjection$(ByVal sCoordSys As String) As String
+Function CoordSysToProjection$(ByVal sCoordSys As String) As String
+  Dim sSystem as String
+
+  ' set sSystem to the word following CoordSys (ie; Earth, Nonearth)
+  sSystem = LTrim$(Right$(sCoordSys, Len(sCoordSys) - InStr(1, sCoordSys, "CoordSys") - Len("CoordSys")))
+  sSystem = Left$(sSystem, InStr(1, sSystem, " ") - 1)
+
+  ' strip off any text following Bounds
+  sCoordSys = LTrim$(Left$(sCoordSys, InStr(1, sCoordSys, "Bounds") - 1))
+
+  If sSystem = "Earth" Then
+    sCoordSys = LTrim$(Right$(sCoordSys, Len(sCoordSys) - InStr(1, sCoordSys, "Projection") - Len("Projection")))
+    If NumListItems(sCoordSys, ",") >= 3 Then
+      sCoordSys = ReplaceListString$(sCoordSys, 3, ",", " " + UnitAbbrToUnitNumber(GetListString$(sCoordSys, 3, ",")))
+    End If 'NumListItems
+  Elseif sSystem = "Nonearth" Then
+    Dim sUnits as String
+    sUnits = LTrim$(Right$(sCoordSys, Len(sCoordSys) - InStr(1, sCoordSys, "Units") - Len("Units")))
+    sUnits = Left$(sUnits, InStr(1, sUnits, " ") - 1)
+    sCoordSys = "0, " + UnitAbbrToUnitNumber(sUnits)
+  Else
+    sCoordSys = ""
+  End if
+  CoordSysToProjection$ = sCoordSys
+End Function 'CoordSysToProjection$
+
+'---------------------------------------
+' opens the geoset file and writes geoset header and metadata
+'---------------------------------------
+Function InitGeoset(ByVal lMapWin As Integer, ByVal sGeosetName As String, ByVal sGeosetFile As String) As Logical
+  Dim sCoordSys As String
+
+  OnError Goto OpenError
+
+  ' Reset the error flag for each geoset
+  mbWriteError = FALSE
+
+  mnFile = 1
+NextFile:
+  Open File sGeosetFile For Output Access Write As # mnFile
+
+  OnError Goto ErrorTrap
+  ' write geoset header
+Print GetResString(IDS_WRITING_GEOSET) + " " + sGeosetFile
+  Print # mnFile, KEY_GEOSET_HEADER
+  Print # mnFile, KEY_VERSION + " " + gsGeoSetVersion 'GEOSET_VERSION
+  Print # mnFile, KEY_BEGIN_METADATA
+  ' write geoset-specific metadata
+  sCoordSys = MapperInfo(lMapWin, MAPPER_INFO_COORDSYS_CLAUSE_WITH_BOUNDS)
+  Run Command "Set " + sCoordSys
+  Do Case gsGeoSetVersion
+    Case GEOSET_VERSION_100, GEOSET_VERSION_400
+      InitGeoset = WriteGeosetMetadata("GEOSET\NAME", sGeosetName)
+        And WriteGeosetMetadata("GEOSET\PROJECTION", CoordSysToProjection$(sCoordSys))
+        And WriteGeosetMetadata("GEOSET\CENTER", MapperInfo(lMapWin, MAPPER_INFO_CENTERX) + "," + MapperInfo(lMapWin, MAPPER_INFO_CENTERY))
+        And WriteGeosetMetadata("GEOSET\ZOOMLEVEL", MapperInfo(lMapWin, MAPPER_INFO_ZOOM))
+        And WriteGeosetMetadata("GEOSET\AUTOLAYER", "FALSE")
+    Case GEOSET_VERSION_450
+      InitGeoset = WriteGeosetMetadata("GEOSET\NAME", sGeosetName)
+        And WriteGeosetMetadata("GEOSET\PROJECTION", CoordSysToProjection$(sCoordSys))
+        And WriteGeosetMetadata("GEOSET\CENTER", MapperInfo(lMapWin, MAPPER_INFO_CENTERX) + "," + MapperInfo(lMapWin, MAPPER_INFO_CENTERY))
+        And WriteGeosetMetadata("GEOSET\CENTER_USER", MapperInfo(lMapWin, MAPPER_INFO_CENTERX) + "," + MapperInfo(lMapWin, MAPPER_INFO_CENTERY))
+        And WriteGeosetMetadata("GEOSET\ZOOMLEVEL", MapperInfo(lMapWin, MAPPER_INFO_ZOOM))
+        And WriteGeosetMetadata("GEOSET\AUTOLAYER", "FALSE")
+    End Case
+
+Done:
+  Exit Function
+
+OpenError:
+  ' if file # already open (error 672), try next number
+  If Err() = 672 Then
+    mnFile = mnFile + 1
+    Resume NextFile
+  End If 'file # already open
+  ' fall through to general error trap if it's another type of error
+ErrorTrap:
+  Print "InitGeoset: " + Error$()
+  mbWriteError = TRUE
+  Resume Done
+End Function 'InitGeoset
+
+'---------------------------------------
+' ends the metadata section of the geoset file and closes it
+'---------------------------------------
+Function CloseGeoset As Logical
+  OnError Goto ErrorTrap
+
+  Print # mnFile, KEY_END_METADATA
+  Close File # mnFile
+  CloseGeoset = TRUE
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "CloseGeoset: " + Error$()
+  mbWriteError = TRUE
+  Resume Done
+End Function 'CloseGeoset
+

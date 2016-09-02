@@ -1,0 +1,112 @@
+'*************************************************************
+'****************************************************************************
+INCLUDE "MAPBASIC.DEF"
+INCLUDE "..\INC\DLSAMP.DEF"
+
+'* External utility functions
+'DECLARE Function PickerDialog (list AS STRING, BYVAL prompt AS STRING) AS STRING
+
+'DECLARE FUNCTION GetOperators(BYVAL whichsys AS STRING) AS STRING
+'DECLARE FUNCTION GetAggregates(BYVAL whichsys AS STRING) AS STRING
+'DECLARE FUNCTION GetFunctions(BYVAL whichsys AS STRING) AS STRING
+
+' Static variables (Use global)
+' Internal 
+Define Pick_ID    1 
+DIM globalout, globallist as STRING
+DECLARE SUB DoPick()
+
+'****************************************************************************
+'* Main external function (Modeled after FileOpenDialog)
+'****************************************************************************
+Function PickerDialog (list AS STRING, BYVAL prompt AS STRING) AS STRING
+  '* prime the selection fields
+  IF prompt="" THEN
+    prompt="Make a selection"
+  END IF
+     
+  globalout = ""
+  globallist=list
+
+  DIALOG
+    TITLE prompt
+    CONTROL LISTBOX
+      Width 80
+      Height 80
+      Position 0,0
+      TITLE list
+      ID Pick_ID   
+      CALLING DoPick
+
+  PickerDialog = globalout
+END function
+
+
+'****************************************************************************
+SUB DoPick
+  DIM Selection AS INTEGER 
+  Selection=ReadControlValue(Pick_ID)
+  globalout = SelectString(globallist, Selection)
+  DIALOG REMOVE
+END SUB
+
+
+'* utility functions
+'****************************************************************************
+FUNCTION GetOperators(BYVAL whichsys AS STRING) AS STRING
+  ' IF UCASE$(whichsys) = "ORACLE" THEN
+  
+  IF demodb = DATA_SOURCE_ORACLE THEN
+    ' Oracle Operators
+    GetOperators="=;<>;>;<;>=;<=;+;-;*;/;||;();AND;OR;NOT;LIKE;IN;BETWEEN;EXISTS;ANY;SOME;ALL;IS NULL;IS NOT NULL"
+    ' Multi query combinations (> 1 SELECT statement)
+    ' "UNION;UNION ALL;INTERSECT;MINUS;CONNECT BY PRIOR"
+  ELSE
+    ' Sybase Operators
+    GetOperators="=;<>;>;<;>=;<=;!;+;-;*;/;%;();and;or;not;like;in;between;all;is null;is not null"
+    ' Multi query combinations (> 1 SELECT statement)
+    ' "UNION;UNION ALL;INTERSECT;MINUS;CONNECT BY PRIOR"
+  END IF
+END FUNCTION
+
+
+'****************************************************************************
+FUNCTION GetAggregates(BYVAL whichsys AS STRING) AS STRING
+  '  IF UCASE$(whichsys) = "ORACLE" THEN
+  IF demodb = DATA_SOURCE_ORACLE THEN
+    ' Oracle Aggregates
+    GetAggregates="COUNT(*);DISTINCT();" +
+                "GLB();LUB();MIN();MAX();STDDEV();SUM();VARIANCE()"
+  ELSE
+    ' Sybase Aggregates
+    GetAggregates="count(*);distinct;avg();sum();min();max()"
+  END IF
+
+END FUNCTION
+
+
+'****************************************************************************
+FUNCTION GetFunctions(BYVAL whichsys AS STRING) AS STRING
+  '  IF UCASE$(whichsys) = "ORACLE" THEN
+  IF demodb = DATA_SOURCE_ORACLE THEN
+    ' Oracle Functions
+      GetFunctions="ABS();CEIL();COS();COSH();EXP();FLOOR();LN();LOG(,);" +
+               "MOD(,);POWER(,);ROUND();SIGN();SIN();SINH();SQRT();" +
+               "TAN();TANH();TRUNC();USER;" +
+               "CHR();CONCAT();INITCAP();LOWER();LPAD();LTRIM();REPLACE();" +
+               "ROUND();RPAD();RTRIM();SOUNDEX();SUBSTR();UPPER();ASCII();" +
+               "INSTR();LENGTH();SYSDATE;TRANSLATE();"
+        '"NLS_*;  many more"
+  ELSE
+    ' Sybase Functions
+      GetFunctions="abs();acos();asin();asin();atan();atn2();ceiling();cos();cot();" +
+               "degrees();exp();floor();log10();log();power(,);radians();rand();" +
+               "round();sign();sin();sqrt();tan();" +
+               "ascii();char();charindex(,),char_length(),difference(,);"+
+               "lower();ltrim();patindex( );replicate(,);" +
+               "reverse();right();rtrim();soundex();space();str(,,);stuff( );substring(,,);" +
+               "upper();" +
+               "db_id();db_name();host_name();user;getdate();convert()"
+        '"nls_*;  many more"
+  END IF
+END FUNCTION

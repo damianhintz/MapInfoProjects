@@ -1,0 +1,138 @@
+'*****************************************************************************
+'       Copyright © 2009 Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 66276 $
+'
+' Module Description:
+'
+' MapBasic samples to demonstate how to wrap MapInfo HTTP/XML
+' library internet APIs into MapBasic functions/subs.
+'
+'*****************************************************************************
+Include "../inc/Mapbasic.def"
+Include "../inc/HTTPTypes.def"
+Include "../inc/HTTPLib.def"
+Include "HTTPUtil.def"
+
+Sub DisplayError(ByVal nErr As Integer, ByVal strErr As String)
+	OnError GoTo ErrorHandler
+'	If nErr > 0 Then 'Check this, but I think it is wrong, the test should be for LESS THAN Zero
+	If nErr < 0 Then
+		Note strErr
+	Else
+		Note MIGetErrorMessage()
+	End If
+Done:
+	Exit Sub
+ErrorHandler:
+	If 342 = Err() Then
+		Note Error$()
+	End If
+	Resume Done
+End Sub
+
+Function HttpRequest(ByVal strURL As String, ByVal nVerb As Integer, ByVal strHeaders As String, ByVal strOptional As String, ByVal bAuthenticate As Logical, strContentType As String, ErrorMsg As String) As CString
+Dim nServiceType As Integer
+Dim strServer As String
+Dim strObject As String
+Dim nPort As INTERNET_PORT
+Dim hSession As CInternetSession
+Dim hConnection As CHttpConnection
+Dim dwFlags As Integer
+Dim hFile As CHttpFile
+
+  dwFlags = INTERNET_FLAG_EXISTING_CONNECT
+
+	OnError GoTo ErrorHandler
+
+  hSession = MICreateSession("MapInfo Professional v" + Format$(SystemInfo(SYS_INFO_MIVERSION)/100,"#.##")) 'Create the User-Agent String
+
+	' Parse URL
+	strServer = Space$(STRING_LEN)
+	strObject = Space$(STRING_LEN)
+	If Not MIParseURL(strURL, nServiceType, strServer, STRING_LEN, strObject, STRING_LEN, nPort) Then
+    ErrorMsg = "Bad URL (" + strURL + ")"
+    Error -1
+  End If
+
+	' Check that URL is HTTP or HTTPS
+	If INTERNET_SERVICE_HTTP <> nServiceType And AFX_INET_SERVICE_HTTPS <> nServiceType Then
+    ErrorMsg = "Unsupported Protocol " + nServiceType
+    Error -2
+  End If
+
+	' Connect to URL
+	hConnection = MIGetHttpConnection(hSession, strServer, nPort)
+	If hConnection = 0 Then
+    ErrorMsg = "Unable to establish connection"
+    Error -3
+  End If
+
+	' Open the request
+  If nServiceType = AFX_INET_SERVICE_HTTPS Then
+    dwFlags = dwFlags + INTERNET_FLAG_SECURE
+  End If
+
+'	hFile = MIOpenRequest(hConnection, nVerb, strObject)
+  hFile = MIOpenRequestFull(hConnection, nVerb, strObject, "", 1, "", dwFlags)
+	If hFile = 0 Then
+    ErrorMsg = "Unable to open request"
+    Error -4
+  End If
+
+	' Send the request
+	If Not MISendRequest(hFile, strHeaders, Len(strHeaders), strOptional, Len(strOptional), bAuthenticate) Then
+    ErrorMsg = "Unable to send request"
+    Error -5
+  End If
+
+	' Check the status
+	Dim nStatus As Integer
+	If Not MIQueryInfoStatusCode(hFile, nStatus) Then
+    ErrorMsg = "Unable to get HTTP Status"
+    Error -6
+  End If
+
+	If HTTP_STATUS_OK <> nStatus Then
+    ErrorMsg = "Bad HTTP Status (" + nStatus + ")"
+    Error -7
+  End If
+
+	' Get the content type
+	Dim nLen As Integer
+	nLen = STRING_LEN
+	strContentType = Space$(nLen)
+  If Not MIGetContentType(hFile, strContentType, nLen) Then
+    ErrorMsg = "Unable to get Content Type"
+    Error -8
+  End If
+
+	' Get the content
+	HttpRequest = MIGetContent(hFile)
+
+CleanUp:
+	OnError GoTo ErrorContinue
+	If hFile Then Call MICloseHttpFile(hFile) End If
+	If hConnection Then Call MICloseHttpConnection(hConnection) End If
+  If hSession Then Call MICloseSession(hSession) End If
+	Exit Function
+
+ErrorHandler:
+  If Err() > 0 Then
+    ErrorMsg = Error$()
+  End If
+	Resume CleanUp
+
+ErrorContinue:
+	ErrorMsg = Error$()
+	Resume Next
+End Function 'HttpRequest
+
+Function HttpPost(ByVal strURL As String, ByVal strHeaders As String, ByVal strOptional As String, ByVal bAuthenticate As Logical, strContentType As String, ErrorMsg As String) As CString
+	HttpPost = HttpRequest(strURL, HTTP_VERB_POST, strHeaders, strOptional, bAuthenticate, strContentType, ErrorMsg)
+End Function 'HttpPost
+
+Function HttpGet(ByVal strURL As String, ByVal bAuthenticate As Logical, strContentType As String, ErrorMsg As String) As CString
+	HttpGet = HttpRequest(strURL, HTTP_VERB_GET, "", "", bAuthenticate, strContentType, ErrorMsg)
+End Function 'HttpGet

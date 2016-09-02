@@ -1,0 +1,60 @@
+' Resource String Ids
+Define IDS_STR_RES_RANGE_ERR             1
+Define IDS_APP_DESCRIPTION               2
+Define IDS_MENU_NAME                     3
+Define IDS_MENU_ITEM_NAME                4
+Define IDS_ABOUT_MENU_ITEM_NAME          5
+Define IDS_EXIT_MENU_ITEM_NAME           6
+Define IDS_TOOLS_MENU                    7
+Define IDS_VERSION                       8
+Define IDS_TABLE                         9
+Define IDS_ROTATION                      10
+Define IDS_COLUMN                        11
+Define IDS_FIXED                         12
+Define IDS_DEGREES                       13
+Define IDS_COUNTER_CLOCKWISE             14
+Define IDS_CLOCKWISE                     15
+Define IDS_SYMBOL                        16
+Define IDS_REPLACEMENT_SYMBOL            17
+Define IDS_EXISTING_ONLY                 18
+Define IDS_EXISTING_OR_FIXED             19
+Define IDS_FIXED_ONLY                    20
+Define IDS_OK                            21
+Define IDS_CANCEL                        22
+Define IDS_SKIPPED                       23
+Define IDS_NON_TRUETYPE                  24
+Define IDS_NON_POINT                     25
+Define IDS_VALID_TABLE                   26
+Define IDS_OPEN_TABLE                    27
+Define IDS_ONLY_TRUETYPE                 28
+Define IDS_NEED_NUMERIC                  29
+Define IDS_ABOUT                         30
+Define IDS_ABOUT_1                       31
+Define IDS_ABOUT_2                       32
+Define IDS_AUTO_LOAD                     33
+
+'Strings Not to be localized
+Define STR_RES_STR_FILE                  "RotateSymbols.str"
+Define STR_FILE_NOT_ACCESSIBLE           "Unable to access resource string file: "
+Define STR_APP_FILE_NAME                 "RotateSymbols.mbx"
+Define STR_FONT_TYPE                     "Wingdings"
+Define STR_SUB_MAIN                      "Main: " 
+Define STR_SUB_ROTATE_SYMBOLS            "RotateSymbols: "
+Define STR_SUB_TABLE_NAME_HANDLER        "TableNameHandler: "
+Define STR_SUB_COLUMN_NAME_HANDLER       "ColumnNameHandler: "
+Define STR_SUB_OK_BUTTON_HANDLER         "OKButtonHandler: "
+Define STR_SUB_ROTATION_TYPE_HANDLER     "RotationTypeHandler: "
+Define STR_SUB_SYMBOL_TYPE_HANDLER       "SymbolTypeHandler: "
+Define STR_SUB_DIALOG_HANDLER            "DialogHandler: "
+Define STR_SUB_ABOUT                     "About: "
+Define STR_SUB_GOOD_BYE                  "GoodBye: "
+Define STR_MENU_ITEM_SEPERATOR           "(-"
+Define STR_EMPTY_STR1                    ""
+Define STR_EMPTY_STR2                    " "
+Define STR_OPEN_BRAC                     "("
+Define STR_CLOSE_BRAC                    ")"
+Define STR_SEMI_COLON                    ";"
+Define STR_DOT                           "."
+Define STR_OBJ                           ".Obj"
+Define STR_ROWID                         ".RowID"
+Define STR_COL                           "COL"

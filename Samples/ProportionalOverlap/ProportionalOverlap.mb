@@ -1,0 +1,918 @@
+'*****************************************************************************
+'       Copyright © 2009, Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 66576 $
+'
+' Module Description:
+'
+' Proportion Data Program
+'
+' Revision History:
+'
+'*****************************************************************************
+
+Include "ProportionalOverlap.def"
+Include "..\Inc\mapbasic.def"
+Include "..\Inc\menu.def"
+Include "..\Inc\icons.def"
+Include "..\Inc\auto_lib.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+Declare Sub Main
+Declare Sub Start
+Declare Sub EndProgram
+Declare Sub AboutProportionData
+Declare Sub CheckForSelection
+Declare Sub CreateCutterLayer
+Declare Sub CreateProportionData
+Declare Sub CreateTargetLayer
+Declare Sub InputDialog
+Declare Sub VerifyStatisticsTable
+Declare Sub AboutInputDialog
+Declare Sub ChangeDirectory
+Declare Sub ChangeTableLabel
+Declare Function UniqueColumnName(ByVal TableName$ As String, ByVal ColumnName$ As String) As String
+Declare Function ColumnAlreadyExists(ByVal TableName$ As String, ByVal ColumnName$ As String) As Logical
+Declare Sub HandleChangeTable
+Declare Sub UpdateColumnList (ByVal UpdateTable as Logical)
+Declare Function GetColumnList(ByVal TableID As SmallInt,ByVal UpdateTable as Logical) as String
+Declare Sub SelChangedHandler
+Declare Sub HandleError
+
+Define AppVersion 1.0
+
+Define ID_TABLE_POPUP_MENU                     20
+Define ID_UPDATE_COL_POPUP_MENU                21
+Define ID_TABLE_NAME_EDIT_TEXT                 22
+Define ID_AGGREGATE_FUNCTION_POPUP_MENU        23
+Define ID_PATH_STATIC_TEXT                     24
+Define ID_TABLE_NAME_LABEL                     25
+Define ID_UPDATE_TABLE                         26
+Define ID_SELECT_COL_POPUP_MENU                27
+Define ID_ADD_TO_TABLE                         28
+Define ID_UPDATE_TABLE_POPUP_MENU              29
+Define ID_WTAVG_COL_POPUP_MENU                 30
+Define ID_WTAVG_COL_STATIC_TEXT                31
+
+Global m_input_dlg_OK,
+  m_everythings_OK,
+  m_continue_on,
+  m_calc_sums,
+  m_calc_avgs As Logical
+Global m_chosen_data_tabnum,
+  m_chosen_data_colnum,
+  m_chosen_agg_colnum,
+  m_update_data_tabnum,
+  m_update_data_colnum as Smallint
+Global m_result_table_name,
+  m_update_column_name,
+  m_select_table_name,
+  m_select_column_name,
+  m_wtavg_column_name,
+  m_table_name_array(),
+  m_update_column_name_array(),
+  m_select_column_name_array(),
+  m_aggregate_function as String
+
+ '***********************************************************************************************
+'
+' SUB MAIN
+'
+' This sub procedure adds three commands to the Tools menu for the Proportion Overlap tool.
+'
+'***********************************************************************************************
+
+Sub Main
+
+ OnError Goto ERROR_HANDLING
+ If LoadStrings((ApplicationDirectory$() + STR_RES_STR_FILE)) = FALSE Then
+    Note STR_FILE_NOT_ACCESSIBLE + ApplicationDirectory$() + STR_RES_STR_FILE
+    Exit Sub
+  End If
+  Create Menu GetResString(IDS_MENU_NAME) as
+    GetResString(IDS_MENU_ITEM_NAME_1)
+      HelpMsg GetResString(IDS_MENU_ITEM_HELP_MSG_1)
+      calling Start,
+    STR_MENU_ITEM_SEPERATOR,
+    GetResString(IDS_ABOUT_MENU_ITEM_NAME)
+      HelpMsg GetResString(IDS_ABOUT_MENU_ITEM_HELP_MSG)
+      calling AboutProportionData,
+    GetResString(IDS_EXIT_MENU_ITEM_NAME)
+      HelpMsg GetResString(IDS_EXIT_MENU_ITEM_HELP_MSG)
+      calling EndProgram
+
+  Call set_tools_menu(GetResString(IDS_APP_DESCRIPTION))
+
+  Exit Sub
+
+ERROR_HANDLING:
+    Call HandleError
+
+End Sub
+
+'***********************************************************************************************
+'
+' SUB START
+'
+' This sub procedure is where the program operations start.  It is called
+' from the "Proportion Overlap" menu command.  The program first checks
+' to make sure that two tables are open, then the user is presented with the
+' dialog for them to input details of Proportion Overlap.  Once this dialog is
+' successfully completed then the data is aportioned.
+'
+'***********************************************************************************************
+
+Sub Start
+
+   OnError GOTO ERROR_HANDLER
+
+   Call CheckForSelection
+   ' If a proper selection has been made then the variable Continue_On will be set to true
+   If m_continue_on Then
+   'Initialize global variables
+     m_calc_sums = TRUE
+     m_chosen_data_tabnum =1
+     m_update_data_tabnum =2
+     If SelectionInfo(SEL_INFO_NROWS) > 0 Then
+        m_result_table_name = SelectionInfo(SEL_INFO_TABLENAME)
+     End If
+     'Call the Proportioanl Overlap Input Dialog
+     Call InputDialog
+     ' If the user cancels out of the Input dialog then the progam will go back to sleep else it will update proportional data.
+     If m_continue_on Then
+         Call CreateProportionData
+     End If
+   End If
+ Exit Sub
+
+ERROR_HANDLER:
+  Call HandleError
+
+End Sub
+
+'***********************************************************************************************
+'
+' SUB InputDialog
+'
+' This sub procedure displays the dialog for the user to enter which table and field
+' they would like to create the proportionate aggregate for.  A separate sub procedure is called
+' to create the proportionate aggregate (sub ProportionData).
+'
+'***********************************************************************************************
+
+Sub InputDialog
+
+ Dim table_list, column_list,update_column_list As String
+
+  Dim i As SmallInt
+  Dim numeric_counter as SmallInt
+  numeric_counter =0
+  Redim m_table_name_array(NumTables())
+ 'retrieve list of open tables
+  For i = 1 to NumTables()
+   If TableInfo(i,TAB_INFO_TEMP) =FALSE Then
+	 numeric_counter =numeric_counter +1
+    table_list = table_list + TableInfo(i,TAB_INFO_NAME) + STR_SEMI_COLON
+    m_table_name_array(numeric_counter) = TableInfo(i,TAB_INFO_NAME)
+    If StringCompare(m_table_name_array(numeric_counter),m_result_table_name) = 0 Then
+      	m_update_data_tabnum =numeric_counter
+	 Else
+   	   m_chosen_data_tabnum =numeric_counter
+    End If
+  End If
+  Next
+
+'retrieve columns for selection table
+
+  column_list = GetColumnList(m_update_data_tabnum,TRUE)
+  update_column_list =LTrim$(RTrim$(column_list))
+  column_list = GetColumnList(m_chosen_data_tabnum,FALSE)
+   m_update_data_colnum=1
+  m_chosen_data_colnum=1
+
+  Dialog
+    Title GetResString(IDS_CALCULATE_PROPORTION_DATA)
+
+  Control StaticText
+    Title GetResString(IDS_UPDATE_TABLE)
+    Position 10, 22
+
+  Control Popupmenu
+    Title table_list
+     Position 80, 20
+   Width 170
+   Value m_update_data_tabnum
+    Into m_update_data_tabnum    '*** List of  tables popup.
+    ID ID_UPDATE_TABLE_POPUP_MENU
+  Calling HandleChangeTable
+
+ Control StaticText
+    Title  GetResString(IDS_UPDATE_COLUMN)
+    Position 10, 42
+
+  Control Popupmenu
+    Title update_column_list
+   Position 80 , 40
+   Width 170
+   Value m_update_data_colnum
+    Into m_update_data_colnum    '*** List of tables popup.
+    ID ID_UPDATE_COL_POPUP_MENU
+
+  Control StaticText
+    Title GetResString(IDS_USE_DATA_FROM_TABLE)
+    Position 10, 62
+
+  Control Popupmenu
+    Title table_list
+  Position 80, 60
+   Width 170
+   Value m_chosen_data_tabnum
+    Into m_chosen_data_tabnum    '*** List of  tables popup.
+    ID ID_TABLE_POPUP_MENU
+  Calling HandleChangeTable
+
+  Control GroupBox      '*** GroupBox
+    Width 250
+    Height 140
+    'Title GetResString(IDS_WITHIN_EACH_OBJECT)
+    Position 5, 5
+
+  Control StaticText
+    Title  GetResString(IDS_CALCULATE)
+    Position 10, 82
+
+  Control Popupmenu
+    Title GetResString(IDS_PROPORTION_SUM)  + STR_SEMI_COLON + GetResString(IDS_PROPORTION_AVG) + STR_SEMI_COLON + GetResString(IDS_PROPORTION_WTAVG)
+   Position 80 , 80
+   Width 170
+   Value 1
+    Into m_chosen_agg_colnum    '*** List of tables popup.
+    ID ID_AGGREGATE_FUNCTION_POPUP_MENU
+   Calling HandleChangeTable
+
+  Control StaticText
+    Title  GetResString(IDS_SELECT_COLUMN)
+    Position 10, 102
+
+  Control Popupmenu
+    Title column_list
+   Position 80 , 100
+   Width 170
+   Value m_chosen_data_colnum
+    Into m_chosen_data_colnum    '*** List of tables popup.
+    ID ID_SELECT_COL_POPUP_MENU
+
+  Control StaticText
+    Title  GetResString(IDS_WEIGHTING_EXPRESSION)
+    Position 10, 122
+   ID ID_WTAVG_COL_STATIC_TEXT
+    HIDE
+
+  Control Popupmenu
+    Title column_list
+   Position 80 , 120
+   Width 170
+   Value m_chosen_agg_colnum
+    Into m_chosen_agg_colnum    '*** List of tables popup.
+    ID ID_WTAVG_COL_POPUP_MENU
+   HIDE
+
+  Control OKButton
+    Title GetResString(IDS_OK)
+    Calling VerifyStatisticsTable
+
+  Control CancelButton
+    Title GetResString(IDS_CANCEL)
+
+  Control Button
+
+    Title GetResString(IDS_HELP)
+    Calling AboutInputDialog
+
+'*** Below:  If the user clicked OK
+
+  If CommandInfo(CMD_INFO_DLG_OK) Then
+
+    m_continue_on= TRUE
+  Else
+    m_continue_on = FALSE
+  End If
+
+End Sub 'InputDialog
+
+'***********************************************************************************************
+'
+' SUB VerifyStatisticsTable
+'
+' This sub-procedure checks to ensure that the table being used to aggregate the data
+' from is mappable and is not a raster table. And all values needed for proportional aggregates
+' are populated
+'***********************************************************************************************
+
+Sub VerifyStatisticsTable
+	Dim tableid as String
+	Dim updatetableid as String
+	tableid = m_table_name_array(ReadControlValue(ID_TABLE_POPUP_MENU))
+   updatetableid = m_table_name_array(ReadControlValue(ID_UPDATE_TABLE_POPUP_MENU))
+  'Check for Mappable tables
+  If Not TableInfo(tableid,TAB_INFO_MAPPABLE) Then
+     Note GetResString(IDS_CANNOT_AGGREGATE_WITHOUT_OBJS)
+     Dialog Preserve
+     Exit Sub
+  End If
+
+   If Not TableInfo(updatetableid,TAB_INFO_MAPPABLE) Then
+     Note GetResString(IDS_CANNOT_UPDATE_WITHOUT_OBJS)
+     Dialog Preserve
+     Exit Sub
+  End If
+
+ 'Checks to ensure that tables are not Raster tables
+ If TableInfo(tableid,TAB_INFO_TYPE) = TAB_TYPE_IMAGE Then
+     Note GetResString(IDS_CANNOT_AGGREGATE_RASTER)
+     Dialog Preserve
+     Exit Sub
+  End If
+
+  If TableInfo(updatetableid,TAB_INFO_TYPE) = TAB_TYPE_IMAGE Then
+     Note GetResString(IDS_CANNOT_UPDATE_RASTER)
+     Dialog Preserve
+     Exit Sub
+  End If
+
+  'Check to make sure there are no unsaved edits to the table.
+  If TableInfo(tableid,TAB_INFO_EDITED) Then
+     Note GetResString(IDS_CANNOT_AGGREGATE_UNSAVED_EDITS)
+     Dialog Preserve
+     Exit Sub
+  End If
+
+  If TableInfo(updatetableid,TAB_INFO_EDITED) Then
+     Note GetResString(IDS_CANNOT_UPDATE_UNSAVED_EDITS)
+     Dialog Preserve
+     Exit Sub
+  End If
+
+ 'Check to make sure that the update table is not Read Only
+ If TableInfo(updatetableid,TAB_INFO_READONLY) Then
+     Note GetResString(IDS_CANNOT_UPDATE_READONLY_TABLE)
+     Dialog Preserve
+     Exit Sub
+  End If
+ 'Check to make sure that the update table has rows
+  If TableInfo(updatetableid,TAB_INFO_NROWS) <=0 Then
+     Note GetResString(IDS_CANNOT_UPDATE_WITHOUT_ROWS)
+     Dialog Preserve
+     Exit Sub
+  End If
+   If TableInfo(tableid,TAB_INFO_NROWS) <=0 Then
+     Note GetResString(IDS_CANNOT_AGGREGATE_WITHOUT_ROWS)
+     Dialog Preserve
+     Exit Sub
+  End If
+  'Check to make sure that the update and data table are different tables
+  m_result_table_name = updatetableid
+  m_select_table_name =tableid
+  If StringCompare(m_result_table_name,m_select_table_name) = 0 Then
+    Note GetResString(IDS_UPDATE_SELECT_SAME_TABLE)
+    Dialog Preserve
+    Exit Sub
+  End If
+  'Check to make sure that the update and data table names are not the same as the temp tables being used by the tool
+  If StringCompare(m_select_table_name,"temp_target_objects") = 0 or StringCompare(m_select_table_name,"temp_update_objects") = 0
+      or StringCompare(m_select_table_name,"temp_selection_objects") = 0 or StringCompare(m_select_table_name,"temp_cutter_objects") = 0 Then
+    Note GetResString(IDS_SELECT_TEMP_TABLE)
+    Dialog Preserve
+    Exit Sub
+  End If
+  If StringCompare(m_result_table_name,"temp_target_objects") = 0 or StringCompare(m_result_table_name,"temp_update_objects") = 0
+      or StringCompare(m_result_table_name,"temp_selection_objects") = 0 or StringCompare(m_result_table_name,"temp_cutter_objects") = 0 Then
+    Note GetResString(IDS_UPDATE_SELECT_TEMP_TABLE)
+    Dialog Preserve
+    Exit Sub
+  End If
+
+ 'Populate result and select table options --verify that all of them are populated.
+  If (UBound(m_update_column_name_array) =0) Then
+    Note GetResString(IDS_NO_UPDATE_COLUMNS)
+    Dialog Preserve
+    Exit Sub
+  End if
+  If (UBound(m_select_column_name_array) =0) Then
+    Note GetResString(IDS_NO_SELECT_COLUMNS)
+    Dialog Preserve
+    Exit Sub
+  End if
+  If (ReadControlValue(ID_SELECT_COL_POPUP_MENU) <= UBound(m_select_column_name_array)) Then
+      m_select_column_name = m_select_column_name_array(ReadControlValue(ID_SELECT_COL_POPUP_MENU))
+  Else
+    Note GetResString(IDS_NO_SELECTION)
+    Dialog Preserve
+    Exit Sub
+  End If
+  If (ReadControlValue(ID_UPDATE_COL_POPUP_MENU) <= UBound(m_update_column_name_array)) Then
+    m_update_column_name = m_update_column_name_array(ReadControlValue(ID_UPDATE_COL_POPUP_MENU))
+  Else
+    Note GetResString(IDS_NO_UPDATE_SELECTION)
+    Dialog Preserve
+    Exit Sub
+  End If
+  If (ReadControlValue(ID_WTAVG_COL_POPUP_MENU) <= UBound(m_select_column_name_array)) Then
+    m_wtavg_column_name = m_select_column_name_array(ReadControlValue(ID_WTAVG_COL_POPUP_MENU))
+  End If
+  m_chosen_agg_colnum =ReadControlValue(ID_AGGREGATE_FUNCTION_POPUP_MENU)
+  m_aggregate_function =STR_SUM
+  If (m_chosen_agg_colnum) =2 Then
+    m_aggregate_function =STR_AVG
+  Else
+  If (m_chosen_agg_colnum) =  3 Then
+    m_aggregate_function =STR_WEIGHTED_AVG
+  End If
+  End If
+  Exit Sub
+
+End Sub
+
+'***********************************************************************************************
+'
+' SUB CHECK_FOR_SELECTION
+'
+' This sub procedure is called from the START procedure.  It checks to
+' make sure that (1) two tables are open.
+' If tables are open then 'Continue_On' is set to TRUE,
+' otherwise it is set to FALSE. The user is then prompted that there is no
+' Mappable tables and the program will go 'back to sleep'.
+'
+'***********************************************************************************************
+Sub CheckForSelection
+
+  Dim number_of_maptables ,i  as SmallInt
+  m_continue_on = TRUE
+  number_of_maptables =0
+
+'***FIRST: Is there two table open ??? ***
+
+  If m_continue_on Then
+    If NumTables() = 0 Then
+      Note GetResString(IDS_NO_TABLES_OPEN)
+      m_continue_on = FALSE
+    End If
+  End If
+
+  If m_continue_on Then
+    If NumTables() = 1 Then
+      Note GetResString(IDS_ONE_TABLES_OPEN)
+      m_continue_on = FALSE
+    End If
+  End If
+
+'***Second: Are these tables mappable ??? ***
+
+  If m_continue_on Then
+    If NumTables() >= 2 Then
+      For i =1 to NumTables()
+      If  TableInfo(i,TAB_INFO_MAPPABLE) Then
+        number_of_maptables =number_of_maptables + 1
+      End If
+    Next
+    If number_of_maptables < 2 Then
+       Note GetResString(IDS_NO_OBJECTS_IN_TABLE)
+         m_continue_on = FALSE
+    End If
+    End If
+  End If
+End Sub
+
+'***********************************************************************************************
+'
+' SUB CreateCutterLayer
+'
+'Creates a table to store cutter objects
+'***********************************************************************************************
+
+Sub CreateCutterLayer
+
+  OnError Goto ERROR_HANDLING
+
+  Drop Table temp_cutter_objects
+
+  CreateCutterLayer:
+
+  Create Table temp_cutter_objects
+      (Cutterid integer)
+  Create Map For temp_cutter_objects
+
+  Exit Sub
+
+ERROR_HANDLING:
+
+  If Err() = 311 Then
+    Resume CreateCutterLayer
+  Else
+    Note Error$() + Chr$(13) + STR_HASH_COLON + Err()
+  End If
+
+End Sub
+
+'***********************************************************************************************
+'
+' SUB CreateTargetLayer
+'
+'Create a copy of the Target Table to use as Target Layer
+'***********************************************************************************************
+
+Sub CreateTargetLayer
+
+  OnError Goto ERROR_HANDLING
+
+  Drop Table temp_target_objects
+
+  CreateTargetLayer:
+  'Don't want the user to cancel or stop the program while copying target layer
+  Set ProgressBars off
+  Create Table temp_target_objects (datacol float, weightedavg float)
+  Create Map For temp_target_objects
+  If StringCompare(m_aggregate_function,STR_WEIGHTED_AVG) =0 Then
+     Run Command STR_INSERT + STR_INTO + " temp_target_objects " + STR_OPEN_BRAC +  STR_OBJ + STR_COMMA  + "datacol" + STR_COMMA +  "weightedavg" + STR_CLOSE_BRAC + STR_SELECT + STR_OBJ + STR_COMMA + m_select_column_name + STR_COMMA + m_wtavg_column_name + STR_FROM + m_select_table_name
+  Else
+    Run Command STR_INSERT + STR_INTO + " temp_target_objects " + STR_OPEN_BRAC +  STR_OBJ + STR_COMMA  + "datacol" + STR_CLOSE_BRAC + STR_SELECT + STR_OBJ + STR_COMMA + m_select_column_name + STR_FROM + m_select_table_name
+  End If
+
+EXIT_PROCEDURE:
+  Set ProgressBars on
+  Commit table temp_target_objects
+  m_select_column_name ="datacol"
+  m_wtavg_column_name ="weightedavg"
+  Exit Sub
+
+ERROR_HANDLING:
+
+  If Err() = 311 Then
+    Resume CreateTargetLayer
+  Else
+    Note Error$() + Chr$(13) + STR_HASH_COLON + Err()
+   Resume EXIT_PROCEDURE
+  End If
+
+End Sub
+
+'***********************************************************************************************
+'
+' SUB CreateProportionData
+' This sub procedure calculates the proportion aggregate data and updates/adds column to the
+' Target table. It uses Object Erase function to  do the proportional overlap and then aggregates
+' the data based on the selected aggregate function.
+'
+'***********************************************************************************************
+
+Sub CreateProportionData
+  'Check to see if we need to add or update a column
+  Dim col_name$ as String
+  Dim oCutter as Object
+  Dim rownumber,i,objtype as SmallInt
+  Dim sumofvalue as float
+
+  OnError Goto ERROR_HANDLING
+
+  col_name$ =m_update_column_name
+
+  'Create a new column
+  If StringCompare(m_update_column_name,GetResString(IDS_ADD_TO_TABLE)) = 0 Then
+      col_name$ =m_select_column_name
+      If ColumnAlreadyExists(m_result_table_name,col_name$) = TRUE Then
+           col_name$ = UniqueColumnName(m_result_table_name, m_aggregate_function + col_name$)
+      End If
+     Run Command STR_ALTER_TABLE + m_result_table_name +  Space$(1)  + STR_OPEN_BRAC +  STR_ADD  + col_name$  + STR_FLOAT +  STR_CLOSE_BRAC
+     Run Command STR_ADD_MAP + m_result_table_name
+  End If
+  ' Calculate Proportional Overlap using Erase Outside
+  'make a copy of the Update table to use
+   Run Command STR_SELECT + STR_STAR + STR_FROM + m_result_table_name + STR_INTO + " temp_update_objects "
+  'Create a copy of Target Table
+  Call CreateTargetLayer
+  i=1
+  Fetch First From temp_update_objects
+  Do while not EOT(temp_update_objects)
+    ' No need to calculate overlap for empty objects
+    if StringCompare(str$(temp_update_objects.obj),"") <> 0 Then
+        oCutter = temp_update_objects.obj
+      rownumber =temp_update_objects.Rowid
+      objtype = ObjectInfo(oCutter , OBJ_INFO_TYPE)
+      ' skip linear and point objects
+        If objtype = OBJ_TYPE_REGION or objtype = OBJ_TYPE_ELLIPSE or objtype = OBJ_TYPE_RECT or objtype = OBJ_TYPE_ROUNDRECT Then
+        Call CreateCutterLayer
+        Insert Into temp_cutter_objects(cutterid,obj)  Values (i,oCutter)
+        select * from temp_target_objects
+        set target
+        select * from temp_update_objects into temp_selection_objects  where obj and Rowid =rownumber
+        'Use Erase outside to get proportional overlap areas
+        If StringCompare(m_aggregate_function,STR_WEIGHTED_AVG) =0 Then
+          Run Command STR_OBJECT_INTERSECT + m_select_column_name + STR_EQUALS + STR_PROPORTION + STR_OPEN_BRAC + m_select_column_name + STR_CLOSE_BRAC
+              + STR_COMMA + m_wtavg_column_name + STR_EQUALS + STR_PROPORTION + STR_OPEN_BRAC + m_wtavg_column_name + STR_CLOSE_BRAC
+          Run Command STR_ADD + STR_COLUMN + " temp_cutter_objects " + STR_OPEN_BRAC + "DATAVAL " + STR_FLOAT + STR_CLOSE_BRAC + STR_FROM  + " temp_target_objects " + STR_SET_TO + m_aggregate_function + STR_OPEN_BRAC + m_select_column_name +  STR_COMMA  + m_wtavg_column_name + STR_CLOSE_BRAC
+        Else
+          Run Command STR_OBJECT_INTERSECT + m_select_column_name + STR_EQUALS + STR_PROPORTION + STR_OPEN_BRAC + m_select_column_name + STR_CLOSE_BRAC
+          Run Command STR_ADD + STR_COLUMN + " temp_cutter_objects " + STR_OPEN_BRAC + "DATAVAL " + STR_FLOAT + STR_CLOSE_BRAC + STR_FROM  + " temp_target_objects " + STR_SET_TO + m_aggregate_function + STR_OPEN_BRAC + m_select_column_name + STR_CLOSE_BRAC
+        End If
+        sumofvalue =temp_cutter_objects.DATAVAL
+        'Update table with proportional sum,average or weighted average data
+        Run Command  STR_UPDATE + m_result_table_name + STR_SET + col_name$ + STR_EQUALS + Str$(sumofvalue) + STR_WHERE + " RowId = " + Str$(rownumber)
+        'close selection layers and rollback changes to target layer
+        Close table temp_selection_objects
+        Drop table temp_cutter_objects
+        rollback table temp_target_objects
+      End If
+  End If
+  Fetch Next From temp_update_objects
+ Loop
+ 'Browse the update table
+ Run Command STR_BROWSE + STR_STAR + STR_FROM + m_result_table_name
+
+CLEAN_UP:
+  OnError GoTo RESUME_CLEANUP
+  'close all tables that were created during proportional overlap
+  Drop Table temp_target_objects
+  Close Table temp_update_objects
+  Close Table temp_selection_objects
+  Drop Table temp_cutter_objects
+
+EXIT_PROCEDURE:
+ Exit Sub
+
+RESUME_CLEANUP:
+  If Err() = 311 Then
+    Resume Next
+  End If
+
+ERROR_HANDLING:
+   If Err() =683 Then
+    Note GetResString(IDS_CANNOT_ADDFIELD_LINK_TABLE)
+   Else
+      Note  Error$() + STR_HASH_COLON + Err()
+   End If
+   Resume CLEAN_UP
+
+End Sub
+
+'***********************************************************************************************
+'
+' FUNCTION GetColumnList
+'
+'  This function returns the column lists of all the numeric fields in the specified table.
+'
+'***********************************************************************************************
+Function GetColumnList(ByVal TableID As SmallInt,ByVal UpdateTable as Logical)  as String
+
+   Dim   chosen_data_table$,  column_list$ As String
+    Dim i, column_type, numeric_column_counter As Smallint
+
+    column_list$ = STR_EMPTY_STR1
+
+     OnError Goto ERROR_HANDLING
+
+    ' Step 1) Get name of table the data is being aggregated from.
+
+  chosen_data_table$ = m_table_name_array(TableID)
+  numeric_column_counter = 0
+
+    ' Step 2)  Build list (and corresponding array) of all the numeric columns
+
+   If UpdateTable =TRUE Then
+    Redim m_update_column_name_array(0)
+   Else
+    Redim m_select_column_name_array(0)
+  End If
+   For i = 1 to NumCols(chosen_data_table$)
+      column_type = ColumnInfo(chosen_data_table$,STR_COL+i,COL_INFO_TYPE)
+      If column_type = Any(COL_TYPE_DECIMAL,COL_TYPE_FLOAT,COL_TYPE_INTEGER,COL_TYPE_SmallInt) Then
+      ' For update tables make sure that the column is editable
+       If UpdateTable and ColumnInfo(chosen_data_table$,STR_COL+i,COL_INFO_EDITABLE)  Then
+        numeric_column_counter = numeric_column_counter + 1
+        Redim m_update_column_name_array(numeric_column_counter)
+        m_update_column_name_array(numeric_column_counter) =ColumnInfo(chosen_data_table$,STR_COL+i,COL_INFO_NAME)
+         if numeric_column_counter > 1 Then
+          column_list$ = column_list$ + STR_SEMI_COLON
+         End If
+        column_list$ = column_list$ + ColumnInfo(chosen_data_table$,STR_COL+i,COL_INFO_NAME)
+      ElseIf  not UpdateTable Then
+        numeric_column_counter = numeric_column_counter + 1
+        Redim m_select_column_name_array(numeric_column_counter)
+        m_select_column_name_array(numeric_column_counter) =ColumnInfo(chosen_data_table$,STR_COL+i,COL_INFO_NAME)
+         if numeric_column_counter > 1 Then
+          column_list$ = column_list$ + STR_SEMI_COLON
+         End If
+        column_list$ = column_list$ + ColumnInfo(chosen_data_table$,STR_COL+i,COL_INFO_NAME)
+      End If
+       End If
+   Next
+  ' For update tables add an entry to add a new column to native tab files only
+  ' For a live access table we still get the type as base type.
+   If UpdateTable  and TableInfo(chosen_data_table$,TAB_INFO_TYPE) = TAB_TYPE_BASE Then
+    Redim m_update_column_name_array(numeric_column_counter +1)
+    m_update_column_name_array(numeric_column_counter +1) =GetResString(IDS_ADD_TO_TABLE)
+    'If there are columns to update
+    If numeric_column_counter > 0 Then
+        column_list$ = column_list$ +  STR_SEMI_COLON
+    End If
+    column_list$ = column_list$ + GetResString(IDS_ADD_TO_TABLE)
+  End If
+  GetColumnList= column_list$
+  Exit Function
+ERROR_HANDLING:
+
+  If Err() = 314 Then
+    Resume Next
+  Else
+    Note  Error$() + Chr$(13) + Err()
+    End Program
+  End If
+
+End Function
+
+'***********************************************************************************************
+'
+' SUB HandleChangeTable
+'
+'  This sub-procedures takes care of updating column lists when the corresponding tables change
+'  It also hides and shows the weighted expression list based on the selection of the aggregate
+'  function.
+'
+'***********************************************************************************************
+
+Sub HandleChangeTable
+
+  Do Case TriggerControl()
+        Case ID_TABLE_POPUP_MENU
+      Call UpdateColumnList (FALSE)
+        Case ID_UPDATE_TABLE_POPUP_MENU
+      Call UpdateColumnList (TRUE)
+   End Case
+  If (ReadControlValue(ID_AGGREGATE_FUNCTION_POPUP_MENU) = 3) Then
+    Alter Control ID_WTAVG_COL_STATIC_TEXT SHOW
+    Alter Control ID_WTAVG_COL_POPUP_MENU SHOW
+  Else
+    Alter Control ID_WTAVG_COL_STATIC_TEXT HIDE
+    Alter Control ID_WTAVG_COL_POPUP_MENU HIDE
+  End If
+
+End Sub
+
+'***********************************************************************************************
+'
+' SUB UpdateColumnList
+'
+' This sub-procedure updates the column list to synchronize it with the table selected.
+' If the update table changes then the corresponding update column list is changed
+' If the data table changes then the corresponding column list along with the weighted
+' average column pop list is changed
+'
+'***********************************************************************************************
+
+Sub UpdateColumnList (ByVal UpdateTable as Logical)
+  Dim column_list$ As String
+  If (UpdateTable = FALSE) Then
+    column_list$  = GetColumnList(ReadControlValue(ID_TABLE_POPUP_MENU),UpdateTable)
+     Alter Control ID_SELECT_COL_POPUP_MENU Title column_list$
+    Alter Control ID_WTAVG_COL_POPUP_MENU Title column_list$
+  Else
+    column_list$  = GetColumnList(ReadControlValue(ID_UPDATE_TABLE_POPUP_MENU),UpdateTable)
+    Alter Control ID_UPDATE_COL_POPUP_MENU Title column_list$
+  End If
+End Sub
+
+'***********************************************************************************************
+'
+' SUB UniqueColumnName
+'
+' This sub-procedure creates a unique name for the column that needs to be added
+' to a specified table.
+'
+'***********************************************************************************************
+Function UniqueColumnName(ByVal TableName$ As String, ByVal ColumnName$ As String) As String
+
+  Dim i, j, k As SmallInt
+  Dim NewColumnName$ As String
+
+  NewColumnName$ = ColumnName$
+  i = 1
+  Do While ColumnAlreadyExists(m_result_table_name, NewColumnName$)
+    i = i + 1
+    k = 0
+    j = InStr(1, NewColumnName$, STR_UNDER_SCORE)
+    Do While j > 0
+      k = j
+      j = InStr(k+1, NewColumnName$, STR_UNDER_SCORE)
+    Loop
+    If k > 0 Then
+      If Val(Mid$(NewColumnName$, k+1, 255)) > 0 Then
+        NewColumnName$ = Left$(NewColumnName$, k-1)
+      End If
+    End If
+    NewColumnName$ = NewColumnName$ + STR_UNDER_SCORE + Str$(i)
+  Loop
+
+  UniqueColumnName = NewColumnName$
+
+End Function
+
+'***********************************************************************************************
+' SUB ColumnAlreadyExists
+'
+' This sub-procedure is checks if a column already exists in the specified table.
+
+'***********************************************************************************************
+Function ColumnAlreadyExists(ByVal TableName$ As String, ByVal ColumnName$ As String) As Logical
+
+  Dim i As SmallInt
+  Dim lFound As Logical
+
+  lFound = FALSE
+  For i = 1 To TableInfo(TableName$, TAB_INFO_NCOLS)
+    If ColumnInfo(TableName$, STR_COL+i, COL_INFO_NAME) = ColumnName$ Then
+      lFound = TRUE
+    End If
+  Next
+
+  ColumnAlreadyExists = lFound
+
+End Function
+
+'***********************************************************************************************
+'
+' SUB AboutInputDialog
+'
+' This sub-procedure is called from the 'Help' button in the 'Input Dialog' dialog box.
+' Its purpose is to offer a brief explanation of the purpose of this feature.
+'
+'***********************************************************************************************
+Sub AboutInputDialog
+  Dialog
+    Title GetResString(IDS_ABOUT) + STR_EMPTY_STR2 + GetResString(IDS_APP_DESCRIPTION) + STR_EMPTY_STR2+ STR_OPEN_BRAC + GetResString(IDS_VERSION) + STR_EMPTY_STR2 + Str$(AppVersion) + STR_CLOSE_BRAC
+
+    Control StaticText
+    Height 170
+    Width  300
+    Title  GetResString(IDS_ABOUT_6) + Chr$(13) + Chr$(13) +
+        GetResString(IDS_ABOUT_7) + Chr$(13) + Chr$(13) +
+       GetResString(IDS_ABOUT_8) + Chr$(13) + Chr$(13) +
+        GetResString(IDS_ABOUT_9) + Chr$(13) + Chr$(13) +
+           GetResString(IDS_ABOUT_10) +  Chr$(13) + Chr$(13) +
+       GetResString(IDS_ABOUT_11) +  Chr$(13) + Chr$(13) +
+           GetResString(IDS_ABOUT_12) +   Chr$(13) + Chr$(13) +
+       GetResString(IDS_ABOUT_13) +  Chr$(13) + Chr$(13) + 
+		GetResString(IDS_ABOUT_14)
+    Control OKButton    Title  GetResString(IDS_OK)
+
+End Sub
+
+***********************************************************************************************
+'
+' SUB AboutProportionData
+'
+' This is called from the Help & Instructions menu command.
+'
+'***********************************************************************************************
+Sub AboutProportionData
+
+  Dialog
+    Title GetResString(IDS_ABOUT) + STR_EMPTY_STR2 + GetResString(IDS_APP_DESCRIPTION) +STR_EMPTY_STR2+ STR_OPEN_BRAC + GetResString(IDS_VERSION) + STR_EMPTY_STR2 + Str$(AppVersion) + STR_CLOSE_BRAC
+
+    Control StaticText
+    Height 80
+    Width  200
+    Title  GetResString(IDS_ABOUT_1) + Chr$(13) +
+           GetResString(IDS_ABOUT_2) +  Chr$(13)  +
+           GetResString(IDS_ABOUT_3) + Chr$(13) +
+           GetResString(IDS_ABOUT_4) + Chr$(13) +
+           GetResString(IDS_ABOUT_5) + Chr$(13)
+    Control OKButton    Title  GetResString(IDS_OK)
+
+End Sub
+
+'***********************************************************************************************
+'
+' SUB HandleError
+'
+' This is called from many different procedures.
+'
+'***********************************************************************************************
+
+Sub HandleError
+
+  Note Error$() + Chr$(13) + STR_HASH_COLON + Err()
+  End Program
+End Sub
+
+'***********************************************************************************************
+'
+' SUB EndProgram
+'
+' This sub does just what it sounds like.
+'
+'
+'***********************************************************************************************
+Sub EndProgram
+  End Program
+End Sub

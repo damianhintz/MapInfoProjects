@@ -1,0 +1,212 @@
+'*****************************************************************************
+'       Copyright © 2010, Pitney Bowes Software Inc.
+'       All rights reserved.
+'       Confidential Property of Pitney Bowes Software Inc.
+'
+' Module Description:
+'   Helper functions and sub routines for the Distance Calculator tool.
+'****************************************************************************/
+Include "DistanceCalc.def"
+
+Sub MapTables_mod
+
+  Dim intNumTables, intTableCounter, intUsable as integer
+  Dim l_Mappable as logical
+  Dim strSelectionName , strSelection as string
+
+  intNumTables = numTables()
+  intUsable = 1
+  redim strTableList(intNumTables)
+  redim strDisplayList(intNumTables)
+
+  for intTableCounter = 1 to intNumTables
+    l_Mappable = Is_Mappable(intTableCounter)
+    If l_Mappable then
+      strTableList(intUsable) = TableInfo(intTableCounter, TAB_INFO_NAME)
+      strDisplayList(intUsable) = TableInfo(intTableCounter, TAB_INFO_NAME)
+      intUsable = intUsable + 1
+    End If
+  Next
+
+  If SelectionInfo(SEL_INFO_NROWS) > 0 then
+
+    redim strTableList(intUsable)
+    redim strDisplayList(intUsable)
+    strSelectionName = SelectionInfo(SEL_INFO_TABLENAME)
+    If left$(strSelectionName,8) <> "Cosmetic" then
+      strSelection = SelectionInfo(SEL_INFO_SELNAME)
+      Select * from selection into Current_Selection noselect
+      Close Table strSelection
+      strTableList(intUsable) = "Current_Selection"
+      strDisplayList(intUsable) = GetResString(IDS_Select_From) & strSelectionName
+    End If
+  else
+    redim strTableList(intUsable - 1)
+    redim strDisplayList(intUsable - 1)
+    OnError goto ExitThis
+    Close table selection
+  End If
+
+  Exit Sub
+
+ExitThis:
+
+End Sub
+
+Sub MapWindows_mod
+
+  OnError goto whats_wrong
+
+  Dim intMapCounter, intNumberWindows, intCounter as integer
+
+  intMapCounter = 1
+  intNumberWindows = numWindows()
+  redim strMappables(intNumberWindows)
+  redim intMapId(intnumberwindows)
+
+  for intCounter = 1 to intNumberWindows
+    If WindowInfo(intCounter,WIN_INFO_TYPE) = 1 then
+      strMappables(intMapCounter) = WindowInfo(intCounter,WIN_INFO_NAME)
+      intMapID(intMapCounter) = WindowInfo(intCounter,WIN_INFO_WindowID)
+      intMapCounter = intMapCounter + 1
+    End IF
+  Next
+
+  Redim strMappables(intMapCounter-1)
+  Redim intMapId(intMapCounter - 1)
+
+  Exit Sub
+
+whats_wrong:
+  note "MapWindows_Mod: " & Error$()
+
+End Sub
+
+Sub ColumnList(strTableName as string, strColumnList() as string)
+
+  OnError goto NoSelection
+
+  Dim intCounter as integer
+
+  redim strColumnList(numcols(strTableName))
+  For intCounter = 1 to numCols(strTableName)
+    strColumnList(intCounter) = ColumnInfo(strTableName,"col" & intCounter ,COL_INFO_NAME)
+  Next
+
+  Exit Sub
+
+NoSelection:
+
+End Sub
+
+Function Is_Mappable(ByVal g_ig_TableId as integer) as logical
+
+  Is_mappable = True  '** If table valid, allows program to continue otherwise will be false.
+
+  dim int_Type as SmallInt  '** Holds value to query TAB_INFO_TYPE
+
+  If Not TableInfo(g_ig_TableId,TAB_INFO_MAPPABLE) Then
+    '** Warns user that Table is not mappable.
+    Is_Mappable = False
+    exit Function 'Not mappable
+  End If
+
+  If 0 = TableInfo(g_ig_TableId,TAB_INFO_NCOLS) Then
+    '** No attribute data (e.g., raster, wms, tileserver) -- can't be used in this app
+    Is_Mappable = False
+    exit Function 'Not mappable
+  End If
+
+  '** note: raster is handled by the test above, but grid is not
+  If TAB_TYPE_IMAGE = TableInfo(g_ig_TableId,TAB_INFO_TYPE) Then
+    '** raster or grid -- can't be used in this app
+    Is_Mappable = False
+    exit Function 'Not mappable
+  End If
+
+  If TableInfo(g_ig_TableId,TAB_INFO_SEAMLESS) = True Then
+    Is_Mappable = False
+    exit function  'Not mappable
+  End If
+
+End function
+
+Sub CreateTable
+
+  Dim colOrigin, colDest, colDist, colCriteria1, colCriteria2, colUnit as alias
+
+  colOrigin = GetResString(IDS_COL_ORIGIN)
+  colDest =  GetResString(IDS_COL_DEST)
+  colDist = GetResString(IDS_COL_DIST)
+  colCriteria1 = GetResString(IDS_COL_C1)
+  colCriteria2 = GetResString(IDS_COL_C2)
+  colUnit = GetResString(IDS_COL_DISTUNIT)
+
+  OnError goto TableClosed
+
+  Drop Table TempBrowser
+
+AfterClosed:
+
+  Create Table TempBrowser (colOrigin Char(100), colDest Char(100), colDist Decimal(20,6), colUnit char(20), colCriteria1 Char(40), colCriteria2 Char(40)) File strTempPath & "TempBrowser" Type Native
+
+  Exit Sub
+
+TableClosed:
+  Resume AfterClosed
+
+End Sub
+
+Sub SetOperators
+
+  Redim Operators(6)
+  Operators(1) = "="
+  Operators(2) = "<"
+  Operators(3) = ">"
+  Operators(4) = "<="
+  Operators(5) = ">="
+  Operators(6) = "<>"
+
+End Sub
+
+Sub SetUnits
+
+  Dim intUnits as integer
+
+  redim strUnits(11)
+
+  for intUnits = 1 to 11
+    Do Case IntUnits
+      Case 1 strUnits(intUnits) = "mi"
+      Case 2 strUnits(intUnits) = "km"
+      Case 3 strUnits(intUnits) = "m"
+      Case 4 strUnits(intUnits) = "cm"
+      Case 5 strUnits(intUnits) = "mm"
+      Case 6 strUnits(intUnits) = "yd"
+      Case 7 strUnits(intUnits) = "ft"
+      Case 8 strUnits(intUnits) = "in"
+      Case 9 strUnits(intUnits) = "li"
+      Case 10 strUnits(intUnits) = "rd"
+      Case 11 strUnits(intUnits) = "ch"
+    End case
+  next
+
+End Sub
+
+Function RemoveQuotes(byVal strCrit as string) as string
+
+  Dim strTemp as string
+  Dim intPos as integer
+
+  strTemp = strCrit
+  intPos = Instr(1,strTemp,"""")
+  If intPos > 0 then
+    Do while intPos > 0
+      strTemp = Left$(strTemp, intPos - 1) + Mid$(strTemp, intPos + 1, len(strTemp))
+      intPos = Instr(1,strTemp,"""")
+    Loop
+  End If
+
+  RemoveQuotes = strTemp
+
+End Function

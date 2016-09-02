@@ -1,0 +1,406 @@
+'**************************************************************************
+' Sample MapBasic Program: TEXTBOX.MB
+'
+'  This program draws a text-box (i.e. a rectangle or rounded rectangle)
+'  around any currently selected text objects (e.g. map titles).
+'  The purpose is primarily cosmetic.  The way it works: 
+'     (1) the user draws one or more text objects on a Mapper or Layout
+'     (2) the user SELECTS one or more of the text objects
+'     (3) the user picks Create Text Box from the custom menu;
+'         the application then lets the user choose various
+'         settings (e.g. color, shape).  When the user clicks
+'         OK, the application draws a rectangle or rounded rectangle 
+'         object, sized and positioned to fit around each
+'         selected text object. 
+'
+'     NOTE: The text objects drawn must be in an editable layer 
+'           (e.g. a Layout window, a Map's Cosmetic layer, or a Map 
+'            layer that is not read-only). 
+'
+' MapBasic commands, procedures and statements featured:
+'     Create Menu, Alter Menu Item 
+'     Dialog 
+'     SelectionInfo()
+'     ObjectGeography()
+'     ObjectInfo() 
+'     Alter Object 
+'     Update 
+'     ProgressBar 
+'     OnError 
+'     Using the AUTO_LIB function library to allow an application 
+'           to install itself into MapInfo's  Startup  workspace. 
+'
+
+'**************************************************************************
+'                Declare the sub procedures that appear below
+Declare Sub Main
+Declare Sub About
+Declare Sub create_sub
+Declare Sub next_box   
+Declare Sub Bye
+
+
+'**************************************************************************
+'                Include files and Define statements
+
+Include "mapbasic.def" 'standard defines 
+
+Include "..\Inc\auto_lib.def" 'include this file to access the AUTO_LIB library 
+                       'The actual AUTO_LIB routines are in AUTO_LIB.MB[O]
+
+'**************************************************************************
+'                    Global variable declarations
+
+Global on_layout As Logical 
+Global table_name As String
+Global pstyle As Pen 
+Global bstyle As Brush
+Global box_type, num_rows, next_row, num_drawn As Integer
+Global reset_color As Logical  ' TRUE = change text color to match box color
+Global line_color As Integer   ' RGB color of box style selected 
+Global shift_ok As  SmallInt    'Amount to shift OK Button to the right  
+Global shift_cancel As SmallInt 'Amount to shift Cancel button to the right
+
+
+'**************************************************************************
+' Sub procedure: Main
+'
+' The Main procedure adds a menu to the menu bar.
+' After that, the application doesn't do anything until the user
+' picks one of the menu items that we added.
+'**************************************************************************
+Sub Main
+
+   ' Assign some global variables, so that the Auto-Load button 
+   ' (in the About dialog) can use the library routines 
+   ' stored in AUTO_LIB.MBO.  
+   gsAppFilename =  "textbox.mbx"   ' name of MapBasic app file  
+   gsAppDescription = "TextBox"     ' short description of MB application 
+
+   If SystemInfo(SYS_INFO_PLATFORM) = PLATFORM_MAC Then 
+	 shift_ok = 45      'On Mac, move the OK buttons to right of Cancel
+	 shift_cancel = 0 
+   Else 
+	 shift_ok = 0 
+	 shift_cancel = 45  'On Win, move the Cancel button to right of OK 
+   End If 
+
+   Create Menu "TextBox" As
+	  "&Create Text Boxes..."  Calling create_sub,
+ 	  "(-",
+	  "&About TextBox..."    Calling About,
+	  "E&xit TextBox" Calling Bye
+
+   Call set_tools_menu("TextBox")
+
+   pstyle = MakePen(1, 2, BLACK)   ' create a default line style
+   bstyle = MakeBrush(1, 0, 0)     ' create a Hollow fill style
+   box_type = 1                    ' default to non-rounded rectangles
+   reset_color = FALSE             ' Default to: DON'T reset text color
+
+End Sub
+
+
+'**************************************************************************
+' Sub procedure: About
+'
+' Called when/if the user picks TextBox > About Textbox...
+'
+' Display a brief explanatory blurb.
+'***************************************************************************
+Sub About
+  Dialog 
+    Title "About TextBox" 
+    Control StaticText  
+	  Title  "This application draws decorative frames"    Position 10, 10
+    Control StaticText  
+	  Title  "around text objects (e.g. map titles)."      Position 10, 18
+    Control StaticText  
+	  Title  "To use TextBox, first select one or more"    Position 10, 40
+    Control StaticText  
+	  Title  "text objects, then pick Create Text Boxes"   Position 10, 48
+    Control StaticText  
+	  Title  "from the TextBox menu."                      Position 10, 56
+    Control StaticText  
+	  Title  "Note: the TextBox application does not"      Position 10, 80
+    Control StaticText  
+	  Title  "support non-Earth maps (e.g. floorplans)."   Position 10, 88
+
+    Control OKButton   
+      Title  "OK"     
+      Position 54, 110
+
+  ' Note: if the user chooses the Auto-Load button, we call the routine
+  ' HandleInstallation(), which is in the AUTOLOAD library.  
+  ' HandleInstallation() puts up dialogs which let the user set up 
+  ' TextBox to load automatically, whenever MapInfo runs. 
+
+End Sub
+
+
+'**************************************************************************
+' Sub procedure: create_sub
+'
+' Called when/if the user picks Tools > TextBox > Create Text Boxes. 
+'
+' Most of the work done in this procedure relates to displaying
+' a dialog to let the user set various options.
+'**************************************************************************
+Sub create_sub
+   ' Declare local variables
+   Dim i As SmallInt, text_objs As Logical 
+   Dim destination_table As String 
+
+   ' If nothing is currently selected, or if user selected 
+   ' records from a non-mappable table, advise user to select first.  
+   num_rows = SelectionInfo(SEL_INFO_NROWS)
+   If num_rows > 0 Then 
+	 table_name = SelectionInfo(SEL_INFO_TABLENAME) 
+	 If  TableInfo(table_name, TAB_INFO_MAPPABLE) = FALSE  Then
+	   Note "You must select one or more text objects" + Chr$(13) 
+		 + "(e.g. a map title) before drawing text boxes." 
+	   Exit Sub
+	 End If
+   Else  
+	 ' (here, the number of selected rows is zero) 
+	 Note "You must select one or more text objects" + Chr$(13) 
+	   + "(e.g. a map title) before drawing text boxes."
+	  Exit Sub
+   End If
+
+' Spend time trying to determine whether any of the selected objects
+' are text objects (possibly, all the selected objects are Lines, etc.) 
+' If we can determine that ALL the selected objects are NOT text objects, 
+' we should warn user.  However, we don't want to spend a very long time 
+' checking this.  If the user selected a large # of objects, none of which
+' are text objects, we could spend a LONG time checking each and every one. 
+'
+' So let's limit ourselves to checking a small number of objects -- say, 20.
+' If, in the course of checking up to 20 objects, we determine with 
+' certainty that NONE of the selected objects are text objects, we can
+' warn the user. 
+ 
+   i = 1 
+   text_objs = FALSE 
+   Do While i <= num_rows
+	 Fetch Rec i From Selection 
+	 If Str$(Selection.obj) = "Text"  Or  i > 20  Then 
+	   text_objs = TRUE 
+	   Exit Do 
+	 End If 
+	 i = i + 1
+   Loop 
+   If Not text_objs Then 
+	 Note "You must select one or more text objects" + Chr$(13) 
+	   + "(e.g. map labels) before drawing text boxes."
+	  Exit Sub
+   End If
+
+   ' Check to see if the items that are selected are LAYOUT objects.
+   ' If they are, set a variable so we can compensate in later 
+   ' calculations. 
+   on_layout = FALSE
+   If TableInfo(table_name, TAB_INFO_TEMP) = TRUE And 
+			  Left$(table_name, 6) = "Layout" Then 
+	 on_layout = TRUE 
+   Else   
+   ' If this isn't a Layout, check to see if the selected items
+   ' are in a read-only table.  If so, quit; we want to store our
+   ' text boxes in the table containing the text objects. 
+	 If TableInfo(table_name, TAB_INFO_READONLY)  Then 
+	   Note "The selected items are in a table" + Chr$(13) + 
+		 "that is not currently editable." + Chr$(13) + Chr$(13) + 
+		 "Please either make the " + table_name + " table " + 
+		 "editable or choose objects from another table." 
+	   Exit Sub
+	 End If 
+   End If
+
+   If on_layout Then 
+	 destination_table = "The Layout window"   
+   ElseIf  InStr(1, table_name, "Cosmetic") > 0 Then
+	 destination_table = "The Mapper window's cosmetic layer" 
+   Else  
+	 destination_table = "The table: " + table_name 
+   End If 
+
+   Dialog   Title "Create Text Boxes" 
+	Control StaticText 
+	  Title "Create Boxes Around Selected Text Objects" 
+	  Position 20, 5
+	Control GroupBox
+	  Title "Enclose each label in a:"
+	  Position 10,20  
+	  Width 125   Height 40
+	Control RadioGroup
+	  Title "&Rectangle;R&ounded Rectangle"
+	  Position 20,32
+	  Value box_type
+	  Into box_type
+	Control StaticText
+	  Title "Line style:"
+	  Position 20,70 
+	Control PenPicker
+	  Value pstyle
+	  Into pstyle
+	  Position 60,70   
+	  Width 20   Height 20
+	Control GroupBox
+	  Title "Text boxes will be stored in:" 
+	  Position 10,100 
+	  Width 160   Height 40
+	Control StaticText 
+	  Title destination_table 
+	  Position 20,120
+	Control CheckBox 
+	  Title "Change text color to match box color"
+	  Position 10, 150
+	  Value reset_color
+	  Into reset_color
+	Control OKButton
+	  Title "OK"  
+	  Position 90 + shift_ok, 180
+	Control CancelButton
+	  Title "Cancel"
+	  Position 90 + shift_cancel, 180
+
+   'The dialog is done.  If the user clicked "Cancel", let's just quit.
+   If Not CommandInfo(CMD_INFO_DLG_OK) Then
+	  Exit Sub
+   End If
+
+   line_color = StyleAttr(pstyle, PEN_COLOR) 
+   num_drawn = 0     ' initialize count of "# of boxes drawn"
+   next_row = 1      ' note which object is next-to-be-processed       
+
+   ' If the selected objects are on a Layout window, 
+   ' we have to execute a special Set CoordSys statement 
+   ' before doing any object querying or object creating. 
+   If on_layout Then 
+	 Set CoordSys Layout Units "mm" 
+   Else 
+	 Set CoordSys Earth 
+   End If 
+
+   ' Use the ProgressBar statement to display a "% done" dialog.
+   ' the ProgressBar statement repeatedly calls the NEXTBOX
+   ' procedure until the job finishes or until user hits CANCEL.
+
+   ProgressBar "Drawing boxes around text objects..."
+	  Calling next_box Range num_rows
+
+   If CommandInfo(CMD_INFO_DLG_OK) Then
+	  Note "Finished. " + Chr$(13) + Chr$(13) + 
+		   Str$(num_drawn) + " text box(es) drawn."
+   Else
+	  Note "Process interrupted! " + Chr$(13) + Chr$(13) + 
+		   Str$(num_drawn) + " text box(es) drawn."
+   End If
+   Exit Sub
+End Sub
+
+
+'**************************************************************************
+' Sub procedure: next_box 
+'
+' The next_box procedure draws one box around one text object. 
+'
+' The ProgressBar statement (above) repeatedly calls NEXTBOX   
+' until all textboxes are drawn, or until the user clicks Cancel.
+'**************************************************************************
+Sub next_box
+   ' Declare local variables
+   Dim objcopy, tbox As Object
+   Dim oldfont, newfont As Font 
+   Dim center_x, center_y, dx, dy, radius, x1, y1, x2, y2 As Float 
+
+   ' Retrieve the Nth selected object.  
+   Fetch Rec next_row From Selection 
+   ' Only draw a box around this object if it's a TEXT object
+   If Str$(Selection.obj) = "Text" Then 
+	  ' Determine the extents of the text object 
+	  objcopy = Selection.obj
+	  x1 = ObjectGeography(objcopy, OBJ_GEO_MINX) 
+	  x2 = ObjectGeography(objcopy, OBJ_GEO_MAXX) 
+	  y1 = ObjectGeography(objcopy, OBJ_GEO_MINY) 
+	  y2 = ObjectGeography(objcopy, OBJ_GEO_MAXY) 
+	  center_x = (x1 + x2) / 2
+	  center_y = (y1 + y2) / 2
+	  dx = Abs(x2 - x1) / 2
+	  dy = Abs(y2 - y1) / 2
+	  dx = dx + .3 * Minimum(dx, dy)  
+
+	  dy = dy + .3 * Minimum(dx, dy)   
+	  x1 = center_x - dx
+	  x2 = center_x + dx
+	  y1 = center_y - dy
+	  y2 = center_y + dy
+	  If box_type = 1 Then 
+		Create Rect 
+		Into Variable tbox
+		(x1, y1) (x2, y2) 
+		Pen pstyle  Brush bstyle
+	  Else 
+		' Calculate the radius for the rounded rectangle "corners"
+		radius = .6 * Minimum(dx, dy) 
+		Create RoundRect
+		Into Variable tbox
+		(x1, y1) (x2, y2) radius 
+		Pen pstyle    Brush bstyle
+	  End If 
+	  Insert Into table_name (obj) Values (tbox)
+	  num_drawn = num_drawn + 1 
+
+	  If  reset_color  Then 
+		'
+		' ...then we should change the color of each Text object 
+		' to match the color of the box (because the user checked 
+		' the "Change color of text..." box in the dialog).  
+		'
+		' First, query the Font style of the original Text object. 
+		'
+		oldfont = ObjectInfo(objcopy, OBJ_INFO_TEXTFONT) 
+
+		' Second, construct a new Font style using the new color. 
+		' 
+		' Maximum is used on POINTSIZE to insure that POINTSIZE is not ever zero 
+		'     eg. oldfont is from mapper text object
+		
+		newfont = MakeFont( StyleAttr(oldfont, FONT_NAME), 
+							StyleAttr(oldfont, FONT_STYLE), 
+							Maximum(StyleAttr(oldfont, FONT_POINTSIZE),1), 
+							line_color, 
+							StyleAttr(oldfont, FONT_BACKCOLOR)  ) 
+
+		' Third, update the Object with the new font style.   
+		'         
+		Alter Object objcopy  Info OBJ_INFO_TEXTFONT, newfont 
+		'
+		' Finally, write the altered text object back to the table. 
+		' 
+		Update Selection Set Obj = objcopy Where RowID = next_row 
+	  End If 
+   End If
+
+   If  next_row >= num_rows Then  'If this was row #N out of N...
+	  ProgressBar = -1            'tell caller: all done
+   Else                           
+	  ProgressBar = next_row      'tell caller: not done, but getting there
+   End If 
+   next_row = next_row + 1
+End Sub
+
+
+'**************************************************************************
+' Sub procedure: Bye
+'
+' Called when/if the user picks TextBox > Close. 
+'
+' Terminate the program. 
+'**************************************************************************
+Sub Bye
+  End Program
+End Sub
+
+
+'///////////    End of TEXTBOX.MB     ////////////

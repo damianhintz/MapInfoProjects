@@ -1,0 +1,40 @@
+'*****************************************************************************
+'       Copyright © 2009 Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 66276 $
+'
+' Module Description:
+'
+' A MapBasic sample program to demonstate the usage of MapInfo HTTP/FTP
+' library API to receive/send/search files from/to FTP server.
+'
+'*****************************************************************************
+Include "../inc/Mapbasic.def"
+Include "../inc/Menu.def"
+Include "../inc/HTTPTypes.def"
+Include "FilesManager.def"
+
+Declare Sub Main
+'Declare Sub Init
+Declare Sub ExitSub
+
+Sub Main
+  Call Init
+  Create Menu "&Sample" As
+     "&Connect..."        HelpMsg "Connect to a FTP site" Calling FTPConnectDLG,
+     "(-",
+     "(&GetFile..."        HelpMsg "Get a file from the connected FTP site" Calling FTPGetFileDLG,
+      "(&ListFiles..."      HelpMsg "List all the files of the current directory" Calling ListFiles,
+     "(-",
+    "E&xit"                HelpMsg "Exit Sample" Calling ExitSub
+
+  Alter Menu Bar Remove "Help"
+  Alter Menu Bar Add "&Sample", "Help"
+End Sub
+
+Sub ExitSub
+  Call CleanUp
+  Alter Menu Bar Remove "&Sample"
+  End Program
+End Sub

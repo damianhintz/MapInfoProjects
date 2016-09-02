@@ -1,0 +1,587 @@
+'*****************************************************************************
+'       Copyright © 2010, Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 67995 $
+'
+' Module Description:
+'   Use Affine transformation to rotate map window
+'*****************************************************************************
+
+Include "..\Inc\MapBasic.DEF"
+Include "RotateMapWindow.def"
+' Include a file that lets us use the "auto-load" library
+Include "..\Inc\Auto_Lib.DEF"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+Declare Sub Main
+Declare Sub GUI
+Declare Sub Rotate
+Declare Sub Unrotate
+Declare Sub SaveAs
+Declare Sub MapCenter
+Declare Sub StandardAngle0
+Declare Sub StandardAngle45
+Declare Sub StandardAngle90
+Declare Sub StandardAngle135
+Declare Sub StandardAngle180
+Declare Sub StandardAngle225
+Declare Sub StandardAngle270
+Declare Sub StandardAngle315
+Declare Sub About
+Declare Sub Exit
+Declare Sub RotateEnable
+Declare Sub WinClosedHandler
+Declare Sub WinFocusChangedHandler
+
+Global fCenterX, fCenterY, fAngle As Float
+Global lRecenter As Logical
+Global iMapWindowID As Integer
+
+Define AppVersion 1.5
+
+Sub Main
+
+  OnError Goto HandleError
+
+  If LoadStrings((ApplicationDirectory$() + STR_RES_STR_FILE)) = FALSE Then
+    Note STR_FILE_NOT_ACCESSIBLE + ApplicationDirectory$() + STR_RES_STR_FILE
+    Exit Sub
+  End If
+
+  gsAppDescription = GetResString(IDS_APP_DESCRIPTION)
+  gsAppFilename = STR_APP_FILE_NAME
+
+  Create Menu GetResString(IDS_MENU_NAME) As
+    GetResString(IDS_MENU_ITEM_NAME) Calling GUI,
+    STR_MENU_ITEM_SEPERATOR,
+    GetResString(IDS_ABOUT_MENU_ITEM_NAME) Calling About,
+    GetResString(IDS_EXIT_MENU_ITEM_NAME) Calling Exit
+
+  Call set_tools_menu(GetResString(IDS_MENU_NAME))
+
+  Call RotateEnable
+  lRecenter = TRUE
+
+  Exit Sub
+
+HandleError:
+  Print STR_SUB_MAIN + Error$()
+  Resume Next
+End Sub
+
+Sub GUI
+
+  OnError Goto HandleError
+
+  If WindowInfo(FrontWindow(), WIN_INFO_TYPE) <> WIN_MAPPER Then
+    Note GetResString(IDS_MAKE_MAP_ACTIVE)
+    Exit Sub
+  End If
+
+  If iMapWindowID <> FrontWindow() Then
+    fCenterX = 0
+    fCenterY = 0
+  End If
+  iMapWindowID = FrontWindow()
+
+  Dialog
+    Title GetResString(IDS_APP_DESCRIPTION) + STR_EMPTY_STR2 + STR_OPEN_BRAC +
+           GetResString(IDS_VERSION) + STR_EMPTY_STR2 + Str$(AppVersion) + STR_CLOSE_BRAC
+    Control StaticText
+      Title GetResString(IDS_ROTATION_X_Y)
+      Position 10, 10
+    Control EditText
+      Value FormatNumber$(fCenterX)
+      Into fCenterX
+      ID 6661
+    Control EditText
+      Value FormatNumber$(fCenterY)
+      Into fCenterY
+      ID 6662
+    Control Button
+      Title GetResString(IDS_MAP_CENTER)
+      Calling MapCenter
+      Position 10, 25
+    Control StaticText
+      Title GetResString(IDS_ROTATION_ANGLE)
+      Position 10, 45
+    Control EditText
+      Value FormatNumber$(fAngle)
+      Into fAngle
+      ID 6663
+    Control StaticText
+      Title GetResString(IDS_IN_DEGREES)
+    Control Button
+      Title GetResString(IDS_0_DEGREES) + GetResString(IDS_DEG_SYMBOL)
+      Calling StandardAngle0
+       Position 10, 65
+    Control Button
+      Title GetResString(IDS_45_DEGREES) + GetResString(IDS_DEG_SYMBOL)
+      Calling StandardAngle45
+    Control Button
+      Title GetResString(IDS_90_DEGREES) + GetResString(IDS_DEG_SYMBOL)
+      Calling StandardAngle90
+    Control Button
+      Title GetResString(IDS_135_DEGREES) + GetResString(IDS_DEG_SYMBOL)
+      Calling StandardAngle135
+    Control Button
+      Title GetResString(IDS_180_DEGREES) + GetResString(IDS_DEG_SYMBOL)
+      Calling StandardAngle180
+    Control Button
+      Title GetResString(IDS_225_DEGREES) + GetResString(IDS_DEG_SYMBOL)
+      Calling StandardAngle225
+    Control Button
+      Title GetResString(IDS_270_DEGREES) + GetResString(IDS_DEG_SYMBOL)
+      Calling StandardAngle270
+    Control Button
+      Title GetResString(IDS_315_DEGREES) + GetResString(IDS_DEG_SYMBOL)
+      Calling StandardAngle315
+    Control CheckBox
+      Title GetResString(IDS_RECENTER)
+      Value lRecenter
+      Into lRecenter
+      ID 6664
+    Control Button
+      Title GetResString(IDS_ROTATE)
+      Calling  Rotate
+    Control Button
+      Title GetResString(IDS_UNROTATE)
+      Calling  Unrotate
+    Control Button
+      Title GetResString(IDS_SAVE_AS)
+      Calling  SaveAs
+    Control CancelButton
+      Title GetResString(IDS_DONE)
+
+  Exit Sub
+
+HandleError:
+  Print STR_SUB_GUI + Error$()
+  Resume Next
+End Sub
+
+Sub Rotate
+
+  Dim origx(3), origy(3), newx(3), newy(3), MapCenterX, MapCenterY, MapZoom As Float
+  Dim sCoordSys, sAffine, sTableName, sCoordSysUnit, sCenterX, sCenterY, sAngle As String
+  Dim iPos, iPos2, iLayers, iIndex As Integer
+
+  OnError Goto HandleError
+
+  ' Check for tile server layers.  We can't rotate maps with tile server layers.
+  iLayers = MapperInfo(FrontWindow(), MAPPER_INFO_LAYERS)
+  For iIndex = 1 To iLayers
+    sTableName = LayerInfo(FrontWindow(), iIndex, LAYER_INFO_NAME)
+    If TableInfo(sTableName, TAB_INFO_TYPE) =  TAB_TYPE_TILESERVER Then
+      Note GetResString(IDS_TILESERVER)
+      GoTo done
+    End If
+  Next
+
+  ' Check for raster/wms layers.  We can rotate maps with raster/wms layers, but it will only work correctly
+  ' if Map Options>Image Processing is not set to "Never"
+  For iIndex = 1 To iLayers
+    sTableName = LayerInfo(FrontWindow(), iIndex, LAYER_INFO_NAME)
+    If TableInfo(sTableName, TAB_INFO_TYPE) =  TAB_TYPE_IMAGE Or TableInfo(sTableName, TAB_INFO_TYPE) =  TAB_TYPE_WMS
+    And MapperInfo(FrontWindow(), MAPPER_INFO_REPROJECTION) = STR_NONE Then
+      If Not Ask(GetResString(IDS_RASTER), GetResString(IDS_OK), GetResString(IDS_CANCEL)) Then
+        GoTo done
+      End If
+      Exit For
+    End If
+  Next
+
+  sCoordSys = MapperInfo(FrontWindow(), MAPPER_INFO_COORDSYS_CLAUSE)
+  iPos = InStr(1, sCoordSys, STR_AFFINE)
+  If iPos Then
+    sCoordSys = Left$(sCoordsys, iPos - 1)
+  End If
+  MapCenterX = MapperInfo(FrontWindow(), MAPPER_INFO_CENTERX)
+  MapCenterY = MapperInfo(FrontWindow(), MAPPER_INFO_CENTERY)
+  MapZoom = MapperInfo(FrontWindow(), MAPPER_INFO_ZOOM)
+
+  iPos = InStr(1, sCoordsys, STR_EMPTY_STR3)
+  If iPos Then
+    iPos2 = InStr(iPos+1, sCoordSys, STR_EMPTY_STR3)
+    sCoordsysUnit = Mid$(sCoordSys, iPos+1, iPos2-iPos-1)
+  Else
+    sCoordSysUnit = STR_MI
+  End If
+  sCenterX = ReadControlValue(6661)
+  sCenterY = ReadControlValue(6662)
+  sAngle = ReadControlValue(6663)
+  lRecenter = ReadControlValue(6664)
+
+  fCenterX = Val(DeformatNumber$(sCenterX))
+  fCenterY = Val(DeformatNumber$(sCenterY))
+  fAngle = Val(DeformatNumber$(sAngle))
+
+  If fCenterX = 0 And Left$(sCenterX, 1) <> STR_ZERO Or
+     fCenterY = 0 And Left$(sCenterY, 1) <> STR_ZERO Or
+     fAngle = 0 And Left$(sAngle, 1) <> STR_ZERO Then
+    Note GetResString(IDS_MUST_BE_NUMERIC)
+    Exit Sub
+  End If
+
+  If fCenterX <= -180 Or fCenterX >= 180 Or
+     fCenterY <= -90 Or fCenterY >= 90 Then
+    Note GetResString(IDS_OUT_OF_RANGE)
+    Exit Sub
+  End If
+
+  origx(1) = fCenterX
+  origy(1) = fCenterY
+  origx(2) = fCenterX
+  If fCenterY <> 0.0 Then
+    origy(2) = 0.0
+  Else
+    origy(2) = MapperInfo(FrontWindow(), MAPPER_INFO_MAXY)
+  End If
+  If fCenterX <> 0.0 Then
+    origx(3) = 0.0
+  Else
+    origx(3) = MapperInfo(FrontWindow(), MAPPER_INFO_MAXX)
+  End If
+  origy(3) = fCenterY
+  newx(1) = fCenterX
+  newy(1) = fCenterY
+  If fCenterY <> 0.0 Then
+    newx(2) = origx(1)+(origy(1)*SIN((-fAngle)*DEG_2_RAD))
+    newy(2) = origy(1)-(origy(1)*SIN((90+fAngle)*DEG_2_RAD))
+  Else
+    newx(2) = origx(1)-(origy(2)*SIN((-fAngle)*DEG_2_RAD))
+    newy(2) = origy(1)+(origy(2)*SIN((90+fAngle)*DEG_2_RAD))
+  End If
+  If fCenterX <> 0.0 Then
+    newx(3) = origx(1)-(origx(1)*SIN((90+fAngle)*DEG_2_RAD))
+    newy(3) = origy(1)-(origx(1)*SIN((-fAngle)*DEG_2_RAD))
+  Else
+    newx(3) = origx(1)+(origx(3)*SIN((90+fAngle)*DEG_2_RAD))
+    newy(3) = origy(1)+(origx(3)*SIN((-fAngle)*DEG_2_RAD))
+  End If
+
+' Print "x1 = " + origx(1) + ", y1 = " + origy(1)
+' Print "x2 = " + origx(2) + ", y2 = " + origy(2)
+' Print "x3 = " + origx(3) + ", y3 = " + origy(3)
+
+' Print "x1p = " + newx(1) + ", y1p = " + newy(1)
+' Print "x2p = " + newx(2) + ", y2p = " + newy(2)
+' Print "x3p = " + newx(3) + ", y3p = " + newy(3)
+
+  Dim aa, ab, ac, ad, ae, af As Float
+  Dim avgx, avgy, p, q, s(9), beta(7), temp As Float
+  Dim i As Integer
+
+  ' initialize things
+  avgx = 0
+  avgy = 0
+  For i = 1 To 9
+    s(i) = 0
+  Next
+
+  '
+  For i = 1 To 3
+    avgx = avgx + newx(i)
+    avgy = avgy + newy(i)
+  Next
+  avgx = avgx / 3
+  avgy = avgy / 3
+
+  For i = 1 To 3
+    s(1) = s(1) + (newx(i) - avgx) * (newy(i) - avgy)
+    s(2) = s(2) + (newy(i) - avgy) * (newy(i) - avgy)
+    s(3) = s(3) + (newx(i) - avgx) * (newx(i) - avgx)
+    s(4) = s(4) + (newy(i) - avgy) * (origy(i) - newy(i))
+    s(5) = s(5) + (newx(i) - avgx) * (origx(i) - newx(i))
+    s(6) = s(6) + (newx(i) - avgx) * (origy(i) - newy(i))
+    s(7) = s(7) + (newy(i) - avgy) * (origx(i) - newx(i))
+    s(8) = s(8) + origx(i) - newx(i)
+    s(9) = s(9) + origy(i) - newy(i)
+  Next
+
+  If s(2) = 0 Or s(3) = 0 Then
+    Note GetResString(IDS_ERROR_1)
+    GoTo done
+  End If
+
+  p = s(1) / s(2)
+  q = s(1) / s(3)
+  temp = s(3) - p * s(1)
+  If temp = 0 Then
+    Note GetResString(IDS_ERROR_2)
+    GoTo done
+  End If
+
+  beta(4) = (s(6) - p * s(4)) / temp
+  temp = s(2) - q * s(1)
+  If temp = 0 Then
+    Note GetResString(IDS_ERROR_3)
+    GoTo done
+  End If
+  beta(2) = (s(7) - q * s(5)) / temp
+  beta(5) = 1 - p * beta(4) + s(4) / s(2)
+  beta(1) = 1 - q * beta(2) + s(5) / s(3)
+  beta(3) = s(8) / 3 + avgx - beta(1) * avgx - beta(2) * avgy
+  beta(6) = s(9) / 3 + avgy - beta(5) * avgy - beta(4) * avgx
+  temp = beta(5) * beta(1) - beta(4) * beta(2)
+  If temp = 0 Then
+    Note GetResString(IDS_ERROR_4)
+    GoTo done
+  End If
+  aa = beta(5) / temp
+  ab = -beta(2) / temp
+  ac = (beta(2) * beta(6) - beta(3) * beta(5)) / temp
+  ad = -beta(4) / temp
+  ae = beta(1) / temp
+  af = (beta(4) * beta(3) - beta(6) * beta(1)) / temp
+
+  Print GetResString(IDS_FOR_ORIGIN) + origx(1) + STR_COMMA + origy(1) + STR_CLOSE_BRAC + STR_EMPTY_STR2 +
+        GetResString(IDS_AND_ANGLE) + fAngle +
+        GetResString(IDS_IN_MAP_WINDOW) + WindowInfo(FrontWindow(), WIN_INFO_NAME)
+  sAffine = aa + STR_COMMA + ab + STR_COMMA + ac + STR_COMMA + ad + STR_COMMA + ae + STR_COMMA + af
+  sCoordSys = STR_SET_MAP + sCoordSys +
+              STR_AFFINE_UNITS + STR_EMPTY_STR3 + sCoordSysUnit + STR_EMPTY_STR3 + STR_EMPTY_STR2+ STR_COMMA + sAffine
+  Print STR_EMPTY_STR2+ STR_EMPTY_STR2 + sCoordSys
+  Run Command sCoordSys
+  If Not lRecenter Then
+    Set Map Center (MapCenterX, MapCenterY)
+    Set Map Zoom MapZoom
+  End If
+
+Done:
+  Exit Sub
+
+HandleError:
+  Print STR_SUB_ROTATE + Error$()
+  Resume Next
+
+End Sub
+
+Sub Unrotate
+
+  Dim MapCenterX, MapCenterY, MapZoom As Float
+  Dim sCoordSys As String
+  Dim iPos As Integer
+
+  OnError Goto HandleError
+
+  sCoordSys = MapperInfo(FrontWindow(), MAPPER_INFO_COORDSYS_CLAUSE)
+  iPos = InStr(1, sCoordSys, STR_AFFINE)
+  If iPos Then
+    sCoordSys = Left$(sCoordsys, iPos - 1)
+  End If
+  MapCenterX = MapperInfo(FrontWindow(), MAPPER_INFO_CENTERX)
+  MapCenterY = MapperInfo(FrontWindow(), MAPPER_INFO_CENTERY)
+  MapZoom = MapperInfo(FrontWindow(), MAPPER_INFO_ZOOM)
+
+  Print GetResString(IDS_FOR_MAP_WINDOW) + WindowInfo(FrontWindow(), WIN_INFO_NAME)
+  sCoordSys = STR_SET_MAP + sCoordSys
+  Print STR_EMPTY_STR2 + STR_EMPTY_STR2 + sCoordSys
+  Run Command sCoordSys
+  If Not lRecenter Then
+    Set Map Center (MapCenterX, MapCenterY)
+    Set Map Zoom MapZoom
+  End If
+
+Done:
+  Exit Sub
+
+HandleError:
+  Print STR_SUB_UNROTATE + Error$()
+  Resume Next
+
+End Sub
+
+Sub SaveAs
+
+  Dim sFileSpec, sFileDir, sFileName, sTableName, sTableNames() As String
+  Dim sCoordSys, sCommand As String
+  Dim iIndex, iLayers, iTables As Integer
+
+  OnError Goto HandleError
+
+  iLayers = MapperInfo(FrontWindow(), MAPPER_INFO_LAYERS)
+  iTables = 0
+  For iIndex = 1 To iLayers
+    sTableName = LayerInfo(FrontWindow(), iIndex, LAYER_INFO_NAME)
+    If TableInfo(sTableName, TAB_INFO_TYPE) = TAB_TYPE_BASE Then
+      iTables = iTables + 1
+      ReDim sTableNames(iTables)
+      sTableNames(iTables) = sTableName
+    End If
+  Next
+  iIndex = 1
+  If iTables < 1 Then
+    Note GetResString(IDS_NO_LAYERS_TO_SAVE)
+  Elseif iTables > 1 Then
+    Dialog
+
+      Title GetResString(IDS_CHOOSE_A_TABLE)
+      Control ListBox
+        Title From Variable sTableNames
+        Value iIndex
+        Into  iIndex
+        Width 250
+      Control OKButton
+        Title GetResString(IDS_OK)
+      Control CancelButton
+        Title GetResString(IDS_CANCEL)
+  End If
+  If iTables >= 1 Then
+    If CommandInfo(CMD_INFO_DLG_OK) Or iTables = 1 Then
+      sTableName = sTableNames(iIndex)
+      sFileSpec = TableInfo(sTableName, TAB_INFO_TABFILE)
+      sFileName = PathToFileName$(sFileSpec)
+      sFileDir = PathToDirectory$(sFileSpec)
+      sFileSpec = FileSaveAsDlg(sFileDir, sFileName, STR_TAB, GetResString(IDS_SPECIFY_NAME))
+      If sFileSpec <> STR_EMPTY_STR1 Then
+        sCoordSys = MapperInfo(FrontWindow(), MAPPER_INFO_COORDSYS_CLAUSE)
+        sCommand = STR_CMD_COMMIT_TABLE + sTableName + STR_AS + STR_EMPTY_STR3 +
+                                     sFileSpec + STR_EMPTY_STR3 + + STR_EMPTY_STR2 + sCoordSys
+        Print sCommand
+        Run Command sCommand
+      End If
+    End If
+  End If
+  ReDim sTableNames(0)
+  Exit Sub
+
+HandleError:
+  Print STR_SUB_SAVE + Error$()
+  Resume Next
+End Sub
+
+Sub MapCenter
+
+  OnError Goto HandleError
+
+  fCenterX = MapperInfo(FrontWindow(), MAPPER_INFO_CENTERX)
+  fCenterY = MapperInfo(FrontWindow(), MAPPER_INFO_CENTERY)
+  Alter Control 6661 value FormatNumber$(fCenterX)
+  Alter Control 6662 value FormatNumber$(fCenterY)
+
+  Exit Sub
+
+HandleError:
+  Print STR_SUB_MAP_CENTER + Error$()
+  Resume Next
+End Sub
+
+Sub StandardAngle0
+  Alter Control 6663 value Str$(0)
+End Sub
+
+Sub StandardAngle45
+
+  Alter Control 6663 value Str$(45)
+End Sub
+
+Sub StandardAngle90
+  Alter Control 6663 value Str$(90)
+End Sub
+
+Sub StandardAngle135
+  Alter Control 6663 value Str$(135)
+End Sub
+
+Sub StandardAngle180
+  Alter Control 6663 value Str$(180)
+End Sub
+
+Sub StandardAngle225
+  Alter Control 6663 value Str$(225)
+End Sub
+
+Sub StandardAngle270
+  Alter Control 6663 value Str$(270)
+End Sub
+
+Sub StandardAngle315
+  Alter Control 6663 value Str$(315)
+End Sub
+
+Sub About
+
+  OnError Goto HandleError
+
+  Dialog Title GetResString(IDS_ABOUT) + STR_EMPTY_STR2 + STR_OPEN_BRAC + GetResString(IDS_VERSION) +
+                                         STR_EMPTY_STR2 + Str$(AppVersion) + STR_CLOSE_BRAC
+
+  Position 10, 10
+
+  Control StaticText
+    Title GetResString(IDS_ABOUT_1) + Chr$(13) +  Chr$(13) +
+                           GetResString(IDS_ABOUT_2) + Chr$(13) +
+                           GetResString(IDS_ABOUT_3) + Chr$(13) +  Chr$(13) +
+                           GetResString(IDS_ABOUT_4) + Chr$(13) +
+                           GetResString(IDS_ABOUT_5)
+    Height 120
+    Width 265
+  Control OKButton
+     Title GetResString(IDS_OK)
+  Exit Sub
+
+HandleError:
+  Print STR_SUB_ABOUT + Error$()
+  Resume Next
+End Sub
+
+Sub Exit
+
+  OnError Goto HandleError
+
+  End Program
+
+  Exit Sub
+
+HandleError:
+  Print STR_SUB_EXIT + Error$()
+  Resume Next
+End Sub
+
+'-------------------------------------------------------------------------------
+'Enable or disable the Rotate options as necessary
+'-------------------------------------------------------------------------------
+Sub RotateEnable
+  Dim lWin As Integer
+  Dim sEnable As String
+
+  OnError Goto HandleError
+
+  sEnable = STR_DISABLE
+  If NumWindows() Then
+    lWin = WindowID(FrontWindow())
+    If lWin Then
+      If WindowInfo(lWin, WIN_INFO_TYPE) = WIN_MAPPER Then
+        sEnable = STR_ENABLE
+      End If 'WindowInfo
+    End If 'lWin
+  End If 'NumWindows
+  Run Command STR_CMD_ALTER_MENU_ITEM_GUI + sEnable
+
+Done:
+  Exit Sub
+
+HandleError:
+  Print STR_SUB_ROTATE_ENABLE + Error$()
+  Resume Next
+End Sub 'RotateEnable
+
+'-------------------------------------------------------------------------------
+'Wake up when a window is closed and disable options if necessary
+'-------------------------------------------------------------------------------
+Sub WinClosedHandler
+  ' if we're closing the last window, disable GeoSoftware
+  If NumWindows() = 1 Then
+    Alter Menu Item GUI Disable
+  End If 'NumWindows
+End Sub 'WinClosedHandler
+
+'-------------------------------------------------------------------------------
+'Wake up when window focus changes and enable or disable options as necessary
+'-------------------------------------------------------------------------------
+Sub WinFocusChangedHandler
+  Call RotateEnable
+End Sub 'WinFocusChangedHandler

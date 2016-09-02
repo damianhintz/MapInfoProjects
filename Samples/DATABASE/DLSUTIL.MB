@@ -1,0 +1,123 @@
+'** DEMOUTIL.MB *************************************************************
+'* utilities for my mapbasic demos
+'****************************************************************************
+INCLUDE "MAPBASIC.DEF"
+INCLUDE "..\INC\DLSAMP.DEF"
+
+'****************************************************************************
+' For Dialog List control selection processing
+' Returns the list value at the selection index 
+' (No need to maintain a parallel array)
+'****************************************************************************
+FUNCTION SelectString(BYVAL stringlist AS STRING, BYVAL selection AS INTEGER) AS STRING
+  DIM i, pos, ln AS INTEGER
+
+  stringlist = stringlist+";"
+
+  ln = LEN(stringlist)
+  FOR I=1 TO selection
+    IF ln = 0 THEN
+      SelectString = ""
+      EXIT FOR
+    END IF
+
+    pos = INSTR(1, stringlist, ";")
+    SelectString = LEFT$(stringlist, pos - 1)
+  
+    stringlist = MID$(stringlist, pos+1, ln - pos)
+    ln = LEN(stringlist)
+  NEXT
+END FUNCTION
+
+
+'**  STRPAD$()  ***********************************************************
+'* Try to align output up - doesn't work w/ proportional font output!
+'* Try tab 0x09 on WIN  (nope)
+FUNCTION STRPAD$ (BYVAL in AS STRING, BYVAL len as INTEGER) AS STRING
+  STRPAD$=LEFT$((in + SPACE$(len)), len)
+END FUNCTION
+
+
+'**  IsDebugOn()  ***********************************************************
+'* Logical function that returns the Runtime debug setting
+'* IF DATALINK.DBG file existsing on Home doirecdtory with record
+'* 1 starting with ON then debugging is on
+'****************************************************************************
+Function IsDebugOn(BYVAL ProgName AS STRING) AS LOGICAL
+  DIM debugfile, debugrec AS STRING
+
+  IsDebugOn=FALSE
+  IF ProgName="" THEN
+    ProgName="MBPROG"
+  END IF
+  debugfile = HomeDirectory$() + ProgName + ".DBG"
+  OnError GoTo NoDebug
+  Open File debugfile For Input  As #10 
+
+  OnError GoTo NoDebugCloseFile
+  Line Input #10, debugrec
+  If Instr(1, UCASE$(LEFT$(debugrec, 2)), "ON") <> 0 Then  
+    IsDebugOn=TRUE
+  End If
+  Close File #10
+  GOTO ALLDONE
+
+  NoDebugCloseFile:
+
+    Close File #10
+    Resume ALLDONE
+
+  NoDebug:
+    Resume ALLDONE
+
+  ALLDONE:       
+
+End Function
+
+
+'****************************************************************************
+SUB DebugInit(BYVAL ProgramName AS STRING)
+  '  Get the SQL Datalink MapBasic debug flag 0=OFF 1=ON
+  dbg = IsDebugOn(ProgramName)
+  If dbg Then
+    Open Window Message
+    Set Window Message Position (0.0, 4.0) Width 8.25 Height 1.0 Front 
+    Print CHR$(12) ' clear the window contents
+    Print ProgramName + " - Debugging is ON!" 
+  End If
+END SUB
+
+
+'************************************************************************
+'* Debug control handler
+'    CONTROL CHECKBOX ID DEBUG_CHECKBOX_ID
+'      TITLE "Debug" VALUE FALSE CALLING SetDebug 
+'      Position 0, 0
+'******************************************
+SUB SetDebug()
+  IF ReadControlValue(DEBUG_CHECKBOX_ID) THEN
+    CALL SetDebugOn()
+  ELSE
+    CALL SetDebugOff()
+  END IF
+END SUB
+
+
+'****************************************************************************
+SUB SetDebugOn()
+  '  Set the SQL Datalink MapBasic debug flag on
+  dbg = TRUE
+
+  Open Window Message
+  Set Window Message Position (0.0, 4.75) Width 8.25 Height 1.0 Front 
+  Print CHR$(12) ' clear the window contents
+  Print "Debugging is ON!" 
+END SUB
+
+'****************************************************************************
+SUB SetDebugOff()
+  '  Set the SQL Datalink MapBasic debug flag on
+  dbg = FALSE
+
+  Close Window Message
+END SUB

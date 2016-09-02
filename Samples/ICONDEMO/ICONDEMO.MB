@@ -1,0 +1,378 @@
+'*****************************************************************
+'*
+'*	icn_samp.mb
+'*		A ButtonPad Icon Sampler
+'*
+'*	8/15/95
+'*	MapInfo Corporation
+'*
+'*	MapInfo 4.0 now has a number of useful icons built in for
+'*	use by MapBasic programmers. This application is intended to
+'*	be used as a browser, allowing a MapBasic programmer to select
+'*	an icon, and then easily determine the constant from ICONS.DEF
+'*	to use to identify that icon for use in their programs.
+'*
+'*	There are a total of 325 icons available in MapInfo, grouped
+'*	into 18 categories. The program presents the user with a menu
+'*	listing each of the categories. If the user selects one of these
+'*	categories, a button pad will appear with buttons representing
+'*	each of the icons in that category. The ToolTip and HelpMsg for
+'*	each button displays the constant defined in ICONS.DEF for that
+'*	icon. If the user clicks the button, a dialog will appear,
+'*	containing two edit text fields, one with the constant, the other
+'*	with the ID number that constant represents. The constant will
+'*	be initially selected, and the user can copy the constant to the
+'*	clipboard using Ctrl-C, then paste the constant into their mapbasic
+'*	code.
+'*
+'*****************************************************************
+'** Important include files:
+Include	"MapBasic.Def"
+Include	"Icons.Def"
+
+'*****************************************************************
+'** constants to be used by the program
+Define	mbCrLf				Chr$(10) & Chr$(13)		'** a newline character
+Define	mbNumIcons			325						'** the number of icons
+Define	mbNumCategories		18						'** the number of categories
+
+'*****************************************************************
+'** A structure containing information about a particular icon
+Type IconInfo
+	Constant as string					'** the constant in Icons.Def
+	ID as integer						'** the numerical ID
+End Type
+
+'** A structure containing information about a category of icons
+Type CategoryInfo
+	Name as string						'** the Name of the category
+	StartIndex as integer				'** the position in the list of icons where
+End Type								'   this category begins
+
+'*****************************************************************
+Global gIcons(mbNumIcons) as IconInfo				'** the list of icon constants/IDs
+Global gCategories(mbNumCategories) as CategoryInfo	'** the list of icon categories, including
+													'   the start index of each in the icon list
+
+'*****************************************************************
+'**	Subroutine declarations
+Declare Sub Main
+Declare Sub EditDialog
+Declare Sub EndIconSampler
+Declare Sub BuildConstantList
+Declare Sub BuildMenu
+Declare Sub BuildButtonPads
+Declare Sub ShowHideButtonPad
+Declare Sub TXTFileNotFoundWarning
+Declare Sub DisplayAboutBox
+
+'*****************************************************************
+'** Main routine
+'**		Create the menu and the buttonpads. Display progress
+'**		messages, since this can take a while. Let the user
+'**		know when they can proceed.
+Sub Main
+	Dim iCat, iButton as integer
+	Dim startIndex, endIndex as integer
+	Dim width as integer
+
+	Print Chr$(12)
+	Print "Initializing. This may take a minute..."
+	Print "  Building constant list..."
+	Call BuildConstantList					'** build a list of the constants
+
+	Print "  Building button pads..."
+	Call BuildButtonPads
+
+	Print "  Setting up Menu..."
+	Call BuildMenu
+
+	Print "Ready to Go!"
+End Sub
+
+'*****************************************************************
+'* When a button is clicked, this routine displays a dialog
+'* with the constant for that icon in an edit text control,
+'* so the user can copy it to the clipboard and paste into
+'* their own MapBasic programs.
+'*
+Sub EditDialog
+	Dim whichButton as integer
+
+	whichButton = CommandInfo( CMD_INFO_TOOLBTN )
+
+	Dialog
+		Title "Icon ID"
+		Control StaticText
+			Title "Constant:"
+			Position 5, 10
+			Width 30
+		Control EditText
+			Value gIcons(whichButton).Constant
+			Position 40, 10
+			Width 120
+		Control StaticText
+			Title "ID:"
+			Position 5, 25
+			Width 30
+		Control EditText
+			Value Str$(gIcons(whichButton).ID)
+			Position 40, 25
+			Width 120
+		Control OKButton
+End Sub
+
+'*****************************************************************
+'**	EndIconSampler
+'**		When the user selects "Exit" from the "Icon Sampler"
+'**		menu, this routine resets the menu bar & buttonpads,
+'**		then exits the program.
+Sub EndIconSampler
+	Alter Menu Bar Remove "Icon Sampler"
+	End Program
+End Sub
+
+'*****************************************************************
+'**	BuildConstantList
+'**		This routine manually builds a list of categories, then
+'**		reads a list of icon constants from the file ICONS.TXT.
+'**		If ICONS.TXT is not found, a warning is displayed. The
+'**		program will work in this case, but the user will only
+'**		be able to see the ID numbers of the icons, not the
+'**		constants defined in ICONS.DEF
+Sub BuildConstantList
+	Dim iconFileName as string
+	Dim i as integer
+
+	gCategories(1).Name = "Standard Icons (Main)"
+	gCategories(1).StartIndex = 1
+	gCategories(2).Name = "Standard Icons (Drawing)"
+	gCategories(2).StartIndex = 17
+	gCategories(3).Name = "Standard Icons (Tools)"
+	gCategories(3).StartIndex = 33
+	gCategories(4).Name = "Standard Icons (Standard)"
+	gCategories(4).StartIndex = 39
+	gCategories(5).Name = "Arrows"
+	gCategories(5).StartIndex = 48
+	gCategories(6).Name = "Communication"
+	gCategories(6).StartIndex = 69
+	gCategories(7).Name = "Emergency"
+	gCategories(7).StartIndex = 81
+	gCategories(8).Name = "Letters"
+	gCategories(8).StartIndex = 99
+	gCategories(9).Name = "Maps"
+	gCategories(9).StartIndex = 125
+	gCategories(10).Name = "Symbols"
+	gCategories(10).StartIndex = 140
+	gCategories(11).Name = "Maritime"
+	gCategories(11).StartIndex = 166
+	gCategories(12).Name = "MapBasic"
+	gCategories(12).StartIndex = 176
+	gCategories(13).Name = "Miscellaneous"
+	gCategories(13).StartIndex = 190
+	gCategories(14).Name = "Numbers"
+	gCategories(14).StartIndex = 221
+	gCategories(15).Name = "Real Estate"
+	gCategories(15).StartIndex = 253
+	gCategories(16).Name = "Signs"
+	gCategories(16).StartIndex = 276
+	gCategories(17).Name = "Transport"
+	gCategories(17).StartIndex = 295
+	gCategories(18).Name = "ODBC Icons"
+	gCategories(18).StartIndex = 322
+
+	iconFileName = ApplicationDirectory$() + "icons.txt"
+
+	if FileExists(iconFileName) then
+		Open File iconFileName For Input as #1
+		For i = 1 to mbNumIcons
+			Line Input #1, gIcons(i).Constant
+			gIcons(i).ID = (i-1)
+		Next
+		Close File #1
+	else
+		Call TXTFileNotFoundWarning
+		for i = 1 to mbNumIcons
+			gIcons(i).Constant = Str$(i-1)
+			gIcons(i).ID = (i-1)
+		next
+	end if
+End Sub
+
+'*****************************************************************
+'**	BuildMenu
+'**		This routine constructs the menu that will appear in
+'**		the menu bar, with an "About..." item, and "Exit" item,
+'**		and checkable items for each of the categories.
+Sub BuildMenu
+	Dim iCat as integer
+	Dim mnuString as string
+
+	Create Menu "Icon Sampler" As
+		"About Icon Sampler..." Calling DisplayAboutBox,
+		"(-"
+
+	for iCat = 1 to mbNumCategories
+'		mnuString = "!Show " & gCategories(iCat).Name & "^Hide " & gCategories(iCat).Name
+		mnuString = "!" & gCategories(iCat).Name
+		Alter Menu "Icon Sampler" Add
+			mnuString
+				ID iCat
+				Calling ShowHideButtonPad
+	next
+
+	Alter Menu "Icon Sampler" Add
+		"(-",
+		"Exit Icon Sampler"
+			Calling EndIconSampler
+
+	Alter Menu Bar Add "Icon Sampler"
+End Sub
+
+'*****************************************************************
+'** BuildButtonPads
+'**		This routine builds a buttonpad for each of the categories
+'**		of icons available, populating them with icons from each
+'**		category.
+Sub BuildButtonPads
+	Dim iCat, iButton as integer
+	Dim startIndex, endIndex as integer
+	Dim theWidth as integer
+
+	for iCat = 1 to mbNumCategories
+		startIndex = gCategories(iCat).StartIndex
+		if iCat = mbNumCategories then
+			endIndex = mbNumIcons
+		else
+			endIndex = gCategories(iCat+1).StartIndex - 1
+		end if
+
+		Create ButtonPad gCategories(iCat).Name As
+			PushButton
+				Icon gIcons(startIndex).ID
+				ID startIndex
+				HelpMsg gIcons(startIndex).Constant & "\n" & gIcons(startIndex).Constant
+				Calling EditDialog
+			Position (0,1)
+			Hide
+
+		For iButton = startIndex+1 to endIndex
+			Alter ButtonPad gCategories(iCat).Name
+				Add PushButton
+					Icon gIcons(iButton).ID
+					ID iButton
+					HelpMsg gIcons(iButton).Constant & "\n" & gIcons(iButton).Constant
+					Calling EditDialog
+		next
+
+	'**	If the ButtonPad is more than 14 buttons wide, make it take up 2 rows instead.
+		if (endIndex-startIndex) > 14 then
+			theWidth = ((endIndex-startIndex)+1)/2
+		else
+			theWidth = ((endIndex-startIndex)+1)
+		end if
+		Alter ButtonPad gCategories(iCat).Name Width theWidth
+	next
+End Sub
+
+'*****************************************************************
+'**	ShowHideButtonPad
+'**		This routine is called when any of the category menu
+'**		items are selected. The routine determines if the menu
+'**		item was checked, then shows or hides the buttonpad
+'**		appropriately.
+Sub ShowHideButtonPad
+	Dim whichCategory as integer
+	Dim isShown as logical
+
+	whichCategory = CommandInfo( CMD_INFO_MENUITEM )
+	isShown = MenuItemInfoByID( whichCategory, MENUITEM_INFO_CHECKED )
+
+	if isShown then
+		Alter ButtonPad gCategories(whichCategory).Name Hide
+		Alter Menu Item ID whichCategory Uncheck
+	else
+		Alter ButtonPad gCategories(whichCategory).Name Show
+		Alter Menu Item ID whichCategory Check
+	end if
+End Sub
+
+'*****************************************************************
+'**	TXTFileNotFoundWarning
+'**		This routine displays a warning when the file ICONS.TXT
+'**		is not found. The application will continue to work, but
+'**		will only display the ID numbers, not the constants from
+'**		ICONS.DEF
+Sub TXTFileNotFoundWarning
+	Dialog
+		Title "Icon Sampler"
+		Control StaticText
+			Title "Could not find the file Icons.Txt. You will only be able to"
+			Position 5, 10
+		Control StaticText
+			Title "see the ID number of the icons, not the constant defined"
+			Position 5, 20
+		Control StaticText
+			Title "in Icons.Def."
+			Position 5, 30
+		Control StaticText
+			Title "To see the constants, the file Icons.Txt must be in the"
+			Position 5, 50
+		Control StaticText
+			Title "same directory as this MapBasic Application."
+			Position 5, 60
+		Control OKButton
+End Sub
+
+'*****************************************************************
+'** DisplayAboutBox
+'**		This routine displays the About Box, which briefly
+'**		describes what this application does, and how to use it.
+Sub DisplayAboutBox
+	Dialog
+		Title "About Icon Sampler"
+		Control StaticText
+			Title "This application creates a series of buttonpads showing"
+			Position 5,10
+		Control StaticText
+			Title "the new custom icons that are built into MapInfo and made"
+			Position 5,20
+		Control StaticText
+			Title "available to the MapBasic programmer using the constants"
+			Position 5,30
+		Control StaticText
+			Title "defined in ICONS.DEF."
+			Position 5,40
+		Control StaticText
+			Title "To use this application, select a category from the ""Icon"
+			Position 5,60
+		Control StaticText
+			Title "Sampler"" menu, and a buttonpad will appear with a sampling"
+			Position 5,70
+		Control StaticText
+			Title "of icons from that category. The help messages and the"
+			Position 5,80
+		Control StaticText
+			Title "ToolTips for each icon give you the constant for that button"
+			Position 5,90
+		Control StaticText
+			Title "that is defined in ICONS.DEF."
+			Position 5,100
+		Control StaticText
+			Title "If you click a button, a dialog will appear, with the"
+			Position 5,120
+		Control StaticText
+			Title "constant in a TextBox selected. You can Copy the text to"
+			Position 5,130
+		Control StaticText
+			Title "the clipboard, then paste it into your MapBasic program."
+			Position 5,140
+		Control StaticText
+			Title "The dialog also displays the numerical constant for the"
+			Position 5,150
+		Control StaticText
+			Title "icon."
+			Position 5,160
+		Control OKButton
+			Position 82,180
+End Sub

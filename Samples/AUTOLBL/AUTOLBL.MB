@@ -1,0 +1,164 @@
+'****************************************************************************
+' Program:  AutoLbl.mb
+'
+' Version:  MapInfo 4.0
+'
+' The AutoLabel application places text object labels in the Cosmetic
+' Layer of the active Mapper. The label values are determined by the options
+' selected in the Autolabels dialog. This dialog and the type of 
+' labels produced are based upon the MapInfo 3.0 Draw AutoLabels functionality.
+'
+' Concepts that are featured:
+'   Using a string array in a PopupMenu dialog control.
+'   Constructing a Run Command.
+'   Using MapperInfo() and LayerInfo().
+'  
+'****************************************************************************
+Include "MENU.DEF"
+Include "MAPBASIC.DEF"
+
+'Sample Application common routines
+Include "..\Inc\AUTO_LIB.DEF"
+
+' MapBasic Main Routines
+Declare Sub Main
+Declare Sub ExitAutoLabels
+Declare Sub AboutAutoLabels
+Declare Sub DrawAutoLabels
+Declare Sub GetListMapTbls(ByVal nMapID As Integer)
+
+Define ALL_LAYERS "All Layers"
+Define SEL_LAYER "Selection"
+
+Global gsMapTblList() As String
+Global gbOverlap, gbDuplicate As Logical
+
+'------------------------------------------------------------------------------
+' Main
+'------------------------------------------------------------------------------
+Sub Main()
+  Create Menu "&AutoLabels" as
+  	"&Draw AutoLabels..."    Calling DrawAutoLabels,
+  	"(-",
+  	"&About AutoLabels..."			  Calling AboutAutoLabels,
+  	"E&xit AutoLabels"		Calling ExitAutoLabels
+
+  Call set_tools_menu("&AutoLabels")
+
+  'Default option values for labeling.
+  gbOverlap = FALSE
+  gbDuplicate = FALSE
+
+  '''''''''''''''''''''''''''''''''''''
+  ' Auto-Load support global variables.
+  gsAppDescription = "Autolabel"
+  gsAppFilename = "autolbl.mbx"
+End Sub
+
+'------------------------------------------------------------------------------
+' ExitAutoLabels
+'------------------------------------------------------------------------------
+Sub ExitAutoLabels
+  End Program
+End Sub
+
+'------------------------------------------------------------------------------
+' AboutAutoLabels
+'------------------------------------------------------------------------------
+Sub AboutAutoLabels
+   Dialog Title "About AutoLabels"
+   Control statictext Title "The AutoLabel application places text"     position 10,10
+   Control statictext Title "object style labels in the Cosmetic Layer"      position 10,19
+   Control statictext Title "of the active Mapper. Labeling options"  position 10,28
+   Control statictext Title "are set in the Draw AutoLabels dialog."    position 10,37
+   Control statictext Title "This dialog, and the labels created"      position 10,46
+   Control statictext Title "by this utility, are identical to the autolabel"  position 10,55
+   Control statictext Title "functionality provided by previous versions of"   position 10,64
+   Control statictext Title "MapInfo."   position 10,73
+
+
+   Control OKButton                                                          position 63,96
+End Sub
+
+'------------------------------------------------------------------------------
+' DrawAutoLabels - Displays labeling options for the user and autolabels the
+' selected layer. Uses AutoLabel function which places text object labels in the
+' cosmetic layer.
+'------------------------------------------------------------------------------
+Sub DrawAutoLabels
+  Dim iTblPos As SmallInt
+  Dim sOverlap, sDuplicate As String
+
+  'Check for an active Mapper window.
+  If NumWindows() Then
+    If WindowInfo(FrontWindow(), WIN_INFO_TYPE) = WIN_MAPPER Then
+      'Build a list of valid layers in the map for labeling.
+      Call GetListMapTbls(FrontWindow())
+
+      'Display the list the overlap and duplicate options for the user to select.  
+      Dialog Title "Draw AutoLabels"
+      Control StaticText Title "Label Layer:"                 Position 8,8
+      Control PopupMenu  Title From Variable gsMapTblList     Position 60,6   Width 80 Value 1  Into iTblPos
+      Control CheckBox   Title "Allow &overlapping labels"    Position 8,28   Value gbOverlap   Into gbOverlap
+      Control CheckBox   Title "Allow &duplicate labels"      Position 8,40   Value gbDuplicate Into gbDuplicate
+      Control OKButton                                        Position 22,60  Width 50
+      Control CancelButton                                    Position 78,60  Width 50
+
+      If CommandInfo(CMD_INFO_DLG_OK) Then
+        'Set the appropriate key word for the AutoLabel run command string.
+        If gbOverlap Then sOverlap = "On"
+        Else sOverlap = "Off"
+        End If
+
+        If gbDuplicate Then sDuplicate = "On"
+        Else sDuplicate = "Off"
+        End If
+
+        'If All Layers has been selected then don't include the Layer clause in the statement.
+        If gsMapTblList(iTblPos) = ALL_LAYERS Then
+          Run Command "AutoLabel Window "+FrontWindow()+
+            " Overlap "+sOverlap+" Duplicates "+sDuplicate
+		ElseIf gsMapTblList(iTblPos) = SEL_LAYER Then
+          Run Command "AutoLabel Window "+ FrontWindow()+
+            "Selection Overlap "+sOverlap+" Duplicates "+sDuplicate		
+        Else
+          Run Command "AutoLabel Window "+FrontWindow()+" Layer "+
+            gsMapTblList(iTblPos)+" Overlap "+sOverlap+" Duplicates "+sDuplicate
+        End If
+      End If
+
+    Else
+      Note "A Mapper Window must be active to Draw Cosmetic Labels."
+    End If
+  Else
+    Note "A Mapper Window must be open to Draw Cosmetic Labels."
+  End If
+End Sub
+
+'------------------------------------------------------------------------------
+' GetListMapTbls - Populates the gsMapTblList() array with layer names from the
+' Mapper that are "normal" (not thematic, raster or cosmetic).
+'------------------------------------------------------------------------------
+Sub GetListMapTbls(ByVal nMapID As Integer)
+  Dim i, j As SmallInt
+
+  j = 0
+  For i = 1 To MapperInfo(nMapID, MAPPER_INFO_LAYERS)
+    If LayerInfo(nMapID, i, LAYER_INFO_TYPE) = LAYER_INFO_TYPE_NORMAL Then
+      j = j + 1
+      ReDim gsMapTblList(j)
+      gsMapTblList(j) = LayerInfo(nMapID, i, LAYER_INFO_NAME)
+    End If
+  Next
+
+  If SelectionInfo(SEL_INFO_NROWS) <> 0 Then
+    j = j + 1
+    ReDim gsMapTblList(j)
+    gsMapTblList(j) = SEL_LAYER
+  End if	
+
+  'Add the additional option of "ALL Layers" to the list.
+  j = j + 1
+  ReDim gsMapTblList(j)
+  gsMapTblList(j) = ALL_LAYERS
+End Sub

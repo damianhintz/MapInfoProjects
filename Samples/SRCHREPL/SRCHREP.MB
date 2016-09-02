@@ -1,0 +1,399 @@
+'/*****************************************************************************
+'*       Copyright © 2009 Pitney Bowes Software Inc.
+'*       All rights reserved.
+'*****************************************************************************/
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'' SRCHREPL is a program designed to search for a given string in a character
+'' column and replace it with the given replacement string. There are      
+'' checks for readonly tables, string columns, and case sensitive settings.
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''' 
+
+Include "MapBasic.Def"	
+Include "SRCHREP.def"		
+Include "Menu.Def"				
+Include "Icons.Def"				
+Include "..\Inc\Auto_Lib.Def"	
+Include "..\Inc\ResStrng.def"
+
+Declare Sub Main
+Declare Sub InfoEntryDlg
+Declare Sub SetColumnList
+Declare Sub SearchAndReplace
+Declare Sub Finish
+Declare Sub SetMultiBoxList
+Declare Sub AboutSearchAndReplace
+Declare Function GetColList(List() As String, ByVal TabName As String,ByVal ColType As Integer) As Integer
+Declare Function GetTableList(List() As String) As Integer
+
+
+Global TabArray() As String
+Global ColArray() As String
+Global intMultiListBoxColArray() As Integer
+Global SearchTable,SearchColumn,SearchString,ReplacementString As String
+Global CaseSense As Logical
+Global LCV As Integer
+
+Sub Main
+
+	If LoadStrings((ApplicationDirectory$() + "SRCHREP.str")) = FALSE Then
+		Note "Unable to access resource string file: " + ApplicationDirectory$() + "SRCHREP.str"
+    	Exit Sub
+	End If
+	Create Menu GetResString(IDS_MENU_SEARCH_REPLACE) As
+    GetResString(IDS_MENU_SEARCH_REPLACE) Calling InfoEntryDlg,
+    "(-",
+    GetResString(IDS_MENU_ABOUT)		Calling AboutSearchAndReplace,
+    GetResString(IDS_MENU_EXIT) Calling Finish
+
+
+    Call set_tools_menu(GetResString(IDS_STR_SEARCH_REPLACE))
+	
+End Sub
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'' Main dialog for entering the table, column, searchtext, and   ''
+'' replacement text. First two popupmenus use functions from     ''
+'' MBExtend to get a tablelist, stored in TabArray and a column  ''
+'' list of string columns, stored in ColArray. The Search and    ''
+'' Replacement strings are set through edittext. Also there is a ''
+'' checkbox for case sensitive, which is defaulted to checked.   ''
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub InfoEntryDlg
+Dim TabCount,ColCountLocal As Integer
+Dim CheckTabList() As String 
+	
+	If GetTableList(CheckTabList) < 1 Then
+		Note GetResString(IDS_NO_TABLES_OPENED)
+		Note GetResString(IDS_OPERATION_CANCELLED)
+		Exit Sub
+	End If
+
+	''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+	' This small section gets the tablelist and sets the value
+	' to the first read/write table, and then sets the appropriate
+	' columnlist. There are a large number of error checks here to
+	' make sure that the table is read/write and also has character columns
+	'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+	LCV=0
+	ReDim ColArray(0)
+	TabCount=GetTableList(TabArray)
+	While UBound(ColArray)<1
+		LCV=LCV+1
+		If LCV>NumTables() Then
+			Note GetResString(IDS_OPEN_TABLES_READONLY)
+			Note GetResString(IDS_OPERATION_CANCELLED)
+			Exit Sub
+		End If
+		While TableInfo(TabArray(LCV),TAB_INFO_READONLY)	'loop for read/write tables
+			LCV=LCV+1
+			If LCV>NumTables() Then
+				Note GetResString(IDS_OPEN_TABLES_READONLY)
+				Note GetResString(IDS_OPERATION_CANCELLED)
+				Exit Sub
+			End If
+		Wend
+		ColCountLocal=GetColList(ColArray,TabArray(LCV),3)
+	Wend
+
+	Dialog 
+		Title GetResString(IDS_TITLE_SEARCH_REPLACE)
+		Width 200
+		Height 135
+	Control StaticText
+		Title GetResString(IDS_TABLE_TO_SEARCH)
+		Position 4,4
+	Control PopUpMenu
+		Title From Variable TabArray
+		Position 80,3
+		Width 88
+		Value LCV
+		ID 1
+		Calling SetColumnList
+		Into SearchTable
+	Control StaticText
+		Title GetResString(IDS_COLUMN_TO_SEARCH)
+		Position 4,20
+	Control MultiListBox
+		Title From Variable ColArray
+		Position 80,19
+		Width 88
+		Height 35
+		ID 2
+		Calling SetMultiBoxList
+	Control StaticText
+		Title GetResString(IDS_SEARCH_STRING)
+		Position 4,56
+	Control EditText
+		Position 80,55
+		Width 80
+		Into SearchString
+	Control StaticText 
+		Title GetResString(IDS_REPLACEMENT_STRING)
+		Position 4,72
+	Control EditText
+		Position 80,71
+		Width 80
+		Into ReplacementString
+	Control CheckBox
+		Position 8,88
+		Into CaseSense
+		Value False
+	Control StaticText
+		Title GetResString(IDS_CASE_SENSITIVE)
+		Position 18,89
+	Control CancelButton
+	Control OKButton
+
+	'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+	' If user hits okay to accept all values send the values to
+	' SearchAndReplace. If they canceled, nothing happens.
+	'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+	If CommandInfo(CMD_INFO_DLG_OK) Then
+		Call SearchAndReplace
+	End If
+
+End Sub
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'' SearchAndReplace sub procedure will first check to see if the user  ''
+'' has requested to check case sensitive or not. If it is case sensi-  ''
+'' tive (the default), then we search for the string using rigid rules ''
+'' and then update the selection with the appropriate string information''
+'' If it is not case sensitive, we use the same basic procedures, but  ''
+'' include the UCase$ function to switch all compared strings to be the''
+'' same case.                                                          ''
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub SearchAndReplace
+	Dim ColReference As Alias
+	Dim intCounter as integer
+	Dim intUpperBound as integer
+	Dim bMatches as logical
+	Dim bAtLeastOneMatch as logical
+
+	bMatches = TRUE
+	bAtLeastOneMatch = FALSE
+	
+	intUpperBound = ubound(intMultiListBoxColArray)
+	
+	If intUpperBound = 0 Then
+		Note GetResString(IDS_ERROR_NO_COLUMN_SELECTED )
+		Exit Sub 
+	End if
+	
+	For intCounter = 1 to intUpperBound
+
+		bMatches = TRUE
+	
+		While bMatches
+
+			SearchColumn = intMultiListBoxColArray(intCounter)
+		
+			Set Event Processing Off
+			If CaseSense Then
+				ColReference=ColArray(SearchColumn)
+				Select * from TabArray(SearchTable) 
+					Where Instr(1,ColReference,SearchString)>0
+				If SelectionInfo(SEL_INFO_NROWS)>0 Then
+					Update Selection Set ColArray(SearchColumn)=
+						Left$(ColReference,(Instr(1,ColReference,SearchString)-1))
+						+ReplacementString
+						+Mid$(ColReference,(Instr(1,ColReference,SearchString)+Len(SearchString)),Len(ColReference))
+					Close Table TableInfo(0,TAB_INFO_NAME)
+					Close Table Selection
+
+                	'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+                	'if serach string is a part of replacement string like "-"  is of "-00". we will like to stop after
+                	' finite(we chose single) iteration to prevent infinite loop
+                	'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+
+                	If Instr(1,ReplacementString,SearchString)>0 Then
+					   bMatches = FALSE
+                	Else
+					   bMatches = TRUE
+                	End If
+					bAtLeastOneMatch = TRUE
+				Else
+					bMatches = FALSE
+				End If
+			Else
+				SearchString=UCase$(SearchString)
+				ColReference=ColArray(SearchColumn)
+				Select * from TabArray(SearchTable) 
+					Where Instr(1,UCase$(ColReference),UCase$(SearchString))>0
+				If SelectionInfo(SEL_INFO_NROWS)>0 Then
+					Update Selection Set ColArray(SearchColumn)=
+						Left$(ColReference,(Instr(1,UCase$(ColReference),UCase$(SearchString))-1))
+						+ReplacementString
+						+Mid$(ColReference,(Instr(1,UCase$(ColReference),UCase$(SearchString))+Len(SearchString)),Len(ColReference))
+					Close Table TableInfo(0,TAB_INFO_NAME)
+					Close Table Selection
+                	If Instr(1,UCase$(ReplacementString),UCase$(SearchString))>0 Then
+					   bMatches = FALSE
+                	Else
+					   bMatches = TRUE
+                	End If
+					bAtLeastOneMatch = TRUE
+				Else
+					bMatches = FALSE
+				End If
+			End If
+		Wend
+	Next
+
+	if bAtLeastOneMatch = FALSE then
+		Note GetResString(IDS_NO_MATCHES)
+	end if
+	Set Event Processing On
+	ReDim intMultiListBoxColArray(0)
+End Sub
+
+
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub SetMultiBoxList
+Dim Column_Number AS Integer
+Dim index AS Integer
+
+index = 0
+Column_Number = Readcontrolvalue(2)
+redim intMultiListBoxColArray(ubound(ColArray))
+
+While Column_Number <> 0
+
+	index = index + 1
+	intMultiListBoxColArray(index) = Column_Number
+
+	Column_Number = ReadControlValue(2)
+
+Wend
+
+redim intMultiListBoxColArray(index)
+
+End Sub
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'' SetColumnList is called to check the chosen table for write access''
+'' and if there is acces, set the columnlist for the chosen table. If''
+'' the chosen table is readonly, it will be noted and default back to''
+'' the first read/write table in TabArray.                           ''
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+Sub SetColumnList
+Dim ColCount As Integer
+
+	If TableInfo(TabArray(ReadControlValue(1)),TAB_INFO_READONLY)Then
+		Note GetResString(IDS_UNABLE_TO_REPLACE)+TabArray(ReadControlValue(1))+CHR$(13)+GetResString(IDS_TABLE_READONLY)
+		Alter Control 1 Value LCV
+		Exit Sub
+	End If
+	ColCount=GetColList(ColArray,TabArray(ReadControlValue(1)),3)
+	If Ubound(ColArray)<1 Then
+		Note GetResString(IDS_NO_CHARACTER_COLUMNS_EXIST)
+		Note GetResString(IDS_OPERATION_CANCELLED)
+		Alter Control 1 Value LCV
+		Exit Sub
+	End If
+	Alter Control 2 Title From Variable ColArray
+	
+End Sub
+
+
+Sub Finish
+	End Program
+End Sub
+
+
+Sub AboutSearchAndReplace
+   Dialog Title GetResString(IDS_ABOUT_SEARCH_REPLACE)
+   Control statictext Title GetResString(IDS_SEARCH_REPLACE_WILL_SEARCH)   position 10,10
+   Control statictext Title GetResString(IDS_CHARACTER_COLUMN_FOR_STRING)  position 10,20
+   Control statictext Title  GetResString(IDS_AND_REPLACE_IT) position 10,30
+   Control statictext Title GetResString(IDS_USER_MAY_SPECIFY)        position 10,40
+   Control statictext Title GetResString(IDS_STRING_TO_BE_CASE_SENSITIVE)     position 10,50
+   Control OKButton                                                          position 49,92
+End Sub
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'  The following function will fill an array based on a criteria sent
+'  to it.  The criteria are 1 for all columns, 2 for numeric columns, and 
+'  3 for character columns.  The value returned will be the number of 
+'  columns placed into the list array. The function assumes that the array
+'  sent in is empty and will re dimension the array.  The array will 
+'  Contain the column name(s) that fit the criteria.
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''  
+Function GetColList(List() As String, ByVal TabName As String,ByVal ColType As Integer) As Integer
+Dim test_condition As SmallInt
+Dim Column_count,I,J As Integer
+Dim col_name As String
+
+	'Error check  
+	If ColType NOT IN(1,2,3)	Then
+		Note GetResString(IDS_ERROR_INVALID_COLUMN_TYPE) 
+		Exit Sub
+	End If
+		 
+	Column_count = 0				'Originate the table count
+
+	ReDim list(0)					'Clear out array
+	ReDim list(NumCols(TabName))	'Dimension work array to max number
+	
+	For I = 1 to NumCols(TabName)
+		col_name = ColumnInfo(TabName,"col" + I, COL_INFO_NAME)
+		test_condition = ColumnInfo(TabName,col_name,COL_INFO_TYPE)
+		Do Case ColType
+			Case 1
+				Column_count = Column_count + 1	    
+				list(Column_count) = col_name				'case all
+			Case 2
+				If test_condition = Any(2,3,4,8) Then		'case Column numeric
+					Column_count = Column_count + 1
+					list(Column_count) = Col_name
+				End If
+			Case 3
+				If test_condition =1 Then					'case Column Character
+					Column_count = Column_count + 1
+					list(Column_count) = Col_name
+				End If
+		End Case
+	Next
+	GetColList = Column_count				'Assign return value
+	ReDim list(Column_count)				'Re Dimension array to number of tables added
+End Function
+
+
+'''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''
+'  The GetTableList function fills an array of tables that are appropriate for
+'  this application; this application cannot operate on View tables, Raster
+'  tables, Seamless tables, or read-only tables. 
+'  The value returned will be the number of tables placed into the list array. 
+'  The function assumes that the array sent in is empty and will re dimension 
+'  the array.  The array will contain the table name(s) of the file(s) that 
+'  satisfy the criteria.
+''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''''  
+Function GetTableList(List() As String) As Integer
+
+Dim table_count, i  As Integer
+Dim table_name,table_path_name As String
+
+	table_count = 0			'Originate the table count
+	ReDim list(0)			'Clear out array
+	ReDim list(NumTables())	'Dimension work array to max number
+	
+	For i = 1 to NumTables()
+
+     If (TableInfo(i, TAB_INFO_READONLY) = FALSE      And 
+         TableInfo(i, TAB_INFO_SEAMLESS) = FALSE      And 
+         TableInfo(i, TAB_INFO_TYPE) <> TAB_TYPE_VIEW And 
+         TableInfo(i, TAB_INFO_TYPE) <> TAB_TYPE_IMAGE)  Then 
+		table_name = TableInfo(i,TAB_INFO_NAME)			
+					table_count = table_count + 1
+					list(table_count) = table_name
+				End If
+
+	Next
+
+	GetTableList = table_count			'Assign return value
+	ReDim list(table_count)				'Re Dimension array to number of tables added
+End Function
+

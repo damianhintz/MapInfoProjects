@@ -1,0 +1,227 @@
+'*****************************************************************************
+'       Copyright © 2009 Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 66276 $
+'
+' Module Description:
+'
+' MapBasic sample to demonstate how to wrap MapInfo HTTP/XML
+' library XML APIs to to MapBasic functions/subs.
+'
+'*****************************************************************************
+Include "../inc/Mapbasic.def"
+Include "../inc/HTTPTypes.def"
+Include "../inc/XMLTypes.def"
+Include "../inc/XMLLib.def"
+Include "XMLUtil.def"
+Include "HTTPUtil.def"
+
+Function GetNodeValue(ByVal hNode As MIXmlNode) As String
+	OnError GoTo ErrorHandler
+
+	GetNodeValue = ""
+	If hNode Then
+		Dim strValue As String
+		strValue = Space$(STRING_LEN)
+		If MIXmlNodeGetValue(hNode, strValue, STRING_LEN) Then
+			GetNodeValue = strValue
+		End If
+ 	End If
+
+CleanUp:
+	If hNode Then Call MIXmlNodeDestroy(hNode) End If
+	Exit Function
+
+ErrorHandler:
+	Note Error$()
+	If 342 = Err() Then
+		Exit Function
+	Else
+		Resume CleanUp
+	End If
+End Function
+
+Function GetSingleNodeValue(ByVal hRoot As MIXmlNode, ByVal strPattern As String) As String
+	Dim hNode As MIXmlNode
+
+	OnError GoTo ErrorHandler
+
+	hNode = MIXmlSelectSingleNode(hRoot, strPattern)
+	If hNode Then
+		Dim strValue As String
+		strValue = Space$(STRING_LEN)
+		If MIXmlNodeGetValue(hNode, strValue, STRING_LEN) Then
+			GetSingleNodeValue = strValue
+		End If
+	End If
+
+CleanUp:
+	If hNode Then Call MIXmlNodeDestroy(hNode) End If
+	Exit Function
+
+ErrorHandler:
+	Note Error$()
+	If 342 = Err() Then
+		Exit Function
+	Else
+		Resume CleanUp
+	End If
+End Function
+
+Function GetNamespaces(ByVal hXMLDocument As MIXmlDocument, strNamespaces() As String) As Integer
+	Dim nCount As Integer
+	Dim hSchemaCollection As MIXMLSchemaCollection
+
+	OnError GoTo ErrorHandler
+
+	hSchemaCollection = MIXmlDocumentGetNamespaces(hXMLDocument)
+	If hSchemaCollection Then
+		nCount = MIXmlSCGetLength(hSchemaCollection)
+		ReDim strNamespaces(nCount)
+		If nCount > 0 Then
+			Dim i As Integer
+			Dim strNamespace As String
+			For i = 0 To nCount - 1
+				strNamespace = Space$(STRING_LEN)
+				If MIXmlSCGetNamespace(hSchemaCollection, i, strNamespace, STRING_LEN) Then
+					strNamespaces(i+1) = strNamespace
+				Else
+					strNamespaces(i+1) = ""
+				End If
+			Next
+		End If
+	End If
+	GetNamespaces = nCount
+CleanUp:
+	If hSchemaCollection Then Call MIXmlSCDestroy(hSchemaCollection) End If
+	Exit Function
+
+ErrorHandler:
+	Note Error$()
+	If 342 = Err() Then
+		Exit Function
+	Else
+		Resume CleanUp
+	End If
+End Function
+
+Function SetNamespaces(ByVal hXMLDocument As MIXmlDocument) As Logical
+	Dim strNamespaces(0) As String
+	Dim strNamespaceString As String
+	Dim nCount As Integer
+	nCount = GetNamespaces(hXMLDocument, strNamespaces)
+	Dim i As Integer
+
+	For i = 1 To nCount
+		strNamespaceString = strNamespaceString + "xmlns:ns" + i + "='" + strNamespaces(i) + "' "
+	Next
+'Note strNamespaceString
+	If MIXmlDocumentSetProperty(hXMLDocument, "SelectionNamespaces", strNamespaceString) Then
+		SetNamespaces = TRUE
+	End If
+	ReDim strNamespaces(0)
+End Function
+
+Sub DumpAttribute(ByVal hRoot As MIXmlNode, ByVal nLevel As Integer)
+	Dim strAttribute As String
+	Dim str As String
+	str = Space$(STRING_LEN)
+	If MIXmlNodeGetName(hRoot, str, STRING_LEN) Then
+		strAttribute = str
+	End If
+	str = Space$(STRING_LEN)
+	If MIXmlNodeGetValue(hRoot, str, STRING_LEN) Then
+		strAttribute = strAttribute + "=" + str
+	End If
+	Print Space$(2 * nLevel) + strAttribute
+End Sub
+
+Sub DumpNode(ByVal hRoot As MIXmlNode, ByVal nLevel As Integer)
+	Dim hNode As MIXmlNode
+	Dim hNodeList As MIXmlNodeList
+	Dim hAttributeList As MIXmlNamedNodeMap
+
+	OnError GoTo ErrorHandler
+
+	Dim strSpace As String
+	strSpace = Space$(2 * nLevel)
+
+	Dim str As String
+	str = Space$(STRING_LEN)
+	If MIXmlNodeGetName(hRoot, str, STRING_LEN) Then
+		Print strSpace + str
+	End If
+
+	hAttributeList = MIXmlGetAttributeList(hRoot)
+	If hAttributeList Then
+		hNode = MIXmlGetNextAttribute(hAttributeList)
+		While hNode
+			Call DumpAttribute(hNode, nLevel + 1)
+			Call MIXmlNodeDestroy(hNode)
+			hNode = MIXmlGetNextAttribute(hAttributeList)
+		Wend
+	End If
+
+	hNodeList = MIXmlGetChildList(hRoot)
+	If hNodeList Then
+		hNode = MIXmlGetNextNode(hNodeList)
+		While hNode
+			Call DumpNode(hNode, nLevel + 1)
+			Call MIXmlNodeDestroy(hNode)
+			hNode = MIXmlGetNextNode(hNodeList)
+		Wend
+	End If
+
+CleanUp:
+	If hNode Then Call MIXmlNodeDestroy(hNode) End If
+	If hAttributeList Then Call MIXmlAttributeListDestroy(hAttributeList) End If
+	If hNodeList Then Call MIXmlNodeListDestroy(hNodeList) End If
+	Exit Sub
+
+ErrorHandler:
+	Note Error$()
+	If 342 = Err() Then
+		Exit Sub
+	Else
+		Resume CleanUp
+	End If
+End Sub
+
+Function CheckFault(ByVal hRoot As MIXmlNode, ErrorMsg As String) As Logical
+	Dim hFault As MIXmlNode
+
+	OnError GoTo ErrorHandler
+
+  ErrorMsg = ""
+
+  hFault = MIXmlSelectSingleNode(hRoot, "//ns4:ErrorList//ns4:Error")
+  If hFault Then
+    ErrorMsg = RTrim$(GetSingleNodeValue(hFault, "@message"))
+    CheckFault = TRUE
+    Call MIXmlNodeDestroy(hFault)
+  End If
+
+  hFault = MIXmlSelectSingleNode(hRoot, "//ns1:Fault")
+	If hFault Then
+		Dim strFault As String
+		strFault = GetSingleNodeValue(hFault, "faultstring")
+		If strFault = "Request Access Denied" Then
+			strFault = strFault + ".  Check username/password."
+		End If
+		ErrorMsg = strFault
+		CheckFault = TRUE
+	End If
+
+CleanUp:
+	If hFault Then Call MIXmlNodeDestroy(hFault) End If
+	Exit Function
+
+ErrorHandler:
+	ErrorMsg = Error$()
+	If 342 = Err() Then
+		Exit Function
+	Else
+		Resume CleanUp
+	End If
+End Function

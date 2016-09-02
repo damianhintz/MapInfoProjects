@@ -1,0 +1,13 @@
+[Link]
+Application=BUILDSQL.MBX
+module=BUILDSQL.MBO 
+module=PICKTAB.MBO 
+module=PICKCOL.MBO 
+module=PICKSEL.MBO 
+module=DLSUTIL.MBO 
+module=PREPSQL.MBO
+module=SQLPVW.MBO 
+module=SQLUTIL.MBO
+module=CONNECT.MBO
+module=DESCTAB.MBO
+module=..\LIB\AUTO_LIB.MBO

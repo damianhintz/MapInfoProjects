@@ -1,0 +1,6 @@
+[Link] 
+Application=seammgr.mbx 
+Module=seammgr.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\Lib\Str_lib.MBO
+Module=..\Lib\Resstrng.MBO

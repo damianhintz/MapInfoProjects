@@ -1,0 +1,540 @@
+'*****************************************************************************
+'       Copyright (c) 2004, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: DistanceCalc.mb $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+'The Distance Calculator tool (DistanceCalc.MBX) can be used to calculate 
+'  the distance from a selected object (or group of objects) to the 
+'  closest or farthest object(s). You can also specify criteria to 
+'  limit the results.
+'
+' Revision History:
+'
+'    Rev 1.0   10 June 2004               Salmon
+'                Initial version.
+'        1.1   30 July 2004               Johnson
+'                Fixes for T11888 and T11554
+'*****************************************************************************
+Include "DistanceCalc.def"
+
+Sub Main
+
+  If LoadStrings((ApplicationDirectory$() + "DistanceCalc.str")) = FALSE Then
+    Note "Unable to access resource string file: " + ApplicationDirectory$() + "DistanceCalc.str"
+    Exit Sub
+  End If
+
+  gsAppDescription = GetResString(IDS_Title)    '** Globals for Auto_lib.def
+  gsAppFilename = GetResString(IDS_App_Name)    '** and set_tools_menu
+
+  Create Menu GetResString(IDS_Menu_SubTitle) As
+    GetResString(IDS_Menu_run)  Calling Start,
+    "(-",
+    GetResString(IDS_Menu_About)  Calling About,
+    GetResString(IDS_Menu_Exit) Calling Exit_Program
+
+  Call set_tools_menu(GetResString(IDS_Menu_SubTitle))        '** Calls sub from Auto_lib.def
+
+End Sub
+
+
+'##################################################################
+'##################   Create Dialog   #############################
+'##################################################################
+
+Sub Start
+
+  Dim intTableID , intColID, intDestCol, intJoin as integer
+  Dim strCriteria1, strCriteria2 , strTempTableName, strTempDir as string
+  Dim strLocalUnits(0) as string
+  Dim lcv, iDefaultUnit as smallint
+
+  strTempDir = TempFileName$("")
+  strTempPath = PathToDirectory$(strTempDir)
+
+  Call MapTables_mod 'Build an array of open mappable tables
+
+  If Ubound(strTableList) < 1 then
+    Note GetResString(IDS_MAPPABLE_VECTOR)
+    Exit Sub
+  End If
+
+  Call MapWindows_mod  '### Build an array of map windows
+  Call CreateTable
+  Call SetOperators
+  Call SetUnits
+
+  strTempTableName = strTableList(1)
+
+  Call ColumnList(strTempTableName,strColumnListOrigin())
+  Call ColumnList(strTempTableName,strColumnListDest())
+
+  redim strLocalUnits(ubound(strUnits))
+  for lcv = 1 to ubound(strUnits)
+    strLocalUnits(lcv) = UnitName$(strUnits(lcv))
+    if strUnits(lcv) = GetResString(IDS_Default_Unit) then
+      iDefaultUnit = lcv
+    end if
+  next
+
+  Dialog
+    Title GetResString(IDS_DLGTitle)
+    Position 5,-18
+    height 337
+    Calling DialogHandler
+
+    Control DocumentWindow
+      ID 1
+'		position 112,10
+		position 130,10
+      height 190
+      width 295
+
+    Control DocumentWindow
+      ID 2
+      position 5,200
+      height 138
+'		width 285
+		width 300
+
+'################################## Control Window Section #########################
+    Control GroupBox
+      position 1,6
+'		Width 108
+		Width 128
+      Height 190
+
+    Control StaticText
+      Title GetResString(IDS_Select_Mapper)
+      Position 5,15
+
+    Control PopUpMenu
+      Title from variable strMappables
+      Value intTableID
+      Position 5,25
+'		Width 100
+		Width 120
+      Height 40
+      Into intTableID
+      ID 59
+      Calling ChangeMapperDoc
+
+    Control Button
+      Title GetResString(IDS_Layer_Control)
+      Position 5,50
+'		Width 100
+		Width 120
+      height 15
+      Calling LayerControl
+
+'########################################################################################
+'##########################   Distance Tools    #########################################
+    Control GroupBox
+'		position 405,6
+		position 423,6
+      height 190
+'		width 115
+		width 158
+
+    Control StaticText
+      Title GetResString(IDS_Select_Orig)
+'		position 410,15
+		position 428,15
+
+    Control StaticText
+      Title GetResString(IDS_Select_Orig2)
+'		position 410,23
+		position 428,23
+
+    Control PopUpMenu
+      Title from variable strDisplayList
+      Value intTableID
+'		Position 410,35
+		position 428,35
+'		Width 100
+		Width 149
+      Height 40
+      Into intTableID
+      ID 42
+      Calling ChangeOriginTable
+
+    Control StaticText
+      Title GetResString(IDS_Select_OrigCol)
+'		position 410,55
+		position 428,55
+
+    Control StaticText
+      Title GetResString(IDS_Select_OrigCol2)
+'		position 410,63
+		position 428,63
+
+    Control PopUpMenu
+      Title from variable strColumnListOrigin
+      Value intColID
+'		Position 410,75
+		position 428,75
+'		Width 100
+		Width 149
+      Height 40
+      Into intColID
+      ID 44
+
+    Control StaticText
+      Title GetResString(IDS_Select_Dest)
+'		position 410,105
+		position 428,105
+
+    Control StaticText
+      Title GetResString(IDS_Select_Dest2)
+'		position 410,113
+		position 428,113
+
+    Control PopUpMenu
+      Title from variable strDisplayList
+      Value intTableID
+'		Position 410,125
+		position 428,125
+'		Width 100
+		Width 149
+      Height 40
+      Into intTableID
+      ID 43
+      Calling ChangeDestinationTable
+
+    Control StaticText
+      Title GetResString(IDS_Select_DestCol)
+'		position 410,145'
+		position 428,145
+
+    Control StaticText
+      Title GetResString(IDS_Select_DestCol2)
+'		position 410,153
+		position 428,153
+
+    Control PopUpMenu
+      Title from variable strColumnListDest
+		Value intColID
+'		Position 410,165
+		position 428,165
+'		Width 100
+		Width 149
+      Height 40
+      Into intColID
+      ID 45
+
+	'################################ Analysis Tools ######################################
+    Control GroupBox
+      Title GetResString(IDS_Set_Crit)
+'		position 290,200
+		position 305,200
+      height 119
+'		width 230
+'		width 291
+		width 276
+
+    Control PopUpMenu
+      Title from variable strColumnListDest
+      Value intDestCol
+'		position 295,238
+		position 310,238
+      width 100
+      Id 46
+      disable
+
+    Control PopUpMenu
+      Title from variable strColumnListDest
+      Value intDestCol
+'		position 295,270
+		position 310,270
+      width 100
+      ID 47
+      disable
+
+    Control PopUpMenu
+      Title from variable operators
+      Value intDestCol
+		position 410,238
+      width 30
+      ID 48
+      disable
+
+    Control PopUpMenu
+      Title from variable operators
+      Value intDestCol
+		position 410,270
+      width 30
+      ID 49
+      disable
+
+    Control EditText
+      Value strCriteria1
+      into strCriteria2
+      ID Criteria1
+		position 442,238
+      width 80
+      disable
+
+    Control EditText
+      Value strCriteria2
+      into strCriteria2
+      ID Criteria2
+		position 442,270
+      width 80
+      disable
+
+    Control PopUpMenu
+      Title GetResString(IDS_NA_AND_OR)
+      Value intJoin
+      into intJoin
+		Position 392,253
+      Width 50
+      ID 50
+      disable
+      Calling MoreAnal
+
+    Control StaticText
+      Title GetResString(IDS_Num_Distance)
+'		position 295,290
+		position 310,290
+
+    Control EditText
+      Value GetResString(IDS_1)
+      Id 79
+'		position 415,286
+		Position 455,286
+      width 30
+
+    Control StaticText
+      Title GetResString(IDS_Units)
+'		Position 295,306
+		position 310,306
+
+    Control PopUpMenu
+      Title from Variable strLocalUnits 
+      value iDefaultUnit
+'		Position 415,302
+		Position 455,302
+'		width 90
+		width 75
+      Id 81
+
+    Control CheckBox
+      Title GetResString(IDS_Ignore_0)
+'		position 295,208
+		position 310,208
+      ID 82
+		'Value false
+
+    Control CheckBox
+      Title GetResString(IDS_Use_Crit)
+'		position 295,228
+		position 310,228
+      ID 84
+      Value false
+      Calling EnableCriteria
+
+    Control RadioGroup
+      Title GetResString(IDS_Closest_Farthest)
+'		position 415,208
+		position 470,208
+      ID 83
+
+'###################### Button Construction Doc win 1
+    Control Button
+      Title GetResString(IDS_Select)
+      Position 5,85
+      Height 15
+'		Width 100
+		Width 120
+      Calling Select
+
+    Control Button
+      Title GetResString(IDS_Marquee)
+      Position 5,100
+      Height 15
+'		Width 100
+		Width 120
+      Calling Marquee
+
+    Control Button
+      Title GetResString(IDS_Polygon)
+      Position 5,115
+      Height 15
+'		Width 100
+		Width 120
+      Calling Polygon
+
+    Control Button
+      Title GetResString(IDS_Boundary)
+      Position 5,130
+      Height 15
+'		Width 100
+		Width 120
+      Calling Boundary
+
+    Control Button
+      Title GetResString(IDS_Unselect)
+      Position 5,145
+      Height 15
+'		Width 100
+		Width 120
+      Calling UnSelect
+
+    Control Button
+      title GetResString(IDS_ZoomIn)
+      position 5,160
+      height 15
+'		width 50
+		width 60
+      Calling ZoomIn
+
+    Control Button
+      title GetResString(IDS_ZoomOut)
+		position 65,160
+      height 15
+'		width 50
+		width 60
+      Calling ZoomOut
+
+    Control Button
+      Title GetResString(IDS_Pan)
+      Position 5,175
+      Height 15
+'		width 50
+		width 60
+      Calling Pan
+
+    Control Button
+      Title GetResString(IDS_Snap)
+		Position 65,175
+      Height 15
+'		width 50
+		width 60
+      Calling Snap
+
+'###################### Buttons for Doc Win 2
+    Control Button
+      Title GetResString(IDS_Clear)
+'		position 290,320
+		position 305,320
+'		Width 50
+		Width 64
+      height 16
+      Calling DeleteTable
+
+    Control Button
+      Title GetResString(IDS_Save)
+'		position 340,320
+		position 370,320
+'		Width 50
+		Width 92
+      height 16
+      Calling SaveTable
+
+    Control Button
+      Title GetResString(IDS_Calculate)
+'		Position 400,320
+		Position 466,320
+		width 60
+      height 16
+      Calling StartProcess
+
+    Control CancelButton
+      Title GetResString(IDS_Exit)
+'		Position 465,320
+		Position 526,320
+      width 55
+      height 16
+      Calling Finished
+
+  Call CleanUp
+
+End Sub
+
+'###############################################################################################
+'###############################################################################################
+'######################  Start The Progress Bar      ###########################################
+
+
+'###############################################################################################
+'###############################################################################################
+'###############################################################################################
+Sub DialogHandler
+
+  Alter Control 1 enable Show
+  Alter Control 2 enable show
+
+  Dim iHwnd, iHwnd2, intSelection As Integer
+  Dim strMapFrom as string
+
+  ' clone the front window
+  iHwnd = ReadControlValue(1)
+  iHwnd2 = ReadControlValue(2)
+
+  intSelection = 1
+
+  Set Next Document Parent iHwnd Style WIN_STYLE_CHILD
+
+  If ubound(intMapId) > 0 then
+    Run Command WindowInfo(intMapId(intSelection), WIN_INFO_CLONEWINDOW)
+  Else
+    strMapFrom = "Map From " & strTableList(intSelection)
+    Run Command strMapFrom
+  End If
+
+  iWin_Id1 = WindowID(frontwindow())
+  Set Window iWin_ID1 scrollbars on
+
+  Set Next Document Parent iHwnd2 Style WIN_STYLE_CHILD
+  Browse * from TempBrowser
+  iWin_Id2 = WindowID(frontwindow())
+  Set Window iWin_ID2 scrollbars on
+
+End Sub
+
+
+
+Sub About
+
+  Dialog
+    Title GetResString(IDS_About1)
+    Control StaticText
+      Title GetResString(IDS_About2)
+      position 10,10
+    Control StaticText
+      Title GetResString(IDS_About3)
+      position 10,18
+    Control StaticText
+      Title GetResString(IDS_About4)
+      position 10,26
+    Control OKButton
+      Title "Ok"
+
+End Sub
+
+
+
+Sub Exit_Program
+  End program
+End Sub
+
+
+
+Sub Finished
+
+  OnError goto notOpen
+
+  Close Table TempBrowser
+  Close Table Current_Selection
+
+  Exit Sub
+
+notOpen:
+
+End Sub

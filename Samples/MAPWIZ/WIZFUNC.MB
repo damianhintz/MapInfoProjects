@@ -1,0 +1,1179 @@
+Include "mapbasic.def"
+Include "menu.def"
+Include "Constants.def"
+
+Type  DataTable
+	  svTableName 	As String
+	  lvMappable	As Logical
+End Type
+
+Declare Sub StartWiz
+Declare Sub Dlg1
+Declare Sub DisableAll				  
+Declare Sub setDialog
+
+Declare Sub BtnWelcome
+Declare Sub BtnData
+Declare Sub BtnMaps
+Declare Sub BtnAnalyze
+Declare Sub BtnPublish
+
+Declare Sub ExitProgram
+Declare Sub CancelProgram
+Declare Sub FileDialogOperations()
+Declare Sub RunDialogOperations()
+Declare Sub GetOpenMapTablesList(TableArray(1) as DataTable)
+Declare Sub SetLists()
+
+Declare Sub SetMapperWinToFront()
+Declare Sub SetThematicWinToFront()
+Declare Sub SetPrnSaveWinToFront()
+
+Declare Sub SetOutputList()
+Declare Sub ValidateMappableTable(TableName as String)
+			   
+Declare Sub MyOutputDialog
+
+Dim gs_searchfor  As String
+Dim gUserDataFileName As String
+Dim i_details	As logical
+Dim nDlgRetVal	As Logical
+
+Dim svlstGeo(1), svlstMap(1), svlstThemMap(1) As String
+Dim giMapWindowIDList(1), giThematicWindowsIDList(1) As Integer 
+Dim svTableList(1) as String
+
+Dim  svlstPrnWin(1) As String 
+Dim gnvDialogNumber       as integer
+Dim gnvNumberOfOpenTables as Integer
+
+Dim gUserData(1) 		as DataTable
+Dim gsvMapTableNames(1) As DataTable
+
+
+'################################ This is the beginning of Main ##########################################
+Sub StartWiz 
+
+	gnvNumberOfOpenTables = NumTables()
+	Call GetOpenMapTablesList(gsvMapTableNames)
+	'set the dialog pointer to the first dialog
+	gnvDialogNumber = WELCOMEDIALOG
+
+	While  gnvDialogNumber < 99
+		Do 	Case  gnvDialogNumber
+			Case  WELCOMEDIALOG   call Dlg1
+		End Case
+	Wend	
+
+End Sub
+
+
+'################################################################
+'# This function wiil go through the Open Tables and put the 
+'# names of the tables in the TableArray.svTableName and Mappable
+'# proparty in TableArray.lvMappable
+'################################################################
+Sub GetOpenMapTablesList(TableArray(1) as DataTable)
+	Dim i As Integer
+	ReDim TableArray(NumTables())
+		
+	For I=1 to NumTables()
+		TableArray(I).svTableName = TableInfo( I , TAB_INFO_NAME ) 
+		TableArray(I).lvMappable  = TableInfo( I , TAB_INFO_MAPPABLE ) 
+	Next
+End Sub
+		
+
+'####################################################################
+'# This function goes through the open tables and the open windows 
+'# and divides them according to which ones are Geocodable, Mappable,
+'# or Modify Thematic Mappable
+'####################################################################
+Sub SetLists()
+
+  Dim I, J, nvWinID As Integer 
+  Dim iGeoArrayLength, iMapperArrayLength, iThematicArrayLength As Integer
+  Dim iTmpTableNum As Integer 
+
+
+  'first we need to clear the existing info becasue the status of the table may have changed
+  ReDim svlstGeo(1)
+  ReDim svlstMap(1)
+  ReDim svlstThemMap(1) 
+  svlstGeo(1)=""
+  svlstMap(1)=""
+  svlstThemMap(1)=""
+
+  'Generate the lists for each option
+
+  'first the GeoCodable tables
+  For I = 1 To NumTables()
+  	If (NOT(TableInfo(I,TAB_INFO_MAPPABLE)) AND NOT(TableInfo(I,TAB_INFO_TEMP))) Then
+		iGeoArrayLength = iGeoArrayLength+1
+		ReDim svlstGeo(iGeoArrayLength)
+		svlstGeo(iGeoArrayLength) = TableInfo(I,TAB_INFO_NAME)	
+ 	else
+		'if the table is mappable, let's make sure it has at least one object in it
+		'if not add it to the none geocoded list
+ 		If (TableInfo(I,TAB_INFO_MAPPABLE) ) then
+ 		  'we don't want to run a select statment on raster tables
+ 		  If (TableInfo(I, TAB_INFO_TYPE) <> TAB_TYPE_IMAGE) Then
+ 			iTmpTableNum = NumTables()
+ 			OnError GoTo next_1
+ 			Select Count( * ) From TableInfo(I,TAB_INFO_NAME) Where obj 
+			
+ 			If  (SelectionInfo(SEL_INFO_NROWS) < 1) Then
+ 				iGeoArrayLength = iGeoArrayLength+1
+	 			ReDim svlstGeo(iGeoArrayLength)
+ 			   	svlstGeo(iGeoArrayLength) = TableInfo(I,TAB_INFO_NAME)
+ 			End If	
+next_1:	  
+		  End If
+		End If
+	End If 
+  Next 
+
+  'Since thematic works in the context of a mapper, 
+  'we have to go through the open windows and find the mapper ones
+  For J = 1 to NumWindows( )
+     nvWinID = WindowInfo(WindowID(J),WIN_INFO_TYPE)
+     If  nvWinID = WIN_MAPPER Then
+		iMapperArrayLength = iMapperArrayLength+1
+
+		'we are keeping two arrays becasue one is populating the listbox and the second 
+		'is for getting back the name of the selected table
+		ReDim svlstMap(iMapperArrayLength)
+		ReDim giMapWindowIDList(iMapperArrayLength)
+
+		giMapWindowIDList(iMapperArrayLength) = WindowID(J)
+		svlstMap(iMapperArrayLength) = WindowInfo(WindowID(J),WIN_INFO_NAME)
+
+      	if (MapperInfo( WindowID(J) ,  MAPPER_INFO_NUM_THEMATIC )> 0) then
+			iThematicArrayLength = iThematicArrayLength+1
+
+			'we are keeping two arrays becasue one is populating the listbox and the second 
+			'is for getting back the name of the selected table
+			ReDim giThematicWindowsIDList(iThematicArrayLength)
+		 	ReDim svlstThemMap(iThematicArrayLength)
+
+			giThematicWindowsIDList(iThematicArrayLength) = WindowID(J)
+		 	svlstThemMap(iThematicArrayLength) = WindowInfo(WindowID(J),WIN_INFO_NAME)
+		End if
+	 End If 'Go through the open windows and see if they are of Type MAPPER and/or Type THEMATIC
+  Next
+
+  're-populate the listboxes with the info
+  Alter Control GEOCODE_FILE_LIST
+  	Title  From Variable svlstGeo()
+  	Value 1
+   	Disable								  
+   	Hide
+
+  Alter Control MAPPABLE_WIN_LIST
+  	Title  From Variable svlstMap()	   
+  	Value 1
+   	Disable
+   	Hide
+
+  Alter Control THEM_MOD_WIN_LIST
+  	Title From Variable svlstThemMap()
+  	Value 1
+   	Disable
+   	Hide	  	   
+
+
+  'now, read the selection of the radio button and enable the 
+  'proper list of tables/windows the correspond. Also change the title of the frame
+  Do Case  ReadControlValue(SCNDRDO)
+  	Case 1
+  		Alter Control GROUP_BOX3
+  		Title STR_GEOCODE_FILE_LIST
+  
+  		Alter Control GEOCODE_FILE_LIST
+  		Enable
+  		Show
+
+  	Case 2
+  		Alter Control GROUP_BOX3
+  		Title STR_OPEN_MAPPERS
+
+  		Alter Control MAPPABLE_WIN_LIST
+  		Enable
+  		Show
+		Call  SetMapperWinToFront()
+
+
+  	Case 3
+  		Alter Control GROUP_BOX3
+  		Title STR_THEM_MOD_WIN_LIST
+
+  		Alter Control THEM_MOD_WIN_LIST
+  		Enable
+  		Show
+		Call  SetThematicWinToFront() 
+
+	Case 4
+		Alter Control GROUP_BOX3
+  			Title ""
+
+		'Hide all the lists that me be visible
+		Alter Control THEM_MOD_WIN_LIST
+  			Disable
+  			Hide
+		Alter Control MAPPABLE_WIN_LIST
+  			Disable
+  			Hide
+		Alter Control GEOCODE_FILE_LIST
+  			Disable
+  			Hide 
+
+  End case					
+	
+End Sub
+
+
+'####################################################################
+'# This function goes through the selection and brings the selected 
+' window to the front - for Mapper windows.
+'####################################################################
+Sub SetMapperWinToFront() 
+	If (svlstMap(ReadControlValue(MAPPABLE_WIN_LIST)) = "") then
+		'do nothing
+	Else
+		Set Window giMapWindowIDList(ReadControlValue(MAPPABLE_WIN_LIST))  Front
+	End If 
+End Sub
+
+'####################################################################
+'# This function goes through the selection and brings the selected 
+' window to the front - for thematic windows.
+'####################################################################
+Sub SetThematicWinToFront() 
+	Dim J, nvWinID As Integer 
+	Dim iThematicArrayLength As Integer
+
+	iThematicArrayLength = 0
+	For J = 1 to NumWindows( )
+		nvWinID = WindowInfo(WindowID(J),WIN_INFO_TYPE)
+		If nvWinID = WIN_MAPPER Then
+			if (MapperInfo( WindowID(J) ,  MAPPER_INFO_NUM_THEMATIC )> 0) then
+				iThematicArrayLength = iThematicArrayLength+1
+			End if
+		End if
+	Next
+	
+
+	If (iThematicArrayLength > 0 ) Then
+		Set Window giThematicWindowsIDList(ReadControlValue(THEM_MOD_WIN_LIST))  Front
+	End If 
+
+End Sub
+
+
+'####################################################################
+'# This function goes through the selection and brings the selected 
+' window to the front - Output dialog for print and save as.
+'####################################################################
+Sub SetPrnSaveWinToFront() 
+   Set Window giMapWindowIDList(ReadControlValue(ALL_OPNENWIN_LIST)) Front
+End Sub
+
+
+'##################################################################
+'# This sub will handle all the actions of the Open button Commands
+'##################################################################
+Sub FileDialogOperations
+
+	Do Case gnvDialogNumber
+
+	  Case DATADIALOG
+	  'this handles the first dialog open button action
+	  'All we do in the case statment is set the file type option
+	  'of the MapInfo FileOpen Dialog
+		Do Case  ReadControlValue(FRSTRDO)
+			Case  1   'MapInfo TAB files are here
+					Alter MapInfoDialog  52
+  								   Control   1136
+								   Value  1
+  								   
+			Case  2   'dBase Files are Here
+					Alter MapInfoDialog  52
+  								   Control   1136
+								   Value  5
+  								   
+			Case  3   'ASCI TEXT files are here
+					Alter MapInfoDialog  52
+  								   Control   1136
+								   Value  9
+
+			Case  4   'Lotus 123 file type are here
+					Alter MapInfoDialog  52
+  								   Control   1136
+								   Value  10
+
+			Case  5   'Microsoft Excel files are here
+					Alter MapInfoDialog  52
+  								   Control   1136
+								   Value  4
+
+			Case  6   'Access databse files are here
+					Alter MapInfoDialog  52
+  								   Control   1136
+								   Value  3
+
+		   	Case  7   'ODBC Files are here
+					If (FileExists(ProgramDirectory$() + "\MIDLODBC.DLL")) then
+						Run Menu Command M_FILE_OPEN_ODBC
+					else	
+						Note MSG_NO_ODBC
+					end if
+
+		End Case
+		if  ( ReadControlValue(FRSTRDO) < 7 ) then	
+			Run Menu Command M_FILE_OPEN
+			'after the open action, set the dialog to it's default state
+			Alter MapInfoDialog  52  Default
+		end if
+
+
+      Case GEOGRAPHYDIALOG
+		 'Just wanted to make this part generic if we add more types
+		 if  (	ReadControlValue(MAPRDO)  > 1 Or  ReadControlValue(MAPRDO)  < 6 ) then	
+			 Do Case ReadControlValue(MAPRDO)
+				Case 1 ' Open a Mapinfo Tab File
+					Alter MapInfoDialog  52
+  								   Control   1136
+								   Value  1
+					
+					Run Menu Command M_FILE_OPEN
+		 			
+		 			'after the open action, set the dialog to it's default state
+					 Alter MapInfoDialog  52  Default
+
+				Case 2 'Open a MapInfo WorkSpace
+					Alter MapInfoDialog  52
+  								   Control   1136
+								   Value  2
+					
+					Run Menu Command M_FILE_OPEN
+		 			
+		 			'after the open action, set the dialog to it's default state
+					 Alter MapInfoDialog  52  Default
+
+				Case 3 'Import Map					
+					Run Menu Command M_TABLE_IMPORT
+					
+				Case 4 'Open a Raster file
+					Alter MapInfoDialog  52
+  								   Control   1136
+								   Value  7
+					
+					Run Menu Command M_FILE_OPEN
+		 			'after the open action, set the dialog to it's default state
+					 Alter MapInfoDialog  52  Default
+
+				Case 5   'Open ODBC tables
+					If (FileExists(ProgramDirectory$() + "\MIDLODBC.DLL")) then
+						Run Menu Command M_FILE_OPEN_ODBC
+					else	
+						Note MSG_NO_ODBC
+					end if
+			End Case
+		 end if
+	  End Case
+End sub
+
+
+'##################################################################
+'# This sub will handle all the actions of the Run button Commands
+'# which include all the data processing actions
+'##################################################################
+Sub RunDialogOperations
+
+Dim iObjCount, iTotCount As Integer 
+Dim iTabelCount As Integer 
+	
+	Do Case gnvDialogNumber
+	  'code for the 3rd dialog
+	  Case ANALYZEDIALOG
+	    Do Case ReadControlValue(SCNDRDO)
+
+			Case  1 'GeoCode
+				'If the list of none mappable files is empty, inform the user and bail
+		   		If (svlstGeo(ReadControlValue(GEOCODE_FILE_LIST)) = "") then
+				 	Note MSG_NOTHING_TO_GEOCODE
+				else 
+			  		'If there are no Map files open, geocoding will not work
+			  		
+					If (NOT(MenuitemInfoByHandler( M_TABLE_GEOCODE , MENUITEM_INFO_ENABLED))) then
+						Note MSG_NO_MAP_FILE_OPEN
+					else
+			  		   'TODO: Find out how the list is ordered and set the value of the geocoded table to that
+			  		   'Alter MapInfoDialog  3600  '3600 is the Geocode table dialog ID
+			  		   'Control 8 '8 is the id of the Geocode table list box
+					   '		Value 1
+						iTabelCount = NumTables()
+			  			If (MenuitemInfoByHandler( M_TABLE_GEOCODE , MENUITEM_INFO_ENABLED	 )) Then
+			  				Run Menu Command M_TABLE_GEOCODE
+
+							if (TableInfo(svlstGeo(ReadControlValue(GEOCODE_FILE_LIST)), TAB_INFO_MAPPABLE)) then
+								OnError GoTo no_geocode
+								
+								'The select statment will make another table if the select table passes
+								Select Count( * )  From svlstGeo(ReadControlValue(GEOCODE_FILE_LIST)) Where obj
+
+								'if we selected something, the file is mappable, let's show it to the user
+								If  (SelectionInfo(SEL_INFO_NROWS) > 0) Then
+									Map From svlstGeo(ReadControlValue(GEOCODE_FILE_LIST))		
+								End If '					
+				no_geocode:
+							End If
+						else
+							Note MSG_NO_CORRESPONDING_MAP
+			  			End If
+					End if
+				End if
+ 
+ 			Case 2 'Create thematic Map
+				'If the list of Mappers is empty inform the user
+				'TODO: we may want to present the user a list of all the Mappable tables
+				'that are not Mapped yet and suggest to map from them
+				If (svlstMap(ReadControlValue(MAPPABLE_WIN_LIST)) = "") then
+				 	Note MSG_NO_MAP_FILES_OPEN
+				else 
+			  		Set Window giMapWindowIDList(ReadControlValue(MAPPABLE_WIN_LIST))  Front
+					If (MenuitemInfoByHandler( M_MAP_THEMATIC , MENUITEM_INFO_ENABLED	 )) Then
+						Run Menu Command M_MAP_THEMATIC			
+					else
+						Note  MSG_NO_THENM_TO_CREATE
+					End If '
+			  		
+				End if
+				
+			Case 3 'Modify thematic Map
+				'if there are no thematic windows - let the user know
+				If (svlstThemMap(ReadControlValue(MAPPABLE_WIN_LIST)) = "") then
+				 	Note MSG_NO_THENM_TO_MOD
+				else 
+			  		Set Window giThematicWindowsIDList(ReadControlValue(THEM_MOD_WIN_LIST))  Front
+			  		Run Menu Command M_MAP_MODIFY_THEMATIC			
+				End if
+			Case 4 'Create Graph
+				if (MenuitemInfoByHandler( M_WINDOW_GRAPH , MENUITEM_INFO_ENABLED	 )) then
+					Run Menu Command   M_WINDOW_GRAPH
+				else
+					Note MSG_NO_FILES_TO_GRAPH
+				end if 
+
+		End case
+
+		Call SetLists()
+
+	Case DISPLAYDIALOG 'This is the output dialog we created a new function for it
+	  	Call MyOutputDialog	
+	End case
+End sub
+
+
+'###############################################################
+'# Enable/Disable the list depending on the radio button the
+'# user is selecting
+'###############################################################
+
+Sub SetOutputList()
+
+	Dim J,nvWinID As Integer 
+	Dim iPrintWinArrayLength As  Integer
+
+	'we need to track the open table names and their ID's for report generation
+	Dim ivTableList as Integer	
+	OnError GoTo ErrorTrap
+	
+	
+	If (NumWindows()<1) Then
+			Exit Sub
+	End If
+	
+	if (NumTables()<1) then
+		Exit Sub
+	end if
+
+	ivTableList = 0
+	Redim svTableList(ivTableList)
+	'note NumTables()
+	for J = 1 to NumTables()
+		if (TableInfo(J,TAB_INFO_NCOLS) > 0) then
+			if NOT(TableInfo(J,TAB_INFO_TYPE ) = TAB_TYPE_IMAGE) then
+				if NOT(TableInfo(J,TAB_INFO_SEAMLESS)) then
+					ivTableList = ivTableList +1
+					Redim svTableList(ivTableList)
+					svTableList(ivTableList) = TableInfo( J  ,  TAB_INFO_NAME )
+				end if
+			end if
+		end if
+	next
+	
+	iPrintWinArrayLength = 1
+	svlstPrnWin(iPrintWinArrayLength) = ""
+
+	For J = 1 to NumWindows()
+		nvWinID = WindowInfo(WindowID(J),WIN_INFO_TYPE)
+		If  ((nvWinID = WIN_MAPPER) Or (nvWinID=WIN_BROWSER) Or (nvWinID=WIN_GRAPH) Or (nvWinID=WIN_LAYOUT) Or (nvWinID=WIN_CART_LEGEND) Or (nvWinID=WIN_LEGEND) ) Then
+  	 	
+			'we are keeping two arrays becasue one is populating the listbox and the second 
+			'is for getting back the name of the selected table
+			ReDim svlstPrnWin(iPrintWinArrayLength)
+			ReDim giMapWindowIDList(iPrintWinArrayLength)
+
+			giMapWindowIDList(iPrintWinArrayLength) = WindowID(J)
+			svlstPrnWin(iPrintWinArrayLength) = WindowInfo(WindowID(J),WIN_INFO_NAME)
+			iPrintWinArrayLength = iPrintWinArrayLength+1
+
+		End If 'Go through the open windows and see if they are of Type MAPPER and/or Type THEMATIC
+	Next	
+	
+	
+	Do Case ReadControlValue(THRDRDO)
+		Case 1 'This is the layout window
+			Alter Control GROUP_BOX3
+				Title ""
+		
+			Alter Control ALL_OPNENWIN_LIST
+				Disable
+				Hide
+
+			Alter Control ALL_OPEN_TABLES
+				Disable 
+				Hide
+
+		Case 2 'this is the print command
+			'first alter the title
+			Alter Control GROUP_BOX3
+				Title STR_PRINTABLE_WINDOWS
+				Enable
+				Show
+
+			Alter Control ALL_OPEN_TABLES
+				Disable 
+				Hide
+
+			
+			Alter Control ALL_OPNENWIN_LIST
+				Title  From Variable  svlstPrnWin
+				Value 1
+				Enable
+				Show
+			Call SetPrnSaveWinToFront()
+		
+		Case 3 'this is the save window as command
+			'first alter the title
+			Alter Control GROUP_BOX3
+				Title STR_SAVE_AS_RASTER_WIN
+				Enable
+				Show
+
+			Alter Control ALL_OPEN_TABLES
+				Disable 
+				Hide
+
+			
+			Alter Control ALL_OPNENWIN_LIST
+				Title  From Variable  svlstPrnWin
+				Value 1
+				Enable
+				Show
+
+			Call SetPrnSaveWinToFront()
+
+		Case 4	'this is for Genarate Report Option
+			Alter Control GROUP_BOX3
+				Title STR_LIST_OF_TABLES				
+
+			Alter Control ALL_OPNENWIN_LIST 
+				Disable
+				Hide	
+
+			'if we have reportable tables select the first when disolaying the list
+			if ivTableList > 0 then
+				Alter Control ALL_OPEN_TABLES
+					Title from Variable svTableList
+					value 1
+					Enable
+					Show
+			else
+				Alter Control ALL_OPEN_TABLES
+					Title from Variable svTableList
+					Enable
+					Show
+			end if
+
+	End Case
+	
+
+Done:
+	Exit Sub
+
+ErrorTrap:
+	Print ":  " + Error$()
+	Resume Done
+
+End Sub 
+
+
+'################################################################
+'############# this function handles the output dialog          #
+'################################################################
+Sub MyOutputDialog
+	If (NumWindows()<1) Then
+		Note MSG_NOTHING_TO_PUBLISH
+		Exit Sub
+	End If 
+		
+	Do Case ReadControlValue(THRDRDO)
+	Case 1 'this is the option for a layout window
+		
+		Run Menu Command M_WINDOW_LAYOUT
+	
+	Case 2 'This is the case for printing to the printer
+		
+		Set Window giMapWindowIDList(ReadControlValue(ALL_OPNENWIN_LIST))  Front
+		Run Menu Command M_FILE_PRINT
+	
+	Case 3 'This is he case for exporting a window to a file
+		Set Window giMapWindowIDList(ReadControlValue(ALL_OPNENWIN_LIST))  Front
+		Run Menu Command M_WINDOW_EXPORT_WINDOW
+	Case 4 'This is the Generate Report Option
+		'let's make usre we have reportable tables in the list
+		'Note ReadControlValue(ALL_OPEN_TABLES)
+		if (ReadControlValue(ALL_OPEN_TABLES) <> 0) then
+			If (NOT(svTableList(ReadControlValue(ALL_OPEN_TABLES)) = ""))then
+				OnError Goto ReportError
+				Create Report From Table (svTableList(ReadControlValue(ALL_OPEN_TABLES)))
+				OnError Goto 0
+			else
+  					Note MSG_NOTHING_TO_REPORT
+			end if	   
+		else
+			Note MSG_NOTHING_TO_REPORT
+		end if
+	End Case
+	Exit Sub
+ReportError:
+   if Err()=812 or Err()=1396 then
+		' unknown error (Crystal Reports not installed, most likely) or .EXE not found
+		Note MSG_CRYSTAL_NOT_INSTALLED
+	else
+		Note "MyOutputDialog:  " & Error$()
+	end if
+End Sub
+
+
+'################################################################
+'############# this function disables all the controlls         #
+'################################################################
+Sub DisableAll
+
+	Alter Control  WLCMTXT
+		Disable
+		Hide
+	Alter Control WELCOME_FRAME
+		Disable
+		Hide
+	Alter Control  FRSTTXT
+		Disable
+		Hide
+	Alter Control  SCNDTXT
+		Disable
+		Hide
+	Alter Control  THRDTXT
+		Disable
+		Hide
+	Alter Control  FRTHTXT
+		Disable
+		Hide
+	Alter Control  FRSTRDO
+		Disable
+		Hide
+	Alter Control  SCNDRDO
+		Disable
+		Hide
+	Alter Control  THRDRDO
+		Disable
+		Hide
+	Alter Control  MAPRDO
+		Disable
+		Hide
+	Alter Control  DATA_DLG_BMP
+		Disable
+		Hide
+	Alter Control  MAP_DLG_BMP
+		Disable
+		Hide
+	Alter Control  USER_DATA_FRAME
+		Disable
+		Hide
+	Alter Control  MAP_DATA_FRAME
+		Disable
+		Hide
+	Alter Control  GROUP_BOX1
+		Disable
+		Hide
+	Alter Control  GROUP_BOX3
+		Disable
+		Hide
+	Alter Control  GEOCODE_FILE_LIST
+		Disable
+		Hide
+	Alter Control  MAPPABLE_WIN_LIST
+		Disable
+		Hide
+	Alter Control  THEM_MOD_WIN_LIST
+		Disable
+		Hide
+	Alter Control  ALL_OPEN_TABLES
+		Disable
+		Hide
+	Alter Control ALL_OPNENWIN_LIST
+		Disable
+		Hide  
+	Alter Control  RUNBTN
+		Disable
+		Hide
+	Alter Control  OPNBTN
+		Disable
+		Hide
+
+End Sub
+
+
+'###############################################################################
+'############# this function sets the current dialog nuber to the WELCOMEDIALOG #
+'###############################################################################
+Sub BtnWelcome 
+	gnvDialogNumber = WELCOMEDIALOG
+	Call DisableAll		
+	Call setDialog
+End Sub
+
+
+'###############################################################################
+'############# this function sets the current dialog nuber to the DATADIALOG   #
+'###############################################################################
+Sub BtnData
+
+	Call DisableAll		
+	gnvDialogNumber = DATADIALOG
+	Call setDialog
+End Sub
+
+
+'####################################################################################
+'############# this function sets the current dialog nuber to the GEOGRAPHYDIALOG   #
+'####################################################################################
+Sub BtnMaps
+
+   Call DisableAll			
+   gnvDialogNumber = GEOGRAPHYDIALOG
+   Call setDialog
+End Sub
+
+
+'####################################################################################
+'############# this function sets the current dialog number to the ANALYZEDIALOG    #
+'####################################################################################
+Sub BtnAnalyze
+
+	'check to see if there are any files open. Maps and Publish dialogs work only with open files
+	If NumWindows() < 1 Then
+		Note MSG_NO_FILES_OPEN
+		Exit Sub
+	Else
+		gnvDialogNumber = ANALYZEDIALOG
+	End If
+	call DisableAll		
+	call setDialog
+End Sub
+
+
+'####################################################################################
+'############# this function sets the current dialog number to the DISPLAYDIALOG    #
+'####################################################################################
+Sub BtnPublish
+
+	'check to see if there are any files open. Maps and Publish dialogs work only with open files
+	If NumWindows() < 1 Then
+		Note MSG_NO_FILES_OPEN
+		Exit Sub
+	Else
+		gnvDialogNumber = DISPLAYDIALOG
+	End If
+	Call DisableAll		
+	Call setDialog
+End Sub
+
+
+'################################################################
+'# this function sets the dialog controls depending on the global
+'# gnvDialogNumber
+'################################################################
+Sub setDialog
+
+	Do Case(gnvDialogNumber) 
+
+		Case WELCOMEDIALOG
+   		    Alter Control  WLCMTXT
+				Enable
+				Show
+			Alter Control WELCOME_FRAME
+				Enable
+				Show
+
+		Case DATADIALOG
+		   	Alter Control  FRSTTXT
+				Enable
+				Show
+		   	Alter Control  USER_DATA_FRAME
+				Enable
+				Show
+			Alter Control  FRSTRDO
+				Enable
+				Show
+			Alter Control  DATA_DLG_BMP
+				Show
+			Alter Control  OPNBTN
+				Enable
+				Show
+
+		Case GEOGRAPHYDIALOG
+			Alter Control  MAP_DATA_FRAME
+				Enable
+				Show
+			Alter Control  SCNDTXT
+				Enable
+				Show
+			Alter Control  MAPRDO
+				Enable
+				Show
+			Alter Control  MAP_DLG_BMP
+				Show
+     		Alter Control  OPNBTN
+				Enable
+				Show
+
+		Case ANALYZEDIALOG	
+			Alter Control   THRDTXT
+				Enable
+				Show
+			Alter Control  SCNDRDO
+		   		Value 2
+				Enable
+				Show
+			Alter Control  GROUP_BOX1
+				Enable
+				Show
+			Alter Control  GROUP_BOX3
+				Enable
+				Show
+			Alter Control  MAPPABLE_WIN_LIST	       
+				Enable
+				Show			
+  			 Alter Control  RUNBTN
+				Enable
+				Show
+			Call SetLists
+
+		Case DISPLAYDIALOG	
+			Alter Control  FRTHTXT
+				Enable
+				Show
+			Alter Control  THRDRDO
+				Value 1
+				Enable
+				Show
+			Alter Control GROUP_BOX3
+				Title ""
+				Enable
+				Show
+		    Alter Control GROUP_BOX1
+				Enable 
+				Show
+			Alter Control  RUNBTN
+				Enable
+				Show
+		End Case
+end sub
+
+
+Sub ExitProgram
+	gnvDialogNumber = 100
+	Dialog Remove
+end sub
+
+
+Sub CancelProgram
+	gnvDialogNumber = 100
+	Dialog Remove
+
+end sub
+
+
+'###########################################################################
+'# All dialog controls should be declared here
+'# Also, only the first dialog controls are initially enabled
+'###########################################################################
+Sub Dlg1
+Dim mystr As String 
+
+mystr =  WIZARD_STR_1_1 + NEW_LINE + NEW_LINE + WIZARD_STR_1_3 + NEW_LINE 
+mystr =  mystr + NEW_LINE + WIZARD_STR_1_4 + NEW_LINE + WIZARD_STR_1_5   
+mystr = mystr + NEW_LINE + WIZARD_STR_1_6 + NEW_LINE + WIZARD_STR_1_7 + NEW_LINE + WIZARD_STR_1_8 + NEW_LINE + NEW_LINE + WIZARD_STR_1_9
+
+Dialog  
+  Title WIZARD_CAPTION_TITLE
+  Width   350
+  Height  180 
+  
+  Control StaticText 
+  	Title  mystr
+	Width  315
+	Height 130
+	ID WLCMTXT
+	Position  15, 15 
+	Enable
+	Show
+  
+  Control  GroupBox
+	Position 10,10 
+	ID WELCOME_FRAME
+	Width  330
+	Height 125
+  
+  Control StaticText 
+	Title WIZARD_STEP_1 + NEW_LINE + WIZARD_STR_2
+	Height 50
+	ID FRSTTXT
+	Position  4, 4 
+	Disable
+	Hide
+
+  Control StaticText  
+    Title WIZARD_STEP_2 + NEW_LINE + WIZARD_PIC_GEOGRAPHY
+	Height 50
+	ID SCNDTXT
+	Position  4, 4 
+	Disable
+	Hide
+
+  Control StaticText 
+   	Title  WIZARD_STEP_3 + NEW_LINE + WIZARD_SELECT_OPER
+	Height 25
+	ID THRDTXT
+	Position  4, 4 
+	Disable
+	Hide
+
+  Control StaticText 
+   	Title WIZARD_STEP_4 + NEW_LINE + WIZARD_SELECT_OUTPUT_TYPE
+	ID FRTHTXT
+	Height 25
+	Position  4, 4 
+	Disable
+	Hide
+
+  Control RadioGroup 
+	'There are 7 options in this selection
+	Title  WIZARD_USER_DATA_LIST
+	ID FRSTRDO
+	Position  15, 30   
+	Disable
+	Hide
+
+    Control RadioGroup 
+	'There are 2 options in this selection
+	Title  WIZARD_MAP_FILE_TYPE_LIST
+	ID MAPRDO
+	Position  15, 30  
+	Disable
+	Hide
+
+    Control ListBox   
+	Title  WIZARD_OPT_LIST
+      ID SCNDRDO
+	Position  15, 42 
+	Calling SetLists
+	Disable
+	Hide
+
+   Control ListBox   
+	Title  WIZARD_OUTPUT_TYPE_LIST
+    ID THRDRDO
+	Calling SetOutputList
+   	Position  15, 42 
+	Disable
+	Hide
+
+  Control SymbolPicker
+    Value MakeCustomSymbol("db-CON.bmp", RGB(255,255,255), 48, 1) 
+	ID DATA_DLG_BMP
+	Position 292,97 
+	Disable
+	Width  48
+	Height 48
+	Disable
+	Hide
+
+  Control SymbolPicker
+    Value MakeCustomSymbol("Glob1-32.bmp", RGB(255,255,255), 48, 0) 
+	ID MAP_DLG_BMP
+	Position 292,97 
+	Width  48
+	Height 48
+	Disable
+	Hide
+
+  Control  GroupBox
+	Position 10, 150
+	Width  330
+	Height 1
+  
+  Control  GroupBox
+	Position 10, 23 
+	ID 		USER_DATA_FRAME
+	Title   USER_DATA_TITLE_FRAME
+	Width  110
+	Height 105
+	Disable
+	Hide
+  
+  Control  GroupBox
+	Position 10,20 
+	ID 	   MAP_DATA_FRAME
+	Title  MAP_DATA_TITLE_FRAME
+	Width  158
+	Height 80
+	Disable
+	Hide
+  
+  Control  GroupBox
+	Position 115,32 
+	ID 		GROUP_BOX3
+	Title  STR_OPT_TITLE 
+	Width  158
+	Height 63
+	Disable
+	Hide
+
+  Control  GroupBox
+	Position 10,32 
+	ID 		GROUP_BOX1
+	Title  STR_OPT_TITLE
+	Width  90
+	Height 85
+	Disable
+	Hide
+  
+  Control ListBox 
+	ID GEOCODE_FILE_LIST
+	Position 120,42 
+	Disable
+	Hide
+	Width 148
+	Height 48
+
+  Control ListBox 
+	ID MAPPABLE_WIN_LIST
+	Calling SetMapperWinToFront
+	Position 120,42 
+	Width  148
+	Height 48
+	Disable
+	Hide
+		
+  Control ListBox
+	ID THEM_MOD_WIN_LIST
+	Calling SetThematicWinToFront
+	Position 120,42 
+	Width  148
+	Height 48
+	Disable
+	Hide
+
+  Control ListBox
+	ID ALL_OPNENWIN_LIST
+	Calling  SetPrnSaveWinToFront
+	Position 120,42 
+	Width  148
+	Height 48
+	Disable
+	Hide
+  
+  Control ListBox
+	ID ALL_OPEN_TABLES
+	Position 120,42 
+	Width  148
+	Height 48
+	Disable
+	Hide
+  
+  Control Button
+	Title STR_BTN_OPEN_FILE
+	ID OPNBTN
+	position  10, 132
+	calling FileDialogOperations
+	Width 90
+	Disable
+	Hide
+
+  Control Button
+	Title STR_BTN_RUN_CMD
+	ID RUNBTN
+	position  10, 132
+	calling RunDialogOperations
+	Width 90
+	Disable
+	Hide
+
+  Control Button
+	Title STR_BTN_WELCOME
+	ID BTN_WELCOME
+	calling BtnWelcome
+	position  10, 160
+	Width 50 
+  
+  Control Button
+	Title STR_BTN_DATA
+	ID BTN_DATA
+	calling BtnData
+	position  65, 160
+	Width 50
+
+  Control Button
+	Title STR_BTN_MAPS
+	ID BTN_MAPS
+	calling BtnMaps
+	Position  120, 160
+	Width 50
+
+   Control Button
+	Title STR_BTN_ANALYZE
+	ID BTN_ANALYZE
+	calling BtnAnalyze
+	Position  175, 160
+	Width 50
+
+   Control Button
+	Title STR_BTN_PUBLISH
+	ID BTN_PUBLISH
+	calling BtnPublish
+	Position  230, 160
+	Width 50
+
+  Control CancelButton
+	ID CNCLBTN
+	Title STR_BTN_EXIT
+	Position  300, 160 
+	calling CancelProgram
+	Width 40
+	
+End Sub
+

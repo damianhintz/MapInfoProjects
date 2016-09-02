@@ -1,0 +1,149 @@
+'************************************************************************
+'* SQL DataLink Demos, Samples, Utilities include file
+'* Also database team Demos, Samples, Utilities include file
+'************************************************************************
+
+'****************************************************************************/
+'* Defines
+'****************************************************************************/
+'Database Types
+DEFINE  DATA_SOURCE_UNKNOWN   -1
+
+DEFINE  DATA_SOURCE_ORACLE    1
+DEFINE  DATA_SOURCE_SYBASE    2
+DEFINE  DATA_SOURCE_SQLSERVER 3
+DEFINE  DATA_SOURCE_SQLBASE   4
+DEFINE  DATA_SOURCE_INFORMIX  5
+DEFINE  DATA_SOURCE_INGRES    6
+DEFINE  DATA_SOURCE_DB2       7
+DEFINE  DATA_SOURCE_MSACCESS  8
+DEFINE  DATA_SOURCE_DBASE     9 
+DEFINE  DATA_SOURCE_TEXT      10
+DEFINE  DATA_SOURCE_EXCEL4    11
+DEFINE  DATA_SOURCE_EXCEL5    12
+DEFINE  DATA_SOURCE_SQS       13
+DEFINE  DATA_SOURCE_SPATIALWARE 14
+DEFINE  DATA_SOURCE_IUS          15
+DEFINE  DATA_SOURCE_SQLSERVER_SW    16
+
+
+
+' Global Control Identifiers
+DEFINE  DEBUG_CHECKBOX_ID		1377
+DEFINE TURBO_CHECKBOX_ID		1378
+
+' Server table (prepared table - see DBPREP.MBX) column names
+DEFINE  OBJ_ID_COL                  "OBJ_ID"           
+DEFINE  OBJ_GEO_POINTX_COL          "OBJ_GEO_POINTX"   
+DEFINE  OBJ_GEO_POINTY_COL          "OBJ_GEO_POINTY"   
+DEFINE  OBJ_SYM_CODE_COL            "OBJ_SYM_CODE"     
+DEFINE  OBJ_SYM_COLOR_COL           "OBJ_SYM_COLOR"
+DEFINE  OBJ_SYM_SIZE_COL            "OBJ_SYM_SIZE"     
+DEFINE  OBJ_LOC_COL                 "OBJ_LOC"          
+DEFINE  OBJ_LOC_COL2                "OBJ_LOC2"          
+
+' sqsld
+DEFINE MAX_SQS_NODES                1100 ' Approximate max # of nodes that will fit into stmt
+
+'****************************************************************************/
+'* Global veriables 
+'****************************************************************************/
+GLOBAL demohdbc, demohstmnt, demodb AS INTEGER
+GLOBAL demodbname AS STRING       ' connected database name
+GLOBAL demodsname AS STRING       ' data source name
+GLOBAL democonnname AS STRING     ' Connection name
+GLOBAL demoquotechar AS STRING    ' db quote char
+GLOBAL dbg AS LOGICAL
+GLOBAL bUploadMICODE, bUploadXY, bUploadRecno As LOGICAL
+GLOBAL bUploadSQSXY, bUploadSQSREGN, bUploadSQSLINE, bUploadINGRESXY As LOGICAL
+
+'****************************************************************************/
+'* Subs and Function declarations
+'****************************************************************************/
+' External DLL function declarations 
+
+' Function declarations for MapInfo MICODE functions
+'These are the same function in two different dll's. This make the MBX portable for 16 and 32 bit platforms
+DECLARE FUNCTION UploadMICode16       LIB "MICODE16.dll" Alias "UploadMICode"
+                      (	BYVAL x1 As FLOAT,
+                       	BYVAL x2 As FLOAT,
+ 		   		BYVAL y1 As FLOAT,
+				BYVAL y2 As FLOAT,
+				BYVAL ptx As FLOAT,
+				BYVAL pty As FLOAT,
+                        pMIcode As STRING) As Logical 
+
+DECLARE FUNCTION UploadMICode32       LIB "MICODE32.dll" Alias "UploadMICode"
+                      (	BYVAL x1 As FLOAT,
+                       	BYVAL x2 As FLOAT,
+ 		   		BYVAL y1 As FLOAT,
+				BYVAL y2 As FLOAT,
+				BYVAL ptx As FLOAT,
+				BYVAL pty As FLOAT,
+                        pMIcode As STRING) As Logical 
+
+' External MapBasic functions
+' IN Connect.MB - Connection dialog handler
+DECLARE FUNCTION SQLConnectDialog() AS INTEGER
+
+' IN PickTab.mb
+DECLARE SUB TablePickerDialog (BYVAL inhdbc AS INTEGER, TableOwner AS STRING, TableName AS STRING, BYVAL Prompt AS STRING)  
+
+' IN Pickcol.mb
+DECLARE SUB ColumnPickerDialog (BYVAL inhdbc AS INTEGER, BYVAL TableOwner AS STRING, BYVAL TableName AS STRING, ColumnName AS STRING, BYVAL Prompt AS STRING)  
+DECLARE SUB MITablePickerDialog (tabname AS STRING, BYVAL prompt AS STRING)
+
+'IN PrepSQL.mb
+DECLARE SUB SQLPrepare(BYVAL SQLIn AS STRING, SQLOut AS STRING)
+
+' in sqlutil.mb
+Declare SUB RunSQLFile(BYVAL filespec AS STRING)
+DECLARE FUNCTION WhichSQLDatabase(BYVAL hdbc AS INTEGER) AS INTEGER
+DECLARE FUNCTION GetSQLUserid(BYVAL hdbc AS INTEGER) AS STRING
+DECLARE FUNCTION GetDB(BYVAL hdbc AS INTEGER) AS STRING
+DECLARE FUNCTION GetServerName(BYVAL hdbc AS INTEGER) AS STRING
+DECLARE FUNCTION GetDBName(BYVAL hdbc AS INTEGER) AS STRING
+DECLARE FUNCTION GetDSName(BYVAL hdbc AS INTEGER) AS STRING
+DECLARE FUNCTION GetQuoteChar(BYVAL hdbc AS INTEGER) AS STRING 
+DECLARE FUNCTION DoesTableExist(BYVAL SRVTableName As STRING) As LOGICAL
+DECLARE FUNCTION IsDBMSInstalled(BYVAL bShowMsg as LOGICAL) as LOGICAL
+
+' IN SQLPVW.MB
+DECLARE SUB SQLPreview()
+DECLARE SUB ShowRow()
+DECLARE SUB ShowText(BYVAL hstmnt AS INTEGER, BYVAL colno AS INTEGER )
+
+' IN TABMAINT.MB
+DECLARE Sub TableMaintDialog()
+
+
+'* IN Demoutil.mb
+DECLARE FUNCTION SelectString(BYVAL stringlist AS STRING, BYVAL selection AS INTEGER) AS STRING
+DECLARE FUNCTION STRPAD$ (BYVAL in AS STRING, BYVAL len as INTEGER) AS STRING
+DECLARE FUNCTION IsDebugOn(BYVAL ProgramName AS STRING) as Logical
+DECLARE SUB SetDebug()
+DECLARE SUB SetDebugOn()
+DECLARE SUB SetDebugOff()
+DECLARE SUB DebugInit(BYVAL ProgramName AS STRING)
+DECLARE SUB PrintResults (BYVAL demohstmnt AS INTEGER)
+DECLARE SUB SetTurbo()
+
+'* IN DESCTAB.MD
+DECLARE SUB DescribeTable(BYVAL TableOwner AS STRING, BYVAL TableName AS STRING)
+
+'* In picksel.mb
+'* List and prompt are really byval
+DECLARE FUNCTION PickerDialog (List AS STRING, BYVAL prompt AS STRING) AS STRING
+DECLARE FUNCTION GetOperators(BYVAL whichsys AS STRING) AS STRING
+DECLARE FUNCTION GetAggregates(BYVAL whichsys AS STRING) AS STRING
+DECLARE FUNCTION GetFunctions(BYVAL whichsys AS STRING) AS STRING
+
+DECLARE FUNCTION BuildSQSCreateString(BYVAL TableName As STRING, BYVAL NewTableName As STRING) As STRING
+DECLARE FUNCTION BuildRegnInsertString(InsertStr As STRING, 
+						   TableObject As Object,
+                                       num_polys as Integer) As STRING
+DECLARE FUNCTION BuildRectInsertString(InsertStr As STRING, 
+						   TableObject As Object) As STRING
+DECLARE FUNCTION BuildLineInsertString(InsertStr As STRING, 
+				               TableObject As Object) As STRING
+

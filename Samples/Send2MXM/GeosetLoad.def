@@ -1,0 +1,291 @@
+Type tMBR
+    sLowerLeft     As String
+    sUpperRight    As String
+End Type
+
+Type tGeoSet
+    sAutoLayer     As String
+    sCenter        As String
+    sCenter_User   As String
+    sMapUnit       As String
+    vtMBR          As tMBR
+    sName          As String
+    sProjection    As String
+    sZoomLevel     As String
+End Type
+
+Type tBrush
+    sBackColor     As String
+    sForeColor     As String
+    sPattern       As String
+    sTransparent   As String
+End Type
+
+Type tPen
+    sColor         As String
+    sLineStyle     As String
+    sLineWidth     As String
+End Type
+
+Type tFont
+    sBackColor     As String
+    sDescription   As String
+    sExtStyle      As String
+    sForeColor     As String
+    sOpaque        As String
+    sSize          As String
+    sStyle         As String
+    sRotation      As String
+End Type
+
+Type tBitmap
+    sName          As String
+    sOverrideColor As String
+    sTransparent   As String
+End Type
+
+Type tSymbol
+    sCode          As String
+    sColor         As String
+    vtFont         As tFont
+    sPointSize     As String
+    sType          As String
+    vtBitmap       As tBitmap
+End Type
+
+Type tZoom
+    sMin           As String
+    sMax           As String
+End Type
+
+Type tDisplay
+    vtBrush        As tBrush
+    vtPen          As tPen
+    vtLinePen      As tPen
+    vtFont         As tFont
+    vtSymbol       As tSymbol
+End Type
+
+Type tLabel
+    sDuplicate    As String
+    vtFont        As tFont
+    sLineType     As String
+    sMaxLabels    As String
+    sOffset       As String
+    sOverlap      As String
+    sParrallel    As String
+    sPartialSegments As String
+    sPosition     As String
+    vtZoom        As tZoom
+End Type
+
+Type tGeoSetTable
+    sTableName    As String
+    sRealName     As string
+    sAutoLabel    As String
+    vtDisplay     As tDisplay
+    sFile         As String
+    sIsVisible    As String
+    vtLabel       As tLabel
+    sSelectable   As String
+    sEditable     As String
+    vtZoom        As tZoom
+    sShowLineDirection As String
+    sShowNodes    As String
+    sShowCentroids As String
+    sRegisteringGeoDict As String
+    sDescription  As String
+    sDrawLabelsAfter As String
+End Type
+
+
+
+
+Define KEY_GEOSET                         "GEOSET"
+
+Define KEY_AUTOLAYER                      "AUTOLAYER"
+Define KEY_CENTER                         "CENTER"
+Define KEY_CENTER_USER                    "CENTER_USER"
+Define KEY_MAPUNIT                        "MAPUNIT"
+Define KEY_MBR                            "MBR"
+Define KEY_LOWERLEFT                      "LOWERLEFT"
+Define KEY_UPPERRIGHT                     "UPPERRIGHT"
+Define KEY_NAME                           "NAME"
+Define KEY_PROJECTION                     "PROJECTION"
+Define KEY_ZOOMLEVEL                      "ZOOMLEVEL"
+
+Define KEY_TABLE                          "TABLE"
+
+Define KEY_AUTOLABEL                      "AUTOLABEL" 
+Define KEY_DRAWLABELSAFTER                "DRAWLABELSAFTER"
+Define KEY_DISPLAY                        "DISPLAY"
+
+Define KEY_BRUSH                          "BRUSH"
+Define KEY_FONT                           "FONT"
+Define KEY_PEN                            "PEN"
+Define KEY_LINEPEN                        "LINEPEN"
+Define KEY_SYMBOL                         "SYMBOL"
+
+Define KEY_BACKCOLOR                      "BACKCOLOR"
+Define KEY_FORECOLOR                      "FORECOLOR"
+Define KEY_PATTERN                        "PATTERN"
+Define KEY_TRANSPARENT                    "TRANSPARENT"
+
+Define KEY_DESCRIPTION                    "DESCRIPTION"
+Define KEY_EXTSTYLE                       "EXTSTYLE" 
+Define KEY_OPAQUE                         "OPAQUE"
+Define KEY_SIZE                           "SIZE"
+Define KEY_STYLE                          "STYLE"
+
+Define KEY_COLOR                          "COLOR"
+Define KEY_LINESTYLE                      "LINESTYLE"
+Define KEY_LINEWIDTH                      "LINEWIDTH"
+
+Define KEY_BITMAP                         "BITMAP"
+Define KEY_OVERRIDECOLOR                  "OVERRIDECOLOR"
+
+Define KEY_CODE                           "CODE"
+Define KEY_POINTSIZE                      "POINTSIZE"
+Define KEY_ROTATION                       "ROTATION"
+Define KEY_TYPE                           "TYPE"
+
+Define KEY_REGISTERINGEOODICT             "REGISTERINGEOODICT"
+
+Define KEY_FILE                           "FILE"
+Define KEY_ISVISIBLE                      "ISVISIBLE"
+Define KEY_SHOWLINEDIRECTION              "SHOWLINEDIRECTION"
+Define KEY_SHOWNODES                      "SHOWNODES"
+Define KEY_SHOWCENTROIDS                  "SHOWCENTROIDS"
+
+Define KEY_LABEL                          "LABEL"
+
+Define KEY_DUPLICATE                      "DUPLICATE"
+Define KEY_LINETYPE                       "LINETYPE"
+Define KEY_MAXLABELS                      "MAXLABELS"
+Define KEY_OFFSET                         "OFFSET"
+Define KEY_OVERLAP                        "OVERLAP"
+Define KEY_PARALLEL                       "PARALLEL"
+Define KEY_POSITION                       "POSITION"
+Define KEY_PARTIALSEGMENTS                "PARTIALSEGMENTS"
+
+Define KEY_SELECTABLE                     "SELECTABLE"
+Define KEY_EDITABLE                       "EDITABLE"
+
+Define KEY_ZOOM                           "ZOOM"
+
+Define KEY_MAX                            "MAX"
+Define KEY_MIN                            "MIN"
+
+Define KEY_GEOSET_HEADER                  "!GEOSET"
+Define KEY_VERSION                        "!VERSION"
+Define KEY_BEGIN_METADATA                 "begin_metadata"
+Define KEY_END_METADATA                   "end_metadata"
+
+Define QUOTE                 """"
+Define SYBKEY_DELIMETER      "\"
+
+Define RGKEY_MAPX_40        "SOFTWARE\MapInfo\MapX\4.0"
+Define RGKEY_MAPX_30        "SOFTWARE\MapInfo\MapX\3.0"
+Define RGVAL_GEODICTIONARY  "GeoDictionary"
+
+
+Define CODE_UNKNOWN_KEY      -1  ' Unknown Geoset Key
+Define CODE_ERROR             0
+Define CODE_OK                1
+Define CODE_END               2
+
+Define STATE_KEY              1
+Define STATE_VALUE            2
+Define STATE_DELIMETER        3
+
+Define miLineTypeNone        0
+Define miLineTypeSimple      1
+Define miLineTypeArrow       2
+
+Define miPositionCC          0     'Centered
+Define miPositionTL          1     'Top Left
+Define miPositionTC          2     'Top Center
+Define miPositionTR          3     'Top Right
+Define miPositionCL          4     'Left of Center
+Define miPositionCR          5     'Right of Center
+Define miPositionBL          6     'Bottom Left
+Define miPositionBC          7     'Bottom Center
+Define miPositionBR          8     'Bottom Right
+
+
+
+Declare Sub LoadGeoset
+Declare Function GetGeosetFileName( sGeosetFile As String ) As Logical
+
+
+Declare Function ReadGeoSet( sGeoSetFile As String ) As Logical
+Declare Function CheckHeader( ByVal lFileNumber As Integer ) As Logical
+
+
+Declare Function Parse( sLine As String ) As Integer
+Declare Function LookForDelimere( sLine As String, ByVal lLineLen As Integer ) As Logical
+Declare Function LookForGeosetKey( sLine As String, ByVal lLineLen As Integer ) As Logical
+Declare Function LookForGeosetValue( sLine As String, ByVal lLineLen As Integer ) As Logical
+
+Declare Function GetSubKey( sKey As String ) As String
+
+
+Declare Function ParseZoomKey( vtZoom As tZoom, sKey As String, sValue As String ) As Integer 
+
+Declare Function ParseBrushKey( vtBrush As tBrush, sKey As String, sValue As String ) As Integer
+Declare Function ParsePenKey( vtPen As tPen, sKey As String, sValue As String ) As Integer
+Declare Function ParseFontKey( vtFont As tFont, sKey As String, sValue As String ) As Integer
+Declare Function ParseSymbolKey( vtSymbol As tSymbol, sKey As String, sValue As String ) As Integer
+Declare Function ParseBitmapKey( vtBitmap As tBitmap, sKey As String, sValue As String ) As Integer
+
+Declare Function ParseDisplayKey( vtDisplay As tDisplay, sKey As String, sValue As String ) As Integer
+Declare Function ParseLabelKey( vtLabel As tLabel, sKey As String, sValue As String ) As Integer
+
+Declare Function GetGeosetName() As String 
+Declare Sub ResetGeoset()
+Declare Function SearchForGeosetTable( sTableName As String ) As Integer
+Declare Function AddGeosetTable( sTableName As String ) As Integer 
+
+Declare Function MemorizeGeosetValue( sKey As String, sValue As String ) As Logical
+Declare Function ParseGeosetKey( sKey As String, sValue As String ) As Integer
+Declare Function ParseTableKey( lTableNumber As Integer, sKey As String, sValue As String ) As Integer
+
+Declare Function InterpretGoeset() As Logical 
+Declare Function OpenGeosetTables( sGeosetPath As String )  As Logical
+Declare Function OpenMappperWnd( lWndID As Integer ) As Logical
+
+Declare Sub SetGeosetProjection( ByVal lWndID As Integer, sProjection As String )
+Declare Sub SetZoomLevelProperty( ByVal lWndID As Integer, sZoomLevel As String ) 
+Declare Sub SetMapCenterProperty( ByVal lWndID As Integer, vtGeoSet As tGeoSet ) 
+
+
+Declare Sub SetMapUnits( ByVal lWinID As Integer, sMapUnit As String )
+
+Declare Sub SetLayerProperties( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+
+Declare Sub SetLayerSelectableMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+Declare Sub SetLayerEditableMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+Declare Sub SetLayerVisibleMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+Declare Sub SetLayerAutoLabelMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+
+Declare Sub SetLayerDisplayMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable ) 
+
+Declare Function GetZoomValues( vtZoom As tZoom, lfMin As Float, lfMax As Float ) As Logical
+
+Declare Function GetBrushStyle( brBrush As Brush, vtBrush As tBrush ) As Logical
+Declare Function GetPenStyle( pnPen As Pen, vtPen As tPen ) As Logical
+Declare Function GetFontStyle( fnFont As Font, vtFont As tFont ) As Logical
+Declare Function GetSymbolStyle( smSymbol As Symbol, vtSymbol As tSymbol ) As Logical
+
+Declare Sub SetLayerLabelMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable ) 
+Declare Sub SetLabelDuplicateMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable ) 
+Declare Sub SetLabelOverlapMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+Declare Sub SetLabelParallelMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+Declare Sub SetLabelPartialSegmentMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+Declare Sub SetLabelLineTypeProperty( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+Declare Sub SetLabelMaxLabelsProperty( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+Declare Sub SetLabelOffsetProperty( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+Declare Sub SetLabelPositionProperty( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+
+Declare Sub InterpretGeosetMapUnits( sMapUnit As String )   ' BP 30.09.98
+Declare Function GetMapUnits() As String                    ' BP 30.09.98

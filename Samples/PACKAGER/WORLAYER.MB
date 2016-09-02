@@ -1,0 +1,1485 @@
+' WORLAYER.MB:
+'  this code does not require a .DEF file -- it is simply appended on to the
+'  PACKAGER.MB code with a trailing Include statement.  This is done only to
+'  allow the code to be viewed in the MapBasic code editor, which has a 64K
+'  size limit.
+Include "Packager.DEF"
+
+'*********************************************************
+' check for the existence of a writable Packager directory
+' 
+Function bPackagerDirWritable() as Logical
+	Dim bResult, bErrorFlag as Logical
+	' Have to make sure the working folder exists before using it for anything...
+	bResult=bCreateDir(g_strPackagerPath)
+	bErrorFlag=FALSE
+	if FileExists(g_strPackagerPath) = FALSE then
+	bErrorFlag=TRUE
+	elseif bWritable(g_strPackagerPath, "") = FALSE then
+ 		bErrorFlag=TRUE
+	end if
+	bPackagerDirWritable=Not bErrorFlag
+End Function
+
+'***********************************************************************************
+' code to set up the dialog to package just one workspace -- whether it's an existing
+'  workspace on disk, or a the current workspace saved temporarily by Packager code.
+'  The second parameter defines whether the workspace is temporary and should be deleted.
+'
+Sub PackageOneWorkspace(ByVal strWorName as String, ByVal bTempWorkspace as Logical)
+	Dim i as SmallInt, bErrorFlag as Logical, strTempOutputWOR as String
+
+	if bParseWorkspace(strWorName)=FALSE then
+		' error occurred while parsing the workspace; fail out and exit
+		Note GetResString(IDS_ERROR_PARSING_WORKSPACES)
+		Exit Sub
+	end if
+
+	g_bUserPicksWorkspaceName=TRUE
+	bErrorFlag=TRUE
+	if bPackagerDialog() then
+		bErrorFlag=FALSE
+		' user clicked OK on the dialog -- list of old and new filenames
+		'  now stored in global arrays; now that we know we have to go through
+		'  with the copy, check for table types that require tables to be closed:
+		if g_bCloseEverything=FALSE and NumTables()>0 then ' never need to Close All if nothing open!
+			for i=1 to UBound(g_refs)
+				if Instr(1, "RASTER", g_refs(i).strTableType) then
+					'TODO:  only close everything if the relevant table is actually open!  Or:
+					' For these troublesome file types, it seems simplest to _always_ Close All, to avoid
+				   '  interminable checks and error-checking at various stages to make sure they aren't open
+					g_bCloseEverything=TRUE
+					Exit For
+				end if
+			next
+			
+			if g_bCloseEverything then
+				if bAskBeforeClosingEverything()=FALSE then
+					' user cancelled -- stop packaging process
+					OnError Goto IgnoreError
+					If bTempWorkspace then
+						Kill strWORName
+					End If
+					g_bCloseEverything=TRUE
+					Exit Sub
+				else
+					Close All Interactive
+				end if
+			end if
+		end if
+
+		if bPackageWorkspace(strWorName, g_strOutputPath & g_strOutputFName, bTempWorkspace) then
+			' Pointers in all workspaces have now been updated according to the array.
+			' Now we have to actually put the tables where the workspaces say they are... 	
+			if bCopyTables() then
+				Note GetResString(IDS_WORKSPACE_WRITTEN) & g_strOutputPath & g_strOutputFName
+			else
+				Note GetResString(IDS_WORKSPACE_NOT_WRITTEN)
+				bErrorFlag=TRUE
+			end if
+		else
+			Note GetResString(IDS_ERROR_PROCESSING_WORKSPACE)
+			bErrorFlag=TRUE
+		end if
+	end if
+
+	if bErrorFlag then
+		' do the best we can to clean up -- unfortunately we have to leave an invalid
+		'  reference on the Recent Files list if the temporary workspace must be restored
+		OnError Goto IgnoreError
+		if g_bCloseEverything then
+			Run Application strWorName	
+			if bTempWorkspace then
+				Kill strWorName
+			end if
+		end if
+		Exit Sub
+	end if
+
+	If bTempWorkspace Then ' don't do any tricky MRU stuff if workspace was picked from the hard drive!
+		strTempOutputWOR=strCreateUniqueWorkspace()
+		' restore the current desktop if everything had to be closed:  move the new packaged
+		'  workspace out of the way to prepare for Recent Files trickery:
+
+		Rename File g_strOutputPath & g_strOutputFName as strTempOutputWOR
+
+		If g_bCloseEverything Then
+			' this is slightly tricky, since we want the _new_ workspace to end up on
+			'  the Recent Files list, if anything -- definitely don't want the temporary
+			'  workspace to show up there, since it will be deleted right after loading...
+			' Luckily we can trick the system by moving the two workspaces to the
+			'  same desired location, in quick succession:
+
+			Rename File strWorName as g_strOutputPath & g_strOutputFName
+			Run Application g_strOutputPath & g_strOutputFName
+			Kill g_strOutputPath & g_strOutputFName
+			Rename File strTempOutputWOR as g_strOutputPath & g_strOutputFName
+		Else
+			' just need to remove the temporary workspace and update the Recent Files list:
+			' run a dummy workspace from the target location...
+			Open File g_strOutputPath & g_strOutputFName for Output as #1 Charset SystemInfo(SYS_INFO_CHARSET)
+			Print #1, "!Workspace"
+			Print #1, "!Version 400"
+			Print #1, "!Charset " & SystemInfo(SYS_INFO_CHARSET)
+			If FrontWindow() <> 0 then ' VI#28043
+				If WindowInfo(FrontWindow(), WIN_INFO_STATE)=WIN_STATE_MAXIMIZED then
+					Print #1, "Set Window FrontWindow() Max"
+				End If
+			End If
+			OnError Goto IgnoreError
+			Close File #1
+			Run Application g_strOutputPath & g_strOutputFName
+			Kill g_strOutputPath & g_strOutputFName
+			Rename File strTempOutputWOR as g_strOutputPath & g_strOutputFName
+		End If
+	End If
+
+Done: 'clean up as well as possible after any possible file I/O errors:
+	OnError Goto IgnoreError
+	Close File #1
+	Exit Sub
+
+IgnoreError:
+	Resume Next
+HandleError:
+	Note "PackageCurrent: " + Error$()
+	Resume Done
+End Sub
+
+'*******************************************************************************
+' Pass a path, and optionally a filename, to this function to test whether
+'  a folder or file of that name can be created.
+'
+Function bWritable(ByVal strPath as String, ByVal strFName as String) as Logical
+	Dim bResult as Logical
+	OnError Goto HandleError
+
+	If strFName="" Then
+		bResult = bCreateDir(strPath)
+		If FileExists(strPath)=FALSE Then
+			bWritable=FALSE
+			Exit Function
+		End If		
+		strFName="~~~~~~~~"
+	End If
+	
+	If FileExists(strPath & strFName) Then
+		'fail if a file already exists at that location -- must be checked separately
+		bWritable=FALSE
+		Exit Function
+	End If
+
+	' main test section:  if these four lines execute, the location is writable
+	Open File strPath & strFName for Output as #1
+	Print #1, ""
+	Close File #1
+	Kill strPath & strFName
+	bWritable=TRUE
+
+Done:
+	OnError Goto IgnoreError
+	Close File #1
+	Exit Function
+IgnoreError:
+	Resume Next
+HandleError:
+	bWritable=FALSE	
+End Function
+
+Function bCopyTables() as Logical
+	Dim i, intCounter, intLen as SmallInt, bOpenedTable, bResult as Logical
+	Dim strAlias, strFileName, strPath, strRelativeRef, strNewRef as String
+	Dim strBasePath, strNewBasePath, strSeamlessSubTable, strReplace as String
+	OnError Goto HandleError
+
+	for i=1 to UBound(g_refs)
+		Do Case g_refs(i).intCopyType
+		Case COPYTYPE_NATIVE
+			strAlias=g_refs(i).strAlias
+			bOpenedTable=FALSE
+			if bOpenTable(g_refs(i).strFName, strAlias, bOpenedTable)=FALSE then
+				Note GetResString(IDS_UNABLE_TO_OPEN) & Chr$(13) & g_refs(i).strNewPath & g_refs(i).strNewFName
+				bCopyTables=FALSE
+				Exit Function
+			end if
+
+			strFileName=g_refs(i).strNewPath & g_refs(i).strNewFName
+			If TableInfo(strAlias, TAB_INFO_TABFILE)=strFileName Then
+					'don't bother trying to save a referenced file on top of itself...
+				Else
+				if bSaveTableCopy(strAlias, strFileName, FALSE)=FALSE then
+					Note GetResString(IDS_UNABLE_TO_SAVE) & Chr$(13) & g_refs(i).strNewPath & g_refs(i).strNewFName
+					bCopyTables=FALSE
+					Exit Function
+				end if
+				if bOpenedTable=TRUE then
+					Close Table strAlias
+				end if
+				Do Case g_refs(i).strTableType
+				Case "RASTER"
+					' need to update pointer _inside_ the copied TAB file, as well as the workspace pointer:
+					' use old filename in new location; try to rename file on user request.
+					strNewRef=strGetPath(PathToDirectory$(g_refs(i).strNewPath), strGetNewRefName(i))
+					' It would be nice to remember the exact original string and search-and-replace it;
+					'  however, in general, finding the first "FILE " with quotes after it, and replacing
+					'  whatever is inside the quotes, should do the trick just as well.
+					strRelativeRef=strGetRelativePath(PathToDirectory$(strFileName), strNewRef)
+					if bFixFirstTABRef(strFileName, strRelativeRef)=FALSE then
+						Note GetResString(IDS_UNABLE_TO_FIX_REF) & Chr$(13) & strFileName
+						bCopyTables=FALSE
+						Exit Function
+					end if
+					If bCopyReferencedFile(g_refs(i).strReference, strNewRef)=FALSE Then
+						Note GetResString(IDS_UNABLE_TO_COPY_REF) & Chr$(13) & g_refs(i).strReference
+						bCopyTables=FALSE
+						Exit Function
+					End If	
+					' successfully copied the referenced file
+				Case "SEAMLESS"
+					' have to go through the entries in the seamless table and make sure relative paths are right:
+					' code almost identical to parsing code in bGetTableFileList --
+					bResult=bOpenTable(strFilename, strAlias, bOpenedTable)
+					If bResult=FALSE then
+ 						Note GetResString(IDS_UNABLE_TO_REPAIR_SEAMLESS) & Chr$(13)
+								 & g_refs(i).strNewPath & g_refs(i).strNewFName 
+						Exit Function
+					End If
+					Set Table strAlias Seamless Off
+
+					Select * from strAlias into __TEMP__ NoSelect
+					strBasePath=PathToDirectory$(g_refs(i).strFName)
+					strNewBasePath=g_refs(i).strNewPath
+
+				   intCounter=1
+					' because we'll be modifying the base table (with 'Update')
+					'  the row cursor may be reset -- to be safe, we need to fetch by RowID
+					Do While intCounter<=TableInfo(__TEMP__, TAB_INFO_NROWS)
+						Fetch Rec intCounter from __TEMP__
+						strSeamlessSubTable=__TEMP__.COL1
+						' rebuild the full path of the seamless subtable (it would be better
+						'   to store this, but changes to the array structure would be needed)
+						strSeamlessSubTable=strGetPath(strBasePath, strSeamlessSubTable)
+						strReplace=strFindReplacement(strSeamlessSubTable)
+						If strReplace<>"" Then
+							intLen=Len(strNewBasePath)
+							If Left$(strReplace, intLen)=strNewBasePath Then
+								' use relative paths wherever possible -- chop off common prefix
+								' (this will not create "..\..\folder\table.TAB"-type references, however)
+								strReplace=Mid$(strReplace, intLen+1, Len(strReplace)-intLen)
+							End If
+						End If
+						'could check column width to make sure paths are short enough to fit:  default is 100 chars
+						Update __TEMP__ Set COL1=strReplace Where RowID=intCounter
+						intCounter=intCounter+1
+					Loop
+					Commit Table __TEMP__
+					Close Table __TEMP__
+					Close Table strAlias
+				End Case
+			End If
+		End Case
+	next
+	bCopyTables=TRUE
+	Exit Function
+HandleError:
+  Note "bCopyTables: " + Error$()
+  bCopyTables=FALSE
+End Function
+
+Function bFixTABReference(ByVal strTablePath as String, ByVal strOldFName as String,
+										 ByVal strNewFName as String) as Logical
+	Dim strLine, strTempFName as String, i as integer
+	'OnError Goto HandleError
+
+	i=0
+	Do 
+		i=i+1
+		strTempFName=g_strPackagerPath & "~~~" & str$(i) & ".TMP"
+		'TODO: error if i gets too high... files should not build up
+	Loop While FileExists(strTempFName)
+
+	strOldFName="""" & strOldFName & """" ' TODO:  maybe pre-append "File "?
+	Open File strTablePath For Input As #2503 Charset SystemInfo(SYS_INFO_CHARSET)
+	Open File strTempFName For Output as #2504 Charset SystemInfo(SYS_INFO_CHARSET)
+	Do While Not EOF(2503)
+		Line Input #2503, strLine
+		i=Instr(1, UCase$(strLine), UCase$(strOldFName))
+		if i then
+			Print #2504, Left$(strLine, i-1) & strNewFName & Right$(strLine, Len(strLine)-i-1-Len(strOldFName))
+		else
+			Print #2504, strLine
+		end if
+	Loop	
+	Close File #2503
+	Close File #2504
+
+
+	Kill strTablePath ' replace old version with new version:
+	Rename File strTempFName as strTablePath
+	bFixTABReference=TRUE
+	Exit Function
+Done:
+	OnError Goto IgnoreError
+	Close File #2503
+	Close File #2504
+	Exit Function
+IgnoreError:
+	Resume Next
+HandleError:
+  'Note "bFixTABReference: " + Error$()
+	bFixTabReference=FALSE
+	Resume Done
+End Function
+
+'*********************************************************
+' version of bFixTABReference that can be called when it
+'  is known that the first file reference (quoted string)
+'  in the TAB file is to be replaced -- e.g. raster tables
+'
+Function bFixFirstTABRef(ByVal strTablePath as String, ByVal strNewFName as String) as Logical
+
+	Dim strLine, strTempFName, strReplacementLine as String
+	Dim i, intStart, intEnd as integer, bFoundLine as Logical
+	'OnError Goto HandleError
+
+	i=0
+	Do 
+		i=i+1
+		strTempFName=g_strPackagerPath & "~~~" & str$(i) & ".TMP"
+		'TODO: error if i gets too high... files should not build up
+	Loop While FileExists(strTempFName)
+
+	Open File strTablePath For Input As #2503 Charset SystemInfo(SYS_INFO_CHARSET)
+	Open File strTempFName For Output as #2504 Charset SystemInfo(SYS_INFO_CHARSET)
+	Do While Not EOF(2503)
+		Line Input #2503, strLine
+		i=Instr(1, UCase$(strLine), "FILE")
+		if i>0 and bFoundLine=FALSE then
+			intStart=instr(i, strLine, """")
+			intEnd=Instr(intStart+1, strLine, """")
+			if intEnd then ' found both quotation marks -- this must be the line
+				strReplacementLine=Left$(strLine, intStart) & strNewFName 
+										& Mid$(strLine, intEnd, Len(strLine)-intEnd+1)
+				Print #2504, StrReplacementLine
+				bFoundLine=TRUE
+			else
+				Print #2504, strLine
+			end if
+		else 
+			Print #2504, strLine
+		end if
+	Loop	
+	Close File #2503
+	Close File #2504
+	Kill strTablePath ' replace old version with new version:
+	Rename File strTempFName as strTablePath
+	bFixFirstTABRef=TRUE
+	Exit Function
+Done:
+	OnError Goto IgnoreError
+	Close File #2503
+	Close File #2504
+	Exit Function
+IgnoreError:
+	Resume Next
+HandleError:
+  'Note "bFixFirstTABRef: " + Error$()
+	bFixFirstTABRef=FALSE
+	Resume Done
+End Function
+
+Function bCopyReferencedFile(ByVal strOldFName as String, ByVal strNewFName as String) as Logical
+	OnError Goto HandleError
+	Save File strOldFName as strNewFName
+	
+	bCopyReferencedFile=TRUE
+	Exit Function
+HandleError:
+	'TODO:  any possibility of catching a table-registered error and working around it?
+	Note "bCopyReferencedFile: " + Error$()
+	bCopyReferencedFile=FALSE
+End Function
+
+'******************************************************
+' this function takes a directory path (local or UNC) and makes sure that all the folders exist
+Function bCreateDir(ByVal strPath as String) as Logical
+	dim strFolder, strDrive as string, i as integer, SecurityJunk as SEC_ATTR
+	OnError Goto HandleError
+
+	' default file security for this user --
+	SecurityJunk.iLen=12 ' 3 integers, 4 bytes each; not sure this A) is right, or B) matters
+
+	strPath=strCleanFilename(strPath)
+   ' a relative path would have to assume the current directory, but this is not a good assumption
+	if left$(strPath, 1)="." then
+		'strPath=TrueFileName$(strPath)
+		bCreateDir=0
+		Exit Function
+	end if
+   if Right$(strPath, 1)<>"\" then strPath=strPath & "\" end if
+
+	if Left$(strPath, 2)="\\" then
+		i=Instr(3, strPath, "\")
+		strDrive=Left$(strPath, i)
+		strFolder=Mid$(strPath, i+1, Len(strPath) - i)
+	elseif Mid$(strPath, 2, 2)=":\" then
+		strFolder=Mid$(strPath, 4, Len(strPath) - 3)
+		strDrive=Left$(strPath, 3)
+   else
+		' not a recognizable local or UNC path --
+		' [relative paths can't be handled here since the base path is not reliably known]
+		bCreateDir=0
+		Exit Function
+	end if
+	Do While strFolder<>""
+		i=instr(1, strFolder, "\")
+		if i=0 then
+			' should never happen -- there should always be a terminating \
+			bCreateDir=0
+			Exit Function
+		end if
+		strDrive=strDrive+Left$(strFolder, i) ' add the first folder to the drive spec
+		strFolder=Mid$(strFolder, i+1, Len(strFolder)-i) ' subtract first folder from string
+		if not FileExists(strDrive) then
+			i=CreateDirectoryA(strDrive, SecurityJunk)
+		end if
+	Loop
+	bCreateDir=TRUE
+	Exit Function
+
+	HandleError:
+	Note "bCreateDir: " + Error$()
+		bCreateDir=0
+End Function
+
+' This function cleans up a filename, converting a relative path to an absolute path if needed
+' Legal but useless paths like C:\test\..\test\file.txt are not supported
+' Odd constructions like D:..\..\test\file.txt are also not supported -- must start with a .
+' strBasePath is assumed _not_ to be a relative path -- it should have at least one \
+'  [along with the optional one at the end of the string] -- C:testdir\testdir2 is invalid
+Function strGetPath(ByVal strBasePath as String, ByVal strRelPath as String) as String
+	dim i, j as integer
+	OnError Goto HandleError
+
+	strBasePath=strCleanFilename(strBasePath)
+	if Right$(strBasePath, 1)<>"\" then strBasePath=strBasePath & "\" end if
+	strRelPath=strCleanFilename(strRelPath)
+
+	if Left$(strRelPath, 2)="\\" or Mid$(strRelPath, 2, 1)=":" then
+		'UNC path, or path with pre-appended drive letter:  nothing to do
+		strGetPath=strRelPath
+		Exit Function
+	end if
+
+	if Left$(strRelPath, 1)="\" then
+		' need to start at the root of strBasePath, ignore the rest
+		if Left$(strBasePath, 2)="\\" then
+			' UNC base path
+			strGetPath=Left$(strBasePath, Instr(3, strBasePath,"\")-1) & strRelPath
+			Exit Function
+		elseif Mid$(strBasePath, 2, 1)=":" then
+			' local base path
+			strGetPath=Left$(strBasePath, 2) & strRelPath
+			Exit Function
+		end if
+	end if
+
+	'convert relative path to standard partial path
+	do while left$(strRelPath, 1)="."
+ 		if Left$(strRelPath, 3)="..\" then
+			strRelPath=Mid$(strRelPath, 4, Len(strRelPath) - 3)
+			' look for the last backslash _before_ the terminating one:
+			strBasePath=Left$(strBasePath, RevInstr(Len(strBasePath)-1,strBasePath,"\"))
+		elseif Left$(strRelPath, 2)=".\" then
+			strRelPath=Mid$(strRelPath, 3, Len(strRelPath) - 2)
+		else
+			' starts with a period but isn't current or previous directory?  Weird.  Fail out.
+			strGetPath=""
+			Exit Function
+		end if
+		'make sure structure is valid -- no ..\\ or .\\ allowed
+		if left$(strRelPath, 1)="\" then
+			strGetPath=""
+			Exit Function
+		end if
+	loop
+
+	' relative path, if any, has been converted to a partial path with no leading \, and
+	'  the base path has been changed accordingly.  All that's left is to stick them together!
+	strGetPath=strBasePath & strRelPath
+
+	Exit Function
+
+	HandleError:
+	Note "strGetPath: " + Error$()
+		strGetPath=""
+	End Function
+
+'**************************************************************************
+' This function returns the location of the last instance of strSearch
+'  at or before a given start point (the mirror image of InStr,
+'  where the search proceeds rightward from the start point.)
+' However, character index values are still counted from the left!
+' Passing a 0 as the first parameter means "start from the far right" --
+'  equivalent to passing Len(strBase).
+'
+' Optimized for finding backslashes in path names [rather than for
+'   unlikely cases like finding the last space in Space$(32760).]
+'
+Function RevInstr(ByVal intStart as Integer, ByVal strBase as String,
+						ByVal strSearch as String) as Integer
+	dim i, j as Integer
+	if intStart=0 then
+		intStart=Len(strBase)
+	end if
+
+	RevInstr=0
+	i=Instr(1, strBase, strSearch)
+	do while i<>0 and i<=intStart
+		RevInstr=i
+		i=Instr(i+1, strBase, strSearch)
+	loop
+End Function
+
+' Return the index of a table.  This function can be used with hidden tables,
+'  which do not appear in the table count returned by NumTables, and so
+'  can't be referenced by a small integer ID.)  A -1 will be returned for 
+'  table aliases that do not correspond to normal or hidden tables.
+' TableInfo([hiddentable], 2) returns 0  (2=TAB_INFO_NUM)
+Function intCheckTableIndex(ByVal strTable as String) as Integer
+	dim strName as string
+	OnError Goto TableNotOpen
+	
+	' the following line will cause an error if strTable is not open
+	intCheckTableIndex=TableInfo(strTable, 2) ' 2 = TAB_INFO_NUM
+	Exit Function
+	
+TableNotOpen:
+	intCheckTableIndex=-1
+End Function
+
+Function strCreateUniqueAlias() as String
+	dim intCounter as Integer, strAlias as String
+	intCounter=0
+	Do
+		intCounter = intCounter + 1
+		strAlias="~~" & intCounter & "~~"
+	Loop until intCheckTableIndex(strAlias) = -1
+	strCreateUniqueAlias=strAlias
+End Function
+
+'*****************************************************************
+' a quick workaround to an unlikely problem:  running this utility
+'  simultaneously on multiple MapInfo sessions would cause strange
+'  overlap problems unless temporary workspaces are written to
+'  different locations for each session...
+Function strCreateUniqueWorkspace() as String
+	OnError Goto HandleError
+	dim i, intCounter as Integer, strBaseName, strNameOfWOR as String
+	intCounter=0
+	strBaseName=g_strPackagerPath	& GetResString(IDS_DEFAULT_CURRENT_WOR_NAME)
+	if FileExists(strBaseName) then
+		strBaseName=Left$(strBaseName, Len(strBaseName)-4) ' remove .WOR extension
+		Do
+			intCounter = intCounter + 1
+			if intCounter=99 then
+				Note GetResString(IDS_PACKAGER_DIRECTORY_OVERFLOW) & Chr$(13) & g_strPackagerPath
+				' periodically attempt to clean up after program crashes;
+				'  if _this_ causes problems with multiple sessions, so be it...!
+				OnError Goto IgnoreError
+				Kill strBaseName & ".WOR"
+				for intCounter=1 to 99
+					Kill strBaseName & str$(intCounter) & ".WOR"
+				next
+				intCounter=1
+			end if
+			strNameOfWOR=strBaseName & str$(intCounter) & ".WOR"
+		Loop until FileExists(strNameOfWOR)=FALSE
+		strCreateUniqueWorkspace=strNameOfWOR
+	else
+		strCreateUniqueWorkspace=strBaseName
+	end if
+	Exit Function
+IgnoreError:
+	Resume Next
+HandleError:
+	Note "strCreateUniqueWorkspace:  " & Error$()
+End Function
+
+
+Function strFindReplacement(ByVal strQuoted as String) as String
+	OnError Goto HandleError
+	dim i as SmallInt, bIncludesExtension as Logical, strCompare, strFound as String
+
+	strQuoted=strCleanFilename(strQuoted)
+	' to get more reliable matches, make search specific to .TAB files
+	if Right$("    " & strQuoted, 4)<>".TAB" then
+		bIncludesExtension=FALSE
+		strQuoted=strQuoted & ".TAB"
+	else
+		bIncludesExtension=TRUE
+	end if
+	for i=1 to UBound(g_refs)
+		strCompare=LTrim$(g_refs(i).strFName) ' there may be leading spaces for list-formatting reasons
+		if Left$(strCompare, 2)="?\" then
+			strCompare=PathToDirectory$(g_strOutputPath) & Mid$(strCompare, 3, len(strCompare)-2)
+		end if
+		' string comparison by default is not case-sensitive, so UCase$() is not needed here
+		if strQuoted=strCompare then
+			strFound=g_refs(i).strNewPath & g_refs(i).strNewFName
+			if bIncludesExtension=FALSE and Right$(strFound, 4)=".TAB" then
+				strFound=Left$(strFound, Len(strFound) - 4)
+			end if
+			if Left$(strFound, 2)="?\" then
+				strFound=PathToDirectory$(g_strOutputPath) & mid$(strFound, 3, Len(strFound)-2)
+			end if
+			strFindReplacement=strFound
+			Exit Function
+		end if
+	next
+	' got all the way through the loop and couldn't find a match --
+	strFindReplacement=""
+	Exit Function
+
+HandleError:
+	Note "strFindReplacement: " + Error$()
+End Function
+
+*************************************************************
+'This function retrieves a character string's width in pixels 
+'
+' from a string "lookup table" defined by GetResString(IDS_PIXEL_LOOKUP_STRING)
+'The function is slow if large numbers of long strings are being processed,
+' so it should be used sparingly.
+'
+Function intPixelWidth(byVal s as String) as Integer
+	dim i, intTemp, intWidth as integer, siASCII as SmallInt
+	intTemp=0
+	for i=1 to len(s)
+		siASCII=asc(mid$(s,i,1))
+		if siASCII>255 then
+			'must be dealing with a multi-byte character set:  can't index all widths
+			' individually, so a [localizable] approximate value will be used instead
+			intWidth=GetResString(IDS_PIXELS_IN_WIDEST_CHAR)
+		else
+			' quick lookup trick
+			intWidth=asc(mid$(GetResString(IDS_PIXEL_LOOKUP_STRING), siASCII, 1)) - 48
+		end if
+
+		intTemp=intTemp+intWidth
+	next
+	intPixelWidth=intTemp
+End Function
+
+Function strGetLocalType(ByVal strType as String) as String
+	Do Case strType
+	Case "NATIVE"
+		strGetLocalType=GetResString(IDS_TABLETYPE_NATIVE)
+	Case "RASTER"
+		strGetLocalType=GetResString(IDS_TABLETYPE_RASTER)
+	Case "GRID"
+		strGetLocalType=GetResString(IDS_TABLETYPE_GRID)
+	Case "DBF"
+		strGetLocalType=GetResString(IDS_TABLETYPE_DBF)
+	Case "XLS"
+		strGetLocalType=GetResString(IDS_TABLETYPE_XLS)
+	Case "WKS"
+		strGetLocalType=GetResString(IDS_TABLETYPE_WKS)
+	Case "ACCESS"
+		strGetLocalType=GetResString(IDS_TABLETYPE_ACCESS)
+	Case "ASCII"
+		strGetLocalType=GetResString(IDS_TABLETYPE_ASCII)
+	Case "ODBC"
+		strGetLocalType=GetResString(IDS_TABLETYPE_ODBC)
+	Case "LINKED"
+		strGetLocalType=GetResString(IDS_TABLETYPE_LINKED)
+	Case "SEAMLESS"
+		strGetLocalType=GetResString(IDS_TABLETYPE_SEAMLESS)
+	Case "SHAPEFILE"
+		strGetLocalType=GetResString(IDS_TABLETYPE_SHAPEFILE)
+	Case "WMS"
+		strGetLocalType=GetResString(IDS_TABLETYPE_WMS)
+	Case "{mixed}"
+		strGetLocalType=GetResString(IDS_MIXED)
+	Case Else
+		strGetLocalType=GetResString(IDS_UNKNOWN_TYPE)
+		Note GetResString(IDS_UNKNOWN_TYPE)
+	End Case
+End Function
+
+
+'--------------------------------------------------------------
+' Gets the version of a table, given the path of a .TAB file.
+'--------------------------------------------------------------
+Function GetTableVersion(ByVal strTableName As String) as Integer
+  OnError Goto ErrorTrap
+
+  Dim sLine As String
+  Dim iPos As Integer
+  Dim iVersion As Integer
+  Dim strVersion as String
+
+  Open File LTrim$(strTableName) For Input As #2501 Charset SystemInfo(SYS_INFO_CHARSET)
+  iPos = 0
+  iVersion = -1
+
+  Do While Not EOF(2501) And Not iPos
+    Line Input #2501, sLine
+    If Not EOF(2501) Then
+      ' Find the VERSION keyword.
+      iPos = InStr(1, UCase$(sLine), "!VERSION")
+      If iPos Then
+	  strVersion = Mid$(sLine, iPos + 8, Len(sLine) - 8)
+        iVersion = Val(strVersion)
+      End If
+    End If
+  Loop
+
+  GetTableVersion=iVersion
+
+Done:
+  OnError Goto IgnoreError
+  Close File #2501
+  Exit Function
+IgnoreError:
+  Resume Next
+ErrorTrap:
+  Note "GetTableVersion: " + Error$()
+  Resume Done
+End Function
+
+
+'--------------------------------------------------------------
+' Gets the version of a table, given an alias of an open table.
+'--------------------------------------------------------------
+Function GetTableVersionFromAlias(ByVal strTableName As String) as Integer
+  Dim strTabFileName as String
+
+  OnError Goto ErrorTrap
+
+  strTabFileName = TableInfo(strTableName, TAB_INFO_TABFILE)
+    
+  GetTableVersionFromAlias = GetTableVersion(strTabFileName)
+  Exit Function
+
+ErrorTrap:
+  Note "GetTableVersionFromAlias: " + Error$()
+End Function
+
+'---------------------------------------
+' Gets source file type of table
+'---------------------------------------
+Function GetTableSourceType(strTableName As String) As String
+  Dim sLine, sTableSourceType As String
+  Dim iPos, jPos As Integer
+  Dim strSearchWord as String
+  Dim iTabFileVersion as Integer
+
+  OnError Goto ErrorTrap
+
+  ' Get the table version.
+  iTabFileVersion = GetTableVersionFromAlias(strTableName)
+  If (iTabFileVersion = -1) Then
+    Goto ErrorTrap
+  End If
+
+  If (iTabFileVersion > 100) then
+    strSearchWord = "TYPE"
+  Else
+    strSearchWord = "FORMAT:"
+  End If
+  ' If the table is a view, then don't bother parsing the tab file.
+  If (TableInfo(strTableName, TAB_INFO_TYPE) = TAB_TYPE_VIEW) then
+    GetTableSourceType = "VIEW"
+    Exit Function
+  End If
+
+ ' If the table is a seamless table, then don't bother parsing the tab file.
+  If (TableInfo(strTableName, TAB_INFO_SEAMLESS)) then
+
+    GetTableSourceType = "SEAMLESS"
+    Exit Function
+  End If
+
+  Open File TableInfo(strTableName, TAB_INFO_TABFILE) For INPUT As #2 Charset SystemInfo(SYS_INFO_CHARSET)
+  iPos = 0
+
+  sTableSourceType = ""
+  Do While Not EOF(2) And Not iPos
+    Line Input #2, sLine
+    If Not EOF(2) Then
+      iPos = InStr(1, UCase$(sLine), strSearchWord)
+      If iPos Then
+        jPos = InStr(iPos + 5, sLine, " ")
+        If jPos Then
+          sTableSourceType = Mid$(sLine, iPos + 5, jPos - iPos - 5)
+        Else
+
+          sTableSourceType = Right$(sLine, Len(sLine) - iPos - 5 + 1)
+        End If
+        ' Strip off any quote characters.  This happens with raster.
+
+        sTableSourceType = StripChars(sTableSourceType, chr$(34))
+      End If
+    End If
+  Loop
+
+  ' The TYPE and FORMAT keywords were not found.  If this is a version 100 table
+  ' then this must be a native table.
+  If (iPos = 0 And iTabFileVersion = 100) Then
+    sTableSourceType = "NATIVE"
+  End If
+ 
+  If InStr(1, UCase$(sTableSourceType), "RASTER") Then
+    iPos = 0
+    Do While Not EOF(2) And Not iPos
+      If Not EOF(2) Then
+        Line Input #2, sLine
+        iPos = InStr(1, UCase$(sLine), "RASTERSTYLE 6 1")
+        If iPos Then
+          sTableSourceType = "GRID"
+        End If
+      End If
+    Loop
+  End If
+
+Done:
+  Close File #2
+  GetTableSourceType = sTableSourceType
+  Exit Function
+
+ErrorTrap:
+  Note "GetTableSourceType: " + Error$()
+  GoTo Done
+End Function
+
+'-------------------------------------------------------------------
+' Given a .TAB file name, retrieve the source file type of the table
+'  _without_ opening the table in MapInfo [avoiding the call to 
+'  TableInfo( {table_alias}, TAB_INFO_TYPE )
+'-------------------------------------------------------------------
+Function strGetTableType(strFName As String) As String
+  Dim sLine, sTableSourceType As String
+  Dim iPos, jPos As Integer
+  Dim strSearchWord as String
+  Dim iTabFileVersion as Integer
+
+  OnError Goto ErrorTrap
+
+  Open File LTrim$(strFName) for Input as #2502 Charset SystemInfo(SYS_INFO_CHARSET)
+  ' If the table is a view or seamless table, then don't bother parsing the tab file.
+  Do While Not EOF(2502)
+    ' TODO:
+    ' these diagnostics for view and seamless could be made more rigorous [checking for
+    ' "Open Table... Hide" statements or "begin_metadata" tags] -- but there should be
+    ' very few incorrect identifications even with these simplistic assumptions --
+    Line Input #2502, sLine
+    if Instr(1, UCase$(sLine), "CREATE VIEW ") then
+      if Instr(1, UCase$(sLine), " AS") then
+        strGetTableType="VIEW"
+        Close File #2502
+	     Exit Function
+      end if
+    end if
+    if Instr(1, UCase$(sLine), """\ISSEAMLESS""") then
+      if instr(1, sLine, "TRUE") then
+        strGetTableType="SEAMLESS"
+        Close File #2502
+	     Exit Function
+      end if
+    end if
+  Loop
+  Close File #2502
+
+  ' Get the table version.
+  iTabFileVersion = GetTableVersion(strFName)
+  If (iTabFileVersion = -1) Then
+    Goto ErrorTrap
+  End If
+
+  If (iTabFileVersion > 100) then
+    strSearchWord = "TYPE"
+  Else
+    strSearchWord = "FORMAT:"
+  End If
+  Open File LTrim$(strFName) For INPUT As #2502 Charset SystemInfo(SYS_INFO_CHARSET)
+  iPos = 0
+
+  Do While Not EOF(2502) And Not iPos
+    Line Input #2502, sLine
+    If Not EOF(2502) Then
+      iPos = InStr(1, UCase$(sLine), strSearchWord)
+      If iPos Then
+        jPos = InStr(iPos + 5, sLine, " ")
+        If jPos Then
+          sTableSourceType = Mid$(sLine, iPos + 5, jPos - iPos - 5)
+        Else
+
+          sTableSourceType = Right$(sLine, Len(sLine) - iPos - 5 + 1)
+        End If
+        ' Strip off any quote characters.  This happens with raster.
+        sTableSourceType = StripChars(sTableSourceType, chr$(34))
+      End If
+    End If
+  Loop
+
+  ' The TYPE and FORMAT keywords were not found.  If this is a version 100 table
+  ' then this must be a native table.
+  If (iPos = 0 And iTabFileVersion = 100) Then
+    sTableSourceType = "NATIVE"
+  End If
+ 
+  If InStr(1, UCase$(sTableSourceType), "RASTER") Then
+    Do While Not EOF(2502)
+      Line Input #2502, sLine
+      If InStr(1, UCase$(sLine), "RASTERSTYLE 6 1") Then
+        sTableSourceType = "GRID"
+        Exit Do
+      End If
+    Loop
+  End If
+
+Done:
+  OnError Goto IgnoreError
+  Close File #2502
+  strGetTableType = sTableSourceType
+  Exit Function
+
+IgnoreError:
+  Resume Next
+ErrorTrap:
+  Note "strGetTableType: " + Error$()
+  Resume Done
+End Function
+
+'----------------------------------------------------------
+' Gets a list of files for a table (not assumed to be open)
+'----------------------------------------------------------
+Function bGetTableFileList(ByVal intPointer as SmallInt) as Logical
+  Dim sLine As String
+  Dim iPos As Integer
+  Dim iStartPos As Integer
+  Dim iEndPos as Integer
+  Dim strFileName as String
+  Dim iIncrement as Integer
+  Dim strTableName as String 'DMG [additions from here down]
+  Dim strTablePath as String
+  Dim strSubTable as String
+' 'TODO:  see below --   Dim strSubTableAlias as String
+  Dim bOpenedTable as Logical
+  Dim intSourceType as SmallInt
+  Dim bResult as Logical
+  Dim intCounter as SmallInt
+  Dim intIndex as SmallInt
+  Dim strBasePath as String
+  Dim strSeamlessSubTable as String
+
+  OnError Goto HandleError
+
+  ' base table has already been added to the list at location {intPointer}
+  strTableName=g_refs(intPointer).strAlias
+  strTablePath=g_refs(intPointer).strFName
+  If g_refs(intPointer).strTableType="SEAMLESS" then
+    'no point in parsing the .TAB file at all -- filenames are stored in the table
+    ' open table to retrieve subtable names and paths
+    bResult=bOpenTable(strTablePath, strTableName, bOpenedTable)
+    If bResult = FALSE then
+      Note GetResString(IDS_FAILED_PARSING_WORKSPACE)
+      Exit Function
+    End If
+    Set Table strTableName Seamless Off
+    Select * from strTableName into __TEMP__ NoSelect
+    intCounter=0
+    Fetch First From __TEMP__
+    Do While Not EOT(__TEMP__)
+      intCounter=intCounter+1
+      strBasePath=PathToDirectory$(g_refs(intPointer).strFName)
+      strSeamlessSubTable=__TEMP__.COL1
+      ' first, convert relative paths to full paths, and make sure the table in question is open:
+      strSubTable=strGetPath(strBasePath, strSeamlessSubTable)
+      ' Make educated guess at alias using PathToTableName$()
+      ' all entries will have the same source file
+      bResult=bAddTableToList(COPYTYPE_NATIVE,
+      						g_refs(intPointer).strFName, SOURCE_SEAMLESS,
+							"   " & strSubTable, "", "?\", intIndex)
+      Fetch Next From __TEMP__
+    Loop
+    Close Table __TEMP__
+    Set Table strTableName Seamless On
+    if bOpenedTable then
+      Close Table strTableName
+    end if
+    bGetTableFileList=TRUE
+    Exit Function
+  End If
+
+  Open File LTrim$(strTablePath) For INPUT As #2500 Charset SystemInfo(SYS_INFO_CHARSET)
+  iPos = 0
+
+  Do While Not EOF(2500)
+    Line Input #2500, sLine
+    If Not EOF(2500) Then
+      iStartPos = 0
+      iEndPos = 0
+
+      ' If this is not a view table, then look for the FILE keyword.  Otherwise, look for the 
+      ' open table statement in the view table.
+      Do Case g_refs(intPointer).strTableType
+      Case "VIEW"
+        iPos = InStr(1, UCase$(sLine), "OPEN TABLE")
+        iIncrement = 10
+        intSourceType=SOURCE_VIEW
+      'Case "QUERY"
+      'TODO:  handle any parsing problems specific to query tables here.
+        iPos = InStr(1, UCase$(sLine), "OPEN TABLE")
+        iIncrement = 10
+        intSourceType=SOURCE_QUERY
+       Case Else
+         iPos = InStr(1, UCase$(sLine), "FILE " + chr$(34))
+         iIncrement = 4
+       End Case
+
+       If iPos Then
+
+	      iStartPos = InStr(iPos + iIncrement, sLine, chr$(34))
+         If (iStartPos > 0) then
+           iEndPos = InStr(iStartPos + 1, sLine, chr$(34))
+         End If
+
+         If ((iStartPos > 0) AND (iEndPos > 0)) then
+           strFileName = Mid$(sLine, iStartPos + 1, iEndPos - iStartPos - 1)
+
+           ' Add the .TAB file extension onto the file name, if this is a view table.
+           If g_refs(intPointer).strTableType="VIEW" And Right$(strFileName,4)<>".TAB" then
+	           strFileName = strFileName + ".TAB"
+           End If
+
+           ' If the file name does not have a directory on it, then we
+           ' assume it is in the same directory as the tab file.
+           If (Len(PathToDirectory$(strFileName)) = 0) then
+             strFileName = PathToDirectory$(strTablePath) + strFileName
+           End If
+
+			'make sure that strSubTable really isn't needed here...
+			'					"   " & strSubTable, strSubTableAlias,
+			' strSubTable=strGetPath(PathToDirectory$(g_refs(intPointer).strFName), strFileName)
+          if g_refs(intPointer).strTableType="VIEW" or g_refs(intPointer).strTableType="QUERY" then
+	           bResult=bAddTableToList(COPYTYPE_NATIVE, g_refs(intPointer).strFName, intSourceType,
+								"   " & strTablePath, strFileName, "?\", intIndex)
+              ' remember the internal file reference so we can replace it later.
+              g_refs(intIndex).strReference=strFileName
+			else
+				' for most types of .TAB files, there is only one internal file reference, it's to
+				'  a non-table (.TXT, .XLS, .BMP, or whatever) and the .TAB file is just a pointer to it.
+				' In these cases, the only thing that should be added to the list is the original table name.
+				' This was done outside the function -- we just need to add a pointer to the reference file:
+				g_refs(intPointer).strReference=strFileName
+		       ' TODO:  check whether "?\" is really needed somewhere -- I think it's rewritten later anyway
+             If bResult = FALSE then
+                Note GetResString(IDS_FAILED_PARSING_WORKSPACE)
+                Exit Function
+             End If
+				Exit Do ' for these table types, no need to look for more internal file pointers
+           end if
+         End If
+		End If
+     End If
+  Loop
+
+Done:
+  OnError Goto IgnoreError
+  Close File #2500
+  Exit Function
+IgnoreError:
+  Resume Next
+HandleError:
+  Note "bGetTableFileList: " + Error$()
+  Resume Done
+End Function
+
+'---------------------------------------
+' Tests source file type for validity
+'---------------------------------------
+Function ValidTableSourceType(ByVal sType As String) As Logical
+
+  OnError Goto ErrorTrap
+  ValidTableSourceType = FALSE
+
+  If InStr(1, UCase$(sType), "NATIVE") Then
+    ValidTableSourceType = TRUE
+  ElseIf InStr(1, UCase$(sType), "RASTER") Then
+    ValidTableSourceType = TRUE
+  ElseIf InStr(1, UCase$(sType), "GRID") Then
+    ValidTableSourceType = TRUE
+  ElseIf InStr(1, UCase$(sType), "VIEW") Then
+    ValidTableSourceType = TRUE
+  ElseIf InStr(1, UCase$(sType), "DBF") Then
+    ValidTableSourceType = TRUE
+  ElseIf InStr(1, UCase$(sType), "XLS") Then
+    ValidTableSourceType = TRUE
+  ElseIf InStr(1, UCase$(sType), "WKS") Then
+    ValidTableSourceType = TRUE
+  ElseIf InStr(1, UCase$(sType), "ACCESS") Then
+    ValidTableSourceType = TRUE
+  ElseIf InStr(1, UCase$(sType), "ASCII") Then
+    ValidTableSourceType = TRUE
+  ElseIf InStr(1, UCase$(sType), "ODBC") Then
+    ValidTableSourceType = TRUE
+  ElseIf InStr(1, UCase$(sType), "LINKED") Then
+    ValidTableSourceType = TRUE
+  ElseIf InStr(1, UCase$(sType), "SEAMLESS") Then
+    ValidTableSourceType = TRUE
+  ElseIf InStr(1, UCase$(sType), "SHAPEFILE") Then
+    ValidTableSourceType = TRUE
+  ElseIf InStr(1, UCase$(sType), "WMS") Then
+    ValidTableSourceType = TRUE
+  End If
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  Note "ValidTableSourceType: " + Error$()
+  Resume Done
+End Function
+
+'---------------------------------------
+' Saves a copy of a table.
+'---------------------------------------
+Function bSaveTableCopy(ByVal strTableName As String,
+							ByVal strDestTableFilePath as String,
+							ByVal bShowProgressBars as Logical) As Logical
+  Dim strDestPath as String, bSaveError as Logical
+
+  OnError Goto ErrorTrap
+
+  If (bShowProgressBars) then
+    Set ProgressBars On
+  Else
+    Set ProgressBars Off
+  End If  
+
+  strDestPath=PathToDirectory$(strDestTableFilePath)
+  bSaveError=FALSE
+  If FileExists(strDestPath)=FALSE then
+    If bCreateDir(strDestPath)=FALSE Then
+		' couldn't copy table to this location --
+		bSaveError=TRUE
+    Else
+      If FileExists(strDestPath)=FALSE then
+			bSaveError=TRUE
+      End If
+    End If
+  End If
+
+  ' Save a copy of the table.
+  If bSaveError=FALSE then
+	  Commit Table strTableName As strDestTableFilePath 
+  End If
+  bSaveTableCopy = Not bSaveError
+
+  ' Turn progress bars back on, if they were turned off.
+  If (Not (bShowProgressBars)) then
+    Set ProgressBars On
+  End If  
+
+Done:
+
+  Exit Function
+
+ErrorTrap:
+  Note "bSaveTableCopy: " + Error$()
+  bSaveTableCopy = FALSE
+  Resume Done
+End Function
+
+'*******************************************************************************************************
+' bOpenTable updates the by-reference parameter strAlias with the actual current alias of the
+'  table to be opened.  This should work even for hidden and seamless-component tables
+' bOpenTable will return FALSE only if an unexpected error occurs -- that is, if the requested
+'  table cannot be opened (and is not already open under some alias)
+'
+Function bOpenTable(ByVal strFileName as String, strAlias as String, bOpenedTable as Logical) as Logical
+	dim i, intNumTables as SmallInt, bResult, bErrorFlag as Logical, strTest as String
+	OnError Goto HandleError
+
+	intNumTables=NumTables()
+	Open Table LTrim$(strFileName)
+	' Table may be part of a view table or other hidden table -- e.g. a seamless subtable.
+	' If so, TableInfo( {alias}, TAB_INFO_NUM) will return 0.  But we don't need to know that
+	'  for the purposes of this subroutine -- just make sure table is open and get the alias:
+	strAlias=TableInfo(0, TAB_INFO_NAME)
+
+	' Table may be already open
+   '  If so, opening the table will not change the number of tables returned by NumTables().
+	if intNumTables=NumTables() then
+		bOpenedTable=FALSE ' table was already open -- signal that to the calling function
+	else
+		bOpenedTable=TRUE
+	end if
+	bOpenTable=TRUE
+	Exit Function
+
+HandleError:
+	If Err()=1331 Then
+		' seamless table being opened as a normal table -- generally this is what we want anyway
+		Resume Next
+	End If
+	If Err()=370 Then
+		strAlias="" ' "370" ' file not found error -- report to calling function
+	Else
+		strAlias="" ' unknown error -- might as well handle it here
+		Note "bOpenTable:" & Error$()
+	End If
+	bOpenTable=FALSE
+End Function
+
+' from Utility.MB in Discovery Packager code:
+
+'*************************************************************************
+'*  StripChars
+'*
+'*    This function strips characters out of a string.
+'*
+'*************************************************************************
+Function StripChars(ByVal strData As string, ByVal strChar as String) As String
+  Dim strResult As String
+  Dim iPos As Integer
+  Dim iStart As Integer
+  
+  iStart = 1
+  iPos = InStr(iStart, strData, strChar)
+  While (iPos > 0)
+    strResult = strResult & Mid$(strData, iStart, iPos - iStart)
+    iStart = iPos + 1
+    iPos = InStr(iStart, strData, strChar)
+  Wend
+  strResult = strResult & Mid$(strData, iStart, Len(strData) - iStart + 1)
+  StripChars = strResult
+End Function
+
+Function bAddTableToList(ByVal intCopyType as Integer,
+							ByVal strSource as String, ByVal intSourceType as Integer,
+							ByVal strFName as String, ByVal strAlias as String,
+							ByVal strNewFName as String, intPointer as SmallInt) as Logical
+	dim i as SmallInt, bOpenedTable as Logical
+
+	if not FileExists(LTrim$(strFName)) then
+		bAddTableToList=FALSE
+		Exit Function
+	end if
+
+	for i=1 to UBound(g_refs)
+		' make sure this table is not already on the list of references, for whatever reason
+		'  (query table, view table, multiple workspaces, etc.)
+		if g_refs(i).strFName=strFName then
+			strFName=""
+			intPointer=i
+			bAddTableToList=TRUE
+			Exit Function
+		end if
+		' TODO:  find the right place to make sure the alias will not be duplicated, either!
+	next
+	if strFName<>"" then
+		' Table is not a duplicate of previous tables.
+		' Add table to global array list for use by Advanced dialog and other code
+		intPointer=UBound(g_refs)+1
+		redim g_refs(intPointer)
+
+		g_refs(intPointer).strTableType=strGetTableType(strFName)
+
+		g_refs(intPointer).intCopyType=intCopyType
+		g_refs(intPointer).strSource=strSource
+		g_refs(intPointer).intSourceType=intSourceType
+		g_refs(intPointer).strFName=strFName
+		if strAlias="" then 'if we don't have anything definitive from the workspace, use educated guess:
+			strAlias=PathToTableName$(strFName)
+		end if
+		g_refs(intPointer).strAlias=strAlias
+		g_refs(intPointer).strNewFName=strNewFName
+		if Instr(1, "DBF|XLS|WKS|ACCESS|ASCII|SHAPEFILE|RASTER", g_refs(intPointer).strTableType) then
+			g_refs(intPointer).strReference=strGetTableReference(intPointer)
+		end if
+		Call SetDefaultTableOutputPath(intPointer, FALSE)
+		bAddTableToList=TRUE
+
+		' if the table wasn't open before calling bOpenTable, close it again
+		if bOpenedTable then
+			OnError Goto IgnoreError
+			Close Table strSubTableAlias
+			OnError Goto HandleError
+		end if
+ 		Exit Function
+	end if
+
+	bAddTableToList=FALSE
+IgnoreError:
+	Resume Next
+HandleError:
+	Note "bAddTableToList:  " & Error$()
+End Function
+
+'*********************************************************************
+' a useful subset of strGetTableType():  return just the file reference
+'
+Function strGetTableReference(ByVal intPointer as SmallInt) as String
+  Dim strFName, strBaseName, sLine, strReference as String, iPos, iStartPos, iEndPos as SmallInt
+  OnError Goto ErrorTrap
+
+  strFName=g_refs(intPointer).strFName ' assumed to be filled in before calling this function
+
+  Open File LTrim$(strFName) for Input as #2505 Charset SystemInfo(SYS_INFO_CHARSET)
+  iPos = 0
+
+  Do While Not EOF(2505)
+    Line Input #2505, sLine
+    iStartPos = 0
+    iEndPos = 0
+    iPos = InStr(1, UCase$(sLine), "FILE " + chr$(34))
+    If iPos Then
+      iStartPos = iPos+5
+      iEndPos = InStr(iStartPos + 1, sLine, chr$(34))
+      If iEndPos then
+        strReference = Mid$(sLine, iStartPos + 1, iEndPos - iStartPos - 1)
+        ' If the file name does not have a directory on it, then we
+        ' assume it is in the same directory as the tab file.
+        If Len(PathToDirectory$(strReference)) = 0 then
+          strReference = PathToDirectory$(strFName) & strReference
+        End If
+      End If
+    End If
+  Loop
+
+  if strReference="" then 
+    ' some .TAB file types, e.g. Excel files, may not have a "FILE" section.  It is assumed
+    '  in these cases that the file has the same name as the .TAB file, and an appropriate extension
+    strReference=strGetRefName(intPointer)
+  end if    
+Done:
+  OnError Goto IgnoreError
+  Close File #2505
+  strGetTableReference=strReference
+  Exit Function
+
+IgnoreError:
+  Resume Next
+
+ErrorTrap:
+  Note "strGetTableReference: " + Error$()
+  Goto Done
+
+End Function
+
+'****************************************************************************************
+' given an entry in the global array, return the default new name of the referenced file.
+'  For example, a raster image associated with a .TAB file which has been renamed to
+'  NEWNAME.TAB would presumably be called NEWNAME.BMP, .TIF, .JPG, or whatever.
+'
+Function strGetRefName(ByVal intPointer as SmallInt) as String
+	Dim strTABName as String, i as SmallInt
+	OnError Goto HandleError
+
+	strTABName=g_refs(intPointer).strFName
+	i=RevInstr(0, strTABName, ".")
+	if i then
+		strTABName=Left$(strTABName, i)
+	end if	
+	Do Case g_refs(intPointer).strTableType
+	Case "XLS"
+		strTABName=strTABName & "XLS"
+	Case "DBF"
+		strTABName=strTABName & "DBF"
+	Case "WKS"
+		strTABName=strTABName & "WKS"
+	Case "ACCESS"
+		strTABName=strTABName & "MDB"
+	Case "ASCII"
+		strTABName=strTABName & "TXT" ' might be ".CSV", etc. [so it's not clear that this can ever happen]
+	Case "SHAPEFILE"
+		strTABName=strTABName & "SHP"
+	Case "WMS"
+		strTABName=strTABName & "XML"
+	End Case
+	strGetRefName=strTABName
+	Exit Function
+HandleError:
+	Note "strGetRefName:  " & Error$()
+	strGetRefName=""
+End Function
+
+'****************************************************************************************
+' given an entry in the global array, return the default new name of the referenced file.
+
+'  For example, a raster image associated with a .TAB file which has been renamed to
+'  NEWNAME.TAB would presumably be called NEWNAME.BMP, .TIF, .JPG, or whatever.
+
+Function strGetNewRefName(ByVal intPointer as SmallInt) as String
+	Dim strOldExt, strNewTABName as String, i as SmallInt
+	OnError Goto HandleError
+
+	strOldExt=g_refs(intPointer).strReference
+	strNewTABName=g_refs(intPointer).strNewFName
+
+	i=RevInstr(0, strOldExt, ".")
+	if i then
+		strOldExt=Mid$(strOldExt, i+1, Len(strOldExt)-i)
+	end if
+	i=RevInstr(0, strNewTABName, ".")
+	if i then
+		strNewTABName=Left$(strNewTabName, i)
+	else
+		strNewTABName=strNewTABName+"."
+	end if
+
+	strGetNewRefName=strNewTABName & strOldExt
+	Exit Function
+HandleError:
+	Note "strGetNewRefName:  " & Error$()
+	strGetNewRefName=""
+End Function
+
+'************************************************************
+'
+Function strCleanFilename(ByVal strFName as String) as String
+	dim i as SmallInt
+
+	strFName=LTrim$(RTrim$(strFName))
+	' some seamless tables have paths specified with slashes instead of backslashes --
+	i=Instr(1, strFName, "/")
+	Do while i
+		strFName=Left$(strFName, i-1) & "\" & Right$(strFName, Len(strFName)-i)
+		i=Instr(1, strFName, "/")
+	Loop
+	strCleanFilename=strFName
+End Function
+
+'**************************************************************************************
+' this function is primarily for use by the Advanced dialog, where "?\" means something
+'
+Function strGetRelativeRef(ByVal strPath as String, ByVal strFName as String) as String
+	OnError Goto HandleError
+	if Left$(strFName, Len(strPath))=strPath then
+		strGetRelativeRef="?\" & Mid$(strFName, Len(strPath)+1, Len(strFName)-Len(strPath))
+	else
+		strGetRelativeRef=strFName
+	end if
+	Exit Function
+HandleError:
+	Note "strGetRelativeRef: " & Error$() & Chr$(13) & strPath & "; " & strFName
+End Function
+
+'**************************************************************************************
+' identical to strGetRelativeRef except for ?\ prefix (not worth adding extra param)
+'
+Function strGetRelativePath(ByVal strPath as String, ByVal strFName as String) as String
+	OnError Goto HandleError
+	if Left$(strFName, Len(strPath))=strPath then
+		strGetRelativePath=Mid$(strFName, Len(strPath)+1, Len(strFName)-Len(strPath))
+	else
+		strGetRelativePath=strFName
+	end if
+	Exit Function
+HandleError:
+	Note "strGetRelativePath: " & Error$() & Chr$(13) & strPath & "; " & strFName
+End Function
+

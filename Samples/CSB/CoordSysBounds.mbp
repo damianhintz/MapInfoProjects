@@ -1,0 +1,5 @@
+[Link] 
+Application=CoordSysBounds.mbx 
+Module=CoordSysBounds.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\Lib\resstrng.mbo

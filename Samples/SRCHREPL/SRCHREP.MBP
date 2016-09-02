@@ -1,0 +1,5 @@
+[Link]
+Application=SRCHREPL.MBX
+Module=SRCHREP.MBO
+Module=..\Lib\Auto_Lib.MBO
+Module=..\Lib\resstrng.mbo

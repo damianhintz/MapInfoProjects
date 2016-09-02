@@ -1,0 +1,868 @@
+'*****************************************************************************
+'       Copyright (c) 1989-2005, MAPINFO CORPORATION
+'       All rights reserved.
+'       Confidential Property of MAPINFO CORPORATION
+'
+' $Workfile: DeleteDuplicates.MB $
+' $Revision: 65021 $
+' $Modtime: 13.06.05 12:02 $
+'
+' $Log: /devil/SAMPLES/MAPBASIC/DeleteDuplicates/DeleteDuplicates.MB $
+' 
+' 7     1.11.05 11:31 Brblinnk
+' updating for l1-0n
+' 
+' 4     5/25/05 4:08p Barry
+' Fix for bug T15565 - Tools-Delete Duplicates has Hard-coded string.
+' 
+' 3     4/18/05 1:58p Barry
+' Fix for bugs:
+' 
+' - T14679 - Delete Duplicates Tool- Open a WMS table. Launch Delete
+' Duplicates Tool. Strange error msg is generated. 
+' 
+' - T14732 - Delete Duplicates- Two error messages are displayed when
+' total length of Group By fields exceeds 255 bytes.
+' 
+' 2     4/08/05 5:56p Chdigius
+' Fixed bug# T14656 - Program no longer displays error message when
+' 'Cancel' is pressed in FileSave dialog.
+' 
+' 1     3/23/05 3:04p Barry
+' Initial version of Delete Duplicates tool.
+'
+' Author: Chris DiGiuseppe
+' Description:
+'   This tool allows the user to delete duplicate records from a table while
+'	  retaining map objects.  The user may also select whether they want a
+'   'Count' column added to the newly created table.
+'****************************************************************************/
+
+
+Include "menu.def"
+Include "icons.def"
+Include "mapbasic.def"
+
+' Include a file that lets us use the "auto-load" library
+Include "..\Inc\auto_lib.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+Include "DeleteDuplicates.def"
+
+Declare Sub Main
+Declare Sub UserInterfaceSetup
+Declare Sub GetTableNames
+Declare Sub GetColumnNames
+Declare Sub DeleteDuplicatesSQL
+Declare Sub DeleteDuplicatesFile
+Declare Sub WhichButton
+Declare Sub ModifyTable(tableName As String)
+Declare Sub CleanUpTable(CleanedTable As String)
+Declare Sub PromptUserSave(SaveString As String,FileName As String)
+Declare Sub RunStringCmd
+
+Declare Sub StringToArray (In_String,Out_String_Array() As String)
+Declare Sub ArrayToString (In_String_Array(),Out_String As String)
+Declare Sub UnderscoreString (String_Array() As String)
+Declare Function IsPunct (ch1 As String) As Logical
+Declare Function CheckString (String_Array() As String) As Logical
+
+Declare Function CheckTable (table_name As String) As Logical
+Declare Function DoesTableExist (table_name As String) As Logical
+Declare Function strReplaceNewLines(ByVal s as String) as String
+
+
+Declare Sub DeleteInternalTables
+Declare Sub ClearArray (arr1() As String)
+Declare Sub BuildString(str1 As String,SQLTableName As String,tableName As String,columnName As String,totalColumns As String)
+Declare Sub About1
+Declare Sub EndProgram
+
+
+
+Define AppVersion 1.0
+Define W  *4 'width of one character			'**Set up custom definition for width of a character
+Define H  *8 'height of one character		'**Set up custom definition for height of a character
+Define LOCAL_CHARSET "Neutral"
+
+Global columnsGlobal(100) As String			'**Global array to hold Column names - necessary because handlers cannot send variables
+Global tablesGlobal(100) As String			'**Global arrat to hold table names - necessary because this is referenced by GetColumnNames subroutine
+Global lBrowseResults As Logical
+Global GlobalTempTable,GlobalPath As String
+
+'==================================================================================================================
+'==================================MAIN============================================================================
+Sub Main
+
+  OnError Goto HandleError
+
+  If LoadStrings((ApplicationDirectory$() + "DeleteDuplicates.str")) = FALSE Then
+    Note IDS_UNABLE_TO_ACCESS + ApplicationDirectory$() + IDS_DELETE_DUPLICATES + ".str"
+    Exit Sub
+  End If
+
+  gsAppFilename = IDS_DELETE_DUPLICATES    								'** and set_tools_menu
+  gsAppDescription = GetResString(IDS_APP_DESCRIPTION)     '** short description of MB application
+
+
+  Create Menu GetResString(IDS_MENU_NAME) As
+    GetResString(IDS_MENU_ITEM_NAME) Calling UserInterfaceSetup,
+    "(-",
+    GetResString(IDS_ABOUT_MENU_ITEM_NAME) Calling About1,
+    GetResString(IDS_EXIT_MENU_ITEM_NAME) Calling EndProgram
+
+  Call set_tools_menu(GetResString(IDS_MENU_NAME))
+
+  lBrowseResults = TRUE
+
+  Exit Sub
+
+HandleError:
+  Note IDS_MAIN_ERROR + Error$()
+  Resume Next
+
+End Sub
+'==================================================================================================================
+'==================================================================================================================
+
+'******************************************************************************************************************
+'* Subroutine: UserInterfaceSetup
+'* Purpose: Creates a user interface where use can select the table from a listBox
+'* ,Select multiple columns from a MultiListBox,and enter a name for the new file
+'* Date: 1/06/2005
+'* Author: Chris DiGiuseppe
+'******************************************************************************************************************
+	Sub UserInterfaceSetup
+
+		If numTables() = 0 Then
+			Note GetResString(IDS_NO_OPEN_TABLES)
+			Exit Sub
+		End If
+
+		Dim tables As String
+
+
+		Call DeleteInternalTables
+		Call GetTableNames
+
+		Dialog
+			Title  GetResString(IDS_DELETE_DUPLICATE_RECORDS)
+			Width  61W '**set width of dialog box
+			Height 16.5H '**set height of dialog box
+			Calling GetColumnNames
+
+			Control StaticText
+				Title GetResString(IDS_SELECT_A_TABLE)
+				ID 1
+				Position 1.5W,1H
+
+			Control Listbox
+				Title From Variable tablesGlobal
+				ID 2
+				Calling GetColumnNames
+				Position 1.5W,3H
+				Value 1
+				Width 28W
+				Height 10H
+
+			Control StaticText
+				Title GetResString(IDS_SELECT_GROUPBY_COLUMNS)
+				ID 3
+				Position 31.5W,1H
+
+			Control MultiListBox
+				ID 14
+				Position 31.5W,3H
+				Width 28W
+				Height 10H
+
+			Control CheckBox
+				Title GetResString(IDS_COUNT)
+				ID 8
+				Position 1.5W, 14H
+				Value False
+
+			Control OKButton
+				ID 9
+				Position  40W,14H
+				Calling DeleteDuplicatesFile
+				Disable
+
+			Control CancelButton
+				ID 10
+				Position  50W,14H
+				Calling DeleteInternalTables
+
+	End Sub
+
+
+'********************************************************************************************************************
+'* Subroutine:GetTableNames
+'* Date: 1/06/2005
+'* Author: Chris DiGiuseppe
+'* Called By: UserInterfaceSetup
+'********************************************************************************************************************
+
+	Sub GetTableNames()
+
+
+		Dim num_tables,lcv,num AS SmallInt
+		Dim tname As String
+
+		num = 1
+		num_tables = NumTables()
+
+	'**Redefines table_names array to the number of open tables
+		redim tablesGlobal(num_tables)
+
+		If num_tables > 0 Then
+			For lcv = 1 to num_tables									'**gets the name of each table and adds it to the array
+				tname = TableInfo(lcv,TAB_INFO_NAME)
+				If CheckTable(tname) = 1 Then							'**Checks to see if table is valid
+					tablesGlobal(num) = tname
+					num = num + 1
+				End If
+				If CheckTable(tname) = 0 Then							'**If table is invalid,does not advance place in array
+					num = num
+				End If
+			Next
+		End If
+
+		redim tablesGlobal(num-1)										'**redim's the array to the number of tables contained in it
+
+	End Sub
+
+'*********************************************************************************************************************
+'* Subroutine: GetColumnNames
+'* Purpose: Creates an array of column names
+'* Date: 1/06/2005
+'* Author: Chris DiGiuseppe
+'* Called By: UserInterfaceSetup
+'*********************************************************************************************************************
+
+	Sub GetColumnNames
+
+		Dim selectedTable,num_Columns,lcv,ErrorNum As SmallInt
+		Dim tempColumnNames(10) As String
+
+	'**get number of the table selected in the ListBox
+		selectedTable = ReadControlValue(2)
+
+		OnError GOTO ErrorHandle
+
+		redim columnsGlobal(0)
+		If UBound(TablesGlobal) > 0 Then
+		'**read how many columns are in the table
+			num_Columns = tableInfo(tablesGlobal(selectedTable),TAB_INFO_NCOLS)
+
+		'**redim array to # of columns
+			redim columnsGlobal(num_columns)
+
+			If num_Columns > 0 Then
+				For lcv = 1 to num_columns
+					columnsGlobal(lcv) = columnInfo(tablesGlobal(selectedTable),"COL"+lcv,COL_INFO_NAME)
+				Next
+			End If
+
+		'**Update MultiListBox in user interface
+			Alter Control 14
+				Title From Variable columnsGlobal
+				Value 1
+
+			Alter Control 9
+				Enable
+		End If
+
+		Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			Call DeleteInternalTables
+			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			ErrorNum = Err()
+			Resume CleanUp
+
+	End Sub
+
+
+
+'************************************************************************************************************************
+'* Subroutine: DeleteDuplicatesFile
+'* Purpose: Performs operations necessary to delete duplicate records for a table, while retaining map objects
+'*			  Using multiple file solution
+'* Date: 1/06/2005
+'* Author: Chris DiGiuseppe
+'************************************************************************************************************************
+	Sub DeleteDuplicatesFile
+
+		Dim str1,str2,str3,tableName,newTableName,tempTable,ColumnNames,name1,tempPath,saveTableName As String
+		Dim numColumns,selectedTable As SmallInt
+		Dim nameColumn,totalColumns As String
+ 		Dim startTime,endTime,ErrorNum,stringCheck As Integer
+		Dim ErrorString As String
+		Dim StringArray1() As String
+
+'**Turn on progress bars
+   Set ProgressBars On
+
+	OnError GOTO ErrorHandle
+
+		startTime = Timer()
+
+		selectedTable = ReadControlValue(2)
+
+		tableName = tableInfo(tablesGlobal(selectedTable),TAB_INFO_NAME)
+
+	'**Prompt user for a path and name for the new file. Path stored in name1. Filename stroed in NewTableName.
+		Call PromptUserSave(name1,NewTableName)
+
+		If NewTableName = "" Then
+			Dialog Preserve
+			Exit Sub
+		End If
+
+	'**Check user entered string for invalid characters
+  '     Call StringToArray(NewTableName,StringArray1)
+	'    stringCheck = CheckString(StringArray1)
+	'	Call ArrayToString(StringArray1,NewTableName)
+
+	'**Checks to make sure table name is valid
+	'	If DoesTableExist(newTableName) = 0 OR len(newTableName) = 0 OR stringCheck = 0 Then
+   '			Note GetResString(IDS_ENTER_VALID_TABLE_NAME) + strReplaceNewLines("\n") + GetResString(IDS_ENTER_VALID_TABLE_NAME_PT2)
+	'		Dialog Preserve
+	'		Exit Sub
+	'	End If
+
+	 '**Give the internal table a unique name
+		tempTable = "InternalTable_999291"
+		GlobalTempTable = tempTable
+
+	 '**If the internalTable alreade exists in workspace, close it
+		If DoesTableExist(tempTable) = 0 Then
+			Close Table tempTable
+		End If
+
+	 '**Check to ensure user entered a table name and internal table exists
+		If len(NewTableName) <> 0 AND DoesTableExist(tempTable) = 1
+			Then
+
+				tempPath = GetFolderPath$(FOLDER_MI_LOCAL_APPDATA)
+				GlobalPath = tempPath
+				'tempPath = PathToDirectory$(name1) 		'**get user-defined path
+
+			'**Create a copy of the user's original table
+				Commit Table tableName As tempPath + tempTable TYPE NATIVE Charset LOCAL_CHARSET		'**Save a copy of the original table
+				Open Table tempPath + tempTable Interactive
+
+			'**ModifyTable adds a RowID to the internal table
+				Call ModifyTable(tempTable)
+
+			'**For this process, BuildString creates a string of column names
+				Call BuildString(str1,NewTableName,tempTable,ColumnNames,totalColumns)
+
+			'**Different SQL statements are needed, depending on whether a count is required.
+			'**Internal table 'Delete_Duplicates_GroupBy_Table' is created to store group by information.
+				If ReadControlValue(8) = TRUE Then   '**Build SQL statement depending on whether use needs a count column
+					str1 = "Select Count(*)"+ """"+GetResString(IDS_DUPE_COUNT)+""""+", Row_ID_99929 ""TempColumn1077"" from " +  tempTable + " group by "  + ColumnNames + " into Delete_Duplicates_GroupBy_Table"
+				Else
+					str1 = "Select Row_ID_99929 ""TempColumn1077"" from " +  tempTable + " group by "  + ColumnNames + " into Delete_Duplicates_GroupBy_Table"
+				End If
+
+				Run Command str1
+
+			'**Get number of columns from internal table
+				numColumns = TableInfo(tempTable,TAB_INFO_NCOLS)
+
+			'**Get the name of the last column from the internal table
+				nameColumn = ColumnInfo(tempTable,"COL"+numColumns,COL_INFO_NAME)
+
+			'**Get table name from user defined path
+				saveTableName = PathToTableName$(name1)
+
+			'**SQL statement that selects all duplicate rows from copy of original table, but comparing them to the grouped rows in table Delete_Duplicates_GroupBy_Table
+			 	str2 = "Select * from " + tempTable + ",Delete_Duplicates_GroupBy_Table" + " WHERE " + tempTable+"."+nameColumn+" = Delete_Duplicates_GroupBy_Table.TempColumn1077 into "+NewTableName
+
+			OnError GOTO ErrorHandle
+				Run Command str2
+
+			'**Save Query as a TABLE
+				Commit Table newTableName AS name1 TYPE NATIVE Charset LOCAL_CHARSET
+
+			'**Close the Query
+				Close Table newTableName Interactive
+
+			'**Now open the previously saved table for editing
+				Open Table name1 Interactive
+
+			'**Drop Row_ID_99929 and Wacky_ID fields from the duplicate-free table
+				Alter Table newTableName ( drop Row_ID_99929,TempColumn1077 ) Interactive
+
+
+			'**Save the final product, a duplicate free table with retained map objects
+				Commit Table newTableName
+
+			'**Close internal tables
+				Close Table Delete_Duplicates_GroupBy_Table
+				'Close Table tempTable
+
+				endTime = Timer() - startTime
+
+			'**Open a browser for the new table
+				Browse * From newTableName
+
+			'**Delete temp files from disk
+				Drop Table tempTable
+
+		Else
+				Note GetResString(IDS_ERRORS_IN_WORKSPACE)
+		End If
+
+   Set ProgressBars On
+
+		Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			Call DeleteInternalTables
+			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			ErrorNum = Err()
+			ErrorString = Error$()
+			If ErrorNum = 363 Then
+				Note GetResString(IDS_INTERNAL_ERROR_363)
+			ElseIf ErrorNum = 1270 Then
+				Note GetResString(IDS_GROUPBY_ERROR)
+			Else
+				Note ErrorString
+			End If
+			Resume CleanUp
+
+	End Sub
+
+'********************************************************************************************************************
+'* Subroutine:BuildString
+'* Date: 1/06/2005
+'* Author: Chris DiGiuseppe
+'* Called By: UserInterfaceSetup
+'* Returns a SQL statement, selected column names in a string delinated by commas,
+'* and total columns in the table delineated by commas
+'********************************************************************************************************************
+
+	Sub BuildString(str1 As String,SQLTableName As String,tableName As String,columnName As String,totalColumns As String)
+
+		Dim columns_Selected,i,ErrorNum As SmallInt
+		Dim tempTable As String
+
+		columnName = ""
+
+		'tableName = tableInfo(ReadControlValue(2),TAB_INFO_NAME)
+	OnError GOTO ErrorHandle
+
+
+		i = 1
+
+		Do While i > 0
+			i = ReadControlValue(14)
+
+			If i > 0
+				Then
+					columnName = columnName + columnInfo(tableName,"COL" + i,COL_INFO_NAME) + ","
+			End If
+		Loop
+
+
+		columnName = Left$(columnName,Len(columnName)-1)
+
+		For i = 1 to TableInfo(tableName,TAB_INFO_NCOLS)
+			totalColumns = totalColumns + columnInfo(tableName,"COL" + i,COL_INFO_NAME) + ","
+		Next
+		totalColumns = totalColumns + "TempColumn1077"
+
+		'totalColumns = Left$(totalColumns,Len(totalColumns)-1)
+
+
+		'Select * from US_ELEV where Row_ID in (SELECT ROW_ID FROM US_ELEV GROUP BY STATE) into Selection
+
+		'SQLTableName = ReadControlValue(5)
+
+		str1 = "SELECT * FROM " + tableName + " WHERE ROW_ID_99929 IN (SELECT ROW_ID_99929 FROM " + tableName + " GROUP BY " + columnName + ")" + " Into " + SQLTableName
+
+		Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			If ErrorNum = 363 Then
+				Note GetResString(IDS_INTERNAL_ERROR_363)
+			End If
+
+			If ErrorNum = 1270 Then
+				Note GetResString(IDS_GROUPBY_ERROR)
+			End If
+			Call DeleteInternalTables
+			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			ErrorNum = Err()
+			Resume CleanUp
+
+	End Sub
+
+'********************************************************************************************************************
+'* Subroutine:ModifyTable
+'* Date: 1/06/2005
+'* Author: Chris DiGiuseppe
+'* Adds column Row_ID_99929 to a table
+'********************************************************************************************************************
+	Sub ModifyTable(tableName As String)
+
+		Dim selected_table As SmallInt
+		Dim ErrorNum As SmallInt
+
+		selected_table = ReadControlValue(2)
+
+		'table = tableInfo(selected_table,TAB_INFO_NAME)
+
+	OnError GOTO ErrorHandle
+		Alter Table tableName ( add Row_ID_99929 Integer ) Interactive    '**Add unique identifier to table
+
+		Update tableName Set Row_ID_99929 = ROWID								 '**Fill it with RowID's
+
+	Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			If ErrorNum = 363 Then
+				Note GetResString(IDS_INTERNAL_ERROR_363)
+			End If
+
+			If ErrorNum = 1270 Then
+				Note GetResString(IDS_GROUPBY_ERROR)
+			End If
+			Call DeleteInternalTables
+			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			ErrorNum = Err()
+			Resume CleanUp
+
+
+	End Sub
+
+'********************************************************************************************************************
+'* Subroutine:CleanUpTable
+'* Date: 1/06/2005
+'* Author: Chris DiGiuseppe
+'* Deletes column "Row_ID_99929" from a table
+'********************************************************************************************************************
+	Sub CleanUpTable(CleanedTable As String)
+
+		'Commit Table CleanedTable Interactive
+
+		Alter Table CleanedTable ( drop Row_ID_99929 ) Interactive
+
+	End Sub
+
+'********************************************************************************************************************
+'* Subroutine:PromptUserSave
+'* Date: 1/06/2005
+'* Author: Chris DiGiuseppe
+'* Brings up a file save dialog and returns the path string and file name
+'********************************************************************************************************************
+
+
+	Sub PromptUserSave(SaveString As String,FileName As String)
+
+		Dim oldFileName As String
+
+		SaveString = FileSaveAsDlg("","","TAB",GetResString(IDS_CHOOSE_PATH))
+
+		oldFileName = PathToFileName$(SaveString)
+
+		FileName = Left$(oldFileName,InStr(1,oldFileName,".")-1)
+
+	End Sub
+
+
+'********************************************************************************************************************
+'* Function:CheckTable
+'* Date: 1/06/2005
+'* Note: Chris DiGiuseppe
+'* Checks to make sure that a table is valid and may be used by the program
+'********************************************************************************************************************
+	Function CheckTable (table_name As String) As Logical
+		CheckTable = 1
+
+		If tableInfo(table_name,TAB_INFO_NCOLS) = 0 Or tableInfo(table_name,TAB_INFO_NROWS) = 0 Then
+			CheckTable = 0
+		ElseIf tableInfo(table_name,TAB_INFO_SEAMLESS)	Then '**Checks if table is seamless
+			CheckTable = 0
+		ElseIf table_name = "Delete_Duplicates_GroupBy_Table" OR table_name like "InternalTable%" Then
+			CheckTable = 0
+		End If
+
+	End Function
+
+'********************************************************************************************************************
+'* Function:DoesTableExist
+'* Date: 1/06/2005
+'* Author: Chris DiGiuseppe
+'* Checks to make sure the table exists in the workspace.
+'********************************************************************************************************************
+	Function DoesTableExist (table_name As String) As Logical
+
+		Dim lcv,num_tables as SmallInt
+
+		num_tables = numTables()
+		DoesTableExist = 1
+
+		For lcv = 1 to num_tables
+			If table_name = tableInfo(lcv,TAB_INFO_NAME) Then
+				DoesTableExist = 0
+				Exit Sub
+			End If
+		Next
+
+	End Function
+
+'********************************************************************************************************************
+'* Subroutine:DeleteInternalTables
+'* Date: 1/06/2005
+'* Author: Chris DiGiuseppe
+'* Deletes all tables used as temp tables by the program
+'********************************************************************************************************************
+	Sub DeleteInternalTables
+
+		Dim table1,table2,table3,table4 As String
+
+		table1 = "Delete_Duplicates_GroupBy_Table"
+		table2 = "InternalTable79"
+		table3 = "InternalTable78"
+		table4 = "InternalTable_999291"
+
+		If DoesTableExist(table1) = 0 Then
+			Close Table table1
+		End If
+
+		If DoesTableExist(table2) = 0 Then
+			Close Table table2
+		End IF
+
+		If DoesTableExist(table3) = 0 Then
+			Close Table table3
+		End If
+
+		If DoesTableExist(table4) = 0 Then
+			Close Table table4
+		End If
+
+		If NumTables() = 0 Then
+			ReDim columnsGlobal(1)
+			ReDim tablesGlobal(1)
+		End If
+
+	End Sub
+
+'********************************************************************************************************************
+'* Subroutine:Clear Array
+'* Date: 1/06/2005
+'* Author: Chris DiGiuseppe
+'* Sets all values in a string array to ""
+'********************************************************************************************************************
+
+	Sub ClearArray (arr1() As String)
+
+		Dim i as SmallInt
+
+		For i = 1 to Ubound(arr1)
+			arr1(i) = ""
+		Next
+
+	End Sub
+
+'********************************************************************************************************************
+'* Subroutine:End Program
+'* Date: 1/06/2005
+'* Author: Chris DiGiuseppe
+'* Terminates the program
+'********************************************************************************************************************
+
+	Sub EndProgram
+  		'OnError Goto HandleError
+  		End Program
+  	Exit Sub
+
+	End Sub
+
+'********************************************************************************************************************
+'* Subroutine:About1
+'* Date: 1/06/2005
+'* Author: Chris DiGiuseppe
+'* Creates an 'about' dialog for this program in the Tools menu,
+'********************************************************************************************************************
+Sub About1
+	'OnError Goto HandleError
+
+  		Dialog
+    		Title GetResString(IDS_ABOUT) + " " + GetResString(IDS_APP_DESCRIPTION) + " (" + GetResString(IDS_VERSION)+ " " + AppVersion + ")"
+
+  	Control StaticText
+   	 Position 10, 10
+    Title GetResString(IDS_ABOUT_1) + " " + GetResString(IDS_ABOUT_2) + " " + GetResString(IDS_ABOUT_3) + strReplaceNewLines("\n\n") +
+			GetResString(IDS_ABOUT_4) + strReplaceNewLines("\n\n") + GetResString(IDS_ABOUT_5) + " " + GetResString(IDS_ABOUT_6) + " " +
+			GetResString(IDS_ABOUT_7) + " " + GetResString(IDS_ABOUT_8)
+	 Width 60W Height 10H
+
+  Control OKButton
+    Title GetResString(IDS_OK)
+    Width 30
+
+Exit Sub
+
+HandleError:
+  Note Error$()
+  Resume Next
+End Sub
+
+
+Function strReplaceNewLines(ByVal s as String) as String
+	Dim i As Integer
+	i=Instr(1, s, "\n")
+	Do Until i=0
+		If Mid$(" "+s,i,1)="\" Then
+			s=Left$(s, i-1)+Mid$(s, i+1, 32767) ' allow escaped backslashes
+		Else
+			s=Left$(s, i-1) & Chr$(13) & Mid$(s, i+2, 32767)
+		End If
+		i=Instr(i+1, s, "\n")
+	Loop
+	strReplaceNewLines=s
+End Function
+
+'********************************************************************************************************************
+'* 												String Handling Utilites
+'********************************************************************************************************************
+'********************************************************************************************************************
+'* Subroutine:StringToArray
+'* Date: 1/30/2005
+'* Author: Chris DiGiuseppe
+'* Converts a string to an array of single character strings
+'********************************************************************************************************************
+	Sub StringToArray (In_String,Out_String_Array() As String)
+
+		Dim lcv,i As SmallInt
+		Dim ch1 As String
+
+		Call ClearArray(Out_String_Array)
+
+		lcv = len(In_String)
+		redim Out_String_Array(lcv)
+
+		For i = 1 to lcv
+			Out_String_Array(i) = Mid$(In_String,i,1)
+		Next
+
+	End Sub
+
+'********************************************************************************************************************
+'* Subroutine:ArrayToString
+'* Date: 1/30/2005
+'* Author: Chris DiGiuseppe
+'* Converts an array of strings to a single string variable
+'********************************************************************************************************************
+	Sub ArrayToString (In_String_Array(),Out_String As String)
+
+		Dim lcv,i As SmallInt
+
+		Out_String = ""
+
+		lcv = Ubound(In_String_Array)
+
+		For i = 1 to lcv
+			Out_String = Out_String + In_String_Array(i)
+		Next
+
+	End Sub
+
+'********************************************************************************************************************
+'* Subroutine:IsPunct
+'* Date: 1/30/2005
+'* Author: Chris DiGiuseppe
+'* checks a single character string to see if it is a punctuation or space
+'********************************************************************************************************************
+	Function IsPunct (ch1 As String) As Logical
+
+		IsPunct = FALSE
+
+		Do Case ch1
+			Case "!","@","#"
+				IsPunct = TRUE
+			Case "$","%","^"
+				IsPunct = TRUE
+			Case "&","*","("
+				IsPunct = TRUE
+			Case ")","+","="
+				IsPunct = TRUE
+			Case "{","}","["
+				IsPunct = TRUE
+			Case "]","|","\"
+				IsPunct = TRUE
+			Case ":",";","'"
+				IsPunct = TRUE
+			Case "<",">",",","-"
+				IsPunct = TRUE
+			Case "!","@","#","."
+				IsPunct = TRUE
+			Case "?","/","`"," "
+				IsPunct = TRUE
+		End Case
+
+	End Function
+
+'********************************************************************************************************************
+'* Subroutine:UnderscoreString
+'* Date: 1/30/2005
+'* Author: Chris DiGiuseppe
+'* checks each value in an array of single character strings to see if its a punctuation character or space.  If it
+'* is, replaces it with an underscore.
+'********************************************************************************************************************
+	Sub UnderscoreString (String_Array() As String)
+
+		Dim i,lcv As SmallInt
+		lcv = UBound(String_Array)
+
+		For i = 1 to lcv
+			If IsPunct(String_Array(i)) = TRUE Then
+				String_Array(i) = "_"
+			End If
+		Next
+	End Sub
+
+	Function CheckString (String_Array() As String) As Logical
+
+		Dim i,lcv As SmallInt
+		Dim isValidFlag As SmallInt
+
+		lcv = UBound(String_Array)
+		CheckString = 1
+
+		For i = 1 to lcv
+			If IsPunct(String_Array(i)) = TRUE Then
+				CheckString = 0
+			End If
+		Next
+
+	End Function

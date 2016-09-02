@@ -1,0 +1,3568 @@
+'*****************************************************************************
+'       Copyright (c) 1989-2005, MAPINFO CORPORATION
+'       All rights reserved.
+'       Confidential Property of MAPINFO CORPORATION
+'
+' $Workfile: WorkspaceResolver.mb $
+' $Revision: 65021 $
+' $Modtime: 10/27/05 11:34a $
+'
+' $Log: /devil/SAMPLES/MAPBASIC/WorkspaceResolver/WorkspaceResolver.mb $
+' 
+' 16    10/27/05 11:37a Brblinnk
+' updating to 'universalize'
+' WorkspaceResolver.mb updated for L10N
+' 
+' 13    5/25/05 2:06p Barry
+' Fix for bug T15555 - Tools-Workspace Resolver has Hard-coded string.
+' 
+' 12    5/11/05 12:01p Barry
+' Changes from Steve Chan:
+' Fix for bug T15388 - Tools: WorkspaceResolver: When the destination
+' workspace is in a different directory than the source, an error is
+' generated and the new workspace does not open.
+' 
+' 11    5/05/05 4:27p Barry
+' Fix for a bug which has yet to be entered.  When one of the resolved
+' tables fails to open -- which can happen if the .tab file exists but
+' references a table which won't open -- the tool generates errors,
+' leaves a file open, and is left in an unstable state which would
+' require the user to close the tool and restart it (in order to close
+' the file).  If you're wondering, there can be lots of reasons a .tab
+' file won't open.  In the example reported by Stephen, the .tab file is
+' a raster table which references a .bmp file which doesn't exist.
+' Someday, we'll have a Table Resolver tool which fixes this ;-)
+' 
+' 10    5/05/05 1:54p Barry
+' Removed unreferenced strings.
+' 
+' Fixed bug T15343 - Tools: WorkspaceResolver: Able to add > 5
+' directories but tool DOES NOT search > 4 directories deep when
+' Resolving.
+' 
+' 9     5/05/05 7:15a Barry
+' Fixes for bugs:
+' 
+' Tools: WorkspaceResolver: Destination EditBox should be disabled if the
+' user is not saving the workspace	T15332
+' 
+' Tools: WorkspaceResolver: About Workspace Resolver, slight changes to
+' text of the "About" Dialog.	T14996
+' 
+' Tools: WorkspaceResolver: If a bad path is used for the Destination
+' file, the tool does not check before proceeding w/ resolve.	T15030
+' 
+' WorkspaceResolver: Error message refers to a Helpfile that does not
+' exist.	T15264
+' 
+' Partial resolution for bug:
+' 
+' Tools: WorkspaceResolver: 2 options for performing search are confusing
+' when displayed as CheckBoxes	T15121
+' 
+' 8     5/02/05 2:03p Barry
+' Remainder of the fix for T15236 - Tools: WorkspaceResolver: Locate
+' missing file name should use the table name, not the alias to be less
+' confusing.
+' The original solution had hard-code strings; they've been moved to the
+' string file.
+' 
+' Remainder of the fix for T15198 - Tools: WorkspaceResolver: Limit of 5
+' Search Directories?
+' The original solution was still enforcing the limit when reading back
+' from the .ini file to populate the settings dialog.
+' 
+' 7     4/29/05 8:23p Barry
+' Checking in Chris Digiuseppe's and Steve Chan's bug fixes to the
+' WorkspaceResolver:
+' Tools: WorkspaceResolver: Causes Pro to crash when resolving a table,
+' using automatic mode	T15229
+' Tools: WorkspaceResolver: Unclear Error when attempting to resolve WOR
+' file	T15228
+' Tools: WorkspaceResolver: Locate missing file name should use the table
+' name, not the alias to be less confusing.	T15236
+' Tools: WorkspaceResolver: Unable to resolve WOR with the Tool but am
+' able to resolve with "Old" way via native MPR functionality	T15240
+' Tools: WorkspaceResolver: If a bad path is used for the Destination
+' file, the tool does not check before proceeding w/ resolve.	T15030
+' Tools: WorkspaceResolver: As the tool is resolving a workspace it is
+' creating TAB file prefixed w/ name Steve	T15095
+' Tools: WorkspaceResolver: 2 options for performing search are confusing
+' when displayed as CheckBoxes	T15121
+' Tools: WorkspaceResolver: Limit of 5 Search Directories?	T15198
+' 
+' 6     4/27/05 6:53p Chdigius
+' Fixed/Resolved the following P1 level bugs:
+' 
+' Tools: WorkspaceResolver: As the tool is resolving a workspace it is
+' creating TAB file prefixed w/ name Steve	T15095
+' Tools: WorkspaceResolver: 2 options for performing search are confusing
+' when displayed as CheckBoxes	T15121
+' Tools: WorkspaceResolver: The attached WOR that is referenceing 1
+' missing TAB is not opened	T15123
+' 
+' 5     4/22/05 6:40p Chdigius
+' Tools: WorkspaceResolver: choosing Automatic/Interactive  Mode: causes
+' some checkboxes to become invisible, enabled disableed	T15048
+' 
+' 4     4/21/05 5:13p Chdigius
+' Fixed the following bugs:
+' 
+' Tools: Workspaceresolver: Error if the RWT.ini file does not exist,
+' also the name of RWT.ini  should be more verbose  T14999
+' Tools: WorkspaceResolver: If a bad path is used for the Destination
+' file, the tool does not check before proceeding w/ resolve.	T15030
+' Tools: WorkspaceResolver: About Workspace Resolver, slight changes to
+' text of the "About" Dialog.	T14996
+' Tools: WorkspaceResolver: Add/Remove Directory buttons do not need //\\
+' and   \\// 	T15001
+' Workspace Resolver- The tool unloads everytime there's an error.	T14974
+' Tools: WorkspaceResolver: Settings: When browsing for a directory the
+' title of the window is "Set Window"?	T15000
+' Tools: ResolveWorkspace: Settings: The checkbox for [  ] Search
+' Subdirectories is always checked and disabled	T15002
+' Tools: Workspace Resolver: Settings: Difficult to navigate directory
+' browser, should be windows explorer	T15018
+' Tools: WorkspaceResolver: Settings: Cannot add a Drive as a Directory
+' to be searched.	T15042
+' Tools: WorkspaceResolver: If edits are pending on a table and Tool is
+' launched, the tool launches anyway.	T15064
+' Tools: WorkspaceResolver: As the tool is resolving a workspace it is
+' creating TAB file prefixed w/ name Steve	T15095
+' Tools: WorkspaceResolver: Is creating workspaces in the current DIR of
+' the WorkspaceResolver.MBX, and not deleting them	T15100
+' Tools: WorkspaceResolver: Caption of Dialog when browsing for source
+' WOR file should be more descriptive.	T15021
+' Tools: WorkspaceResolver: Better description needed when starting
+' WorkspaceResolver and it needs to close all open tables	T15019
+' Tools: WorkspaceResolver: When "Save Workspace" is unchecked, the
+' Browse [...] button for Destination File: Should be disabled. 	T15020
+' Tools: WorkspaceResolver: Menu Item, "Exit WorkspaceResolver", should
+' be 3 words "Exit Workspace Resolver"	T15028
+' Tools: WorkspaceResolver: Menu items need to designate if they bring up
+' a dialog by appending  "..." to menu item	T15029
+' Tools: WorkspaceResolver: pressing Cancel from Dialog does not need to
+' tell users they have canceled.	T14998
+' 
+' 3     4/14/05 5:34p Chdigius
+' -Batch processing options removed
+' -Main GUI modified to reflect the above, also resized as per Bruce's
+' localization specs
+' -'Generate Report' checkbox added, which allows the user to optionally
+' view a status report of their resolved workspace in the message window
+' -'Settings' item added to the WorkspaceResolver toolbar menu
+' -'Directories to Search' dialog (invoked when 'settings' is clicked -
+' resized according to localization spec
+' 
+' 1     3/24/05 12:33p Barry
+' Workspace Resolver tool.
+'
+' Description:
+'
+'****************************************************************************/
+'Steve's MapInfo Tools To Encourage Newb Users
+'Name: SMITTEN Users - Correct Workspace References
+'Desc: Remove references of tables that no longer exist
+'Auth: MapInfo.Australia@gmail.com  Steve.Chan@MapInfo.com
+'Date: 27-10-2004
+
+'07-11-2004
+'Issues fixed in v0.7:
+'  Layout Windows now recognised
+'  Ref Missing Tables mappped without Thematic Layer caused problems before
+'  Redistrict Window supported
+'  Set Map Layer: Layer # past ref missing lyr fixed
+
+'19-11-2004
+'Issues fixed in v0.8:
+'  Table names which contain the name of the missing table no longer incorrectly processed as missing table
+
+'25-11-2004
+'Issues fixed in v0.83:
+'  Redistrict fully supported
+'  International version fully supported (Tools = ID 4)
+'  Added support for Autoload in Tool Manager
+
+'27-11-2004
+'Issues fixed in v0.91:
+'  Search Added
+
+'27-11-2004
+'Issues fixed in v0.92:
+'  Batch Workspaces
+'
+'16-03-2005
+'Issues fixed in v0.93:
+'  Corrected bizarre use of "Like" Operator found in "Do Loop" (Line 459)
+
+'23-03-2005
+'App generated files are now saved in the App Directory
+'Save File, Open File, Kill and FileExists commands affected
+'Added Function RunWorApplication(ByVal Dstr_SelWorkspace As String) As Logical
+
+Include "menu.def"
+Include "icons.def"
+
+
+Include "..\inc\ResStrng.def"
+Include "WorkspaceResolver.def"
+
+
+Declare Sub Main
+Declare Sub CreateMenus
+Declare Sub ResolveWorkspaceTables
+Declare Sub DLG_RWT_ModeHandler
+Declare Sub DLG_RWT_BatchOptHandler
+Declare Sub DLG_RWT_PerfSrchHandler
+Declare Sub DLG_RWT_1stOptHandler
+Declare Sub RWTSettings
+Declare Function RtnRWTSettings() As String
+Declare Sub ProcessRWT(ByVal Dstr_Workspace, ByVal Dstr_SelWorkspaceDest As String,Dn_ChosenMode As SmallInt,Db_PerformSearch,Db_Use1stOption,Db_UseOnlyOption As Logical)
+Declare Function RtnReplacementTableSelected(ByVal Dstr_ReplaceTableList As String) As SmallInt
+Declare Function RtnListOfMissingTables(ByVal Dstr_Workspace As String) As String
+'Declare Function RtnPerformSearchResults(ByVal Dstr_DirList,ByVal Dstr_MissingTable As String,Db_Use1stOption As Logical) As Logical
+Declare Function RtnPerformSearchResults(ByVal Dstr_DirItem,ByVal Dstr_MissingTable As String,ByVal Db_Use1stOption,ByVal Db_SearchSubDir As Logical) As Logical
+
+Declare Sub IgnoreCodeSection(ByVal Dn_OfFile As SmallInt, Dstr_Read As String)
+Declare Sub CopyCodeSection(ByVal Dn_FileFrom, ByVal Dn_FileTo As SmallInt, Dstr_Read As String)
+Declare Sub CopyCodeProperty(ByVal Dn_FileFrom,ByVal Dn_FileTo As SmallInt, Dstr_Read As String)
+Declare Sub KillFile(ByVal Dstr_FileName,ByVal Dstr_FileExtn As String, ByVal Dn_FileNum As SmallInt)
+Declare Sub KillAllFiles(ByVal Dstr_WorkInProgress As String)
+Declare Sub KillRWT(ByVal path_to_RWT As String) '*Funtion to delete temporary file in tool directory
+
+Declare Sub EvalCode(ByVal Dstr_WorkInProgress,ByVal Dstr_SelWorkspaceDest,ByVal Dstr_Table,Dstr_Read,Dstr_CurrCmd,Dstr_QueryList,Dstr_Layers As String)
+
+Declare Sub ProcessSelect(ByVal Dstr_WorkInProgress,ByVal Dstr_Table,Dstr_Read,Dstr_QueryList As String)
+Declare Sub ProcessBrowseGraph(ByVal Dstr_WorkInProgress,ByVal Dstr_SelWorkspaceDest,ByVal Dstr_Table,Dstr_Read As String)
+Declare Sub ProcessMap(ByVal Dstr_WorkInProgress,ByVal Dstr_Table,Dstr_Layers,Dstr_Read As String)
+Declare Sub WriteMapFromStmt(Dstr_MapFrom As String)
+Declare Sub ProcessMapSettings(ByVal Dstr_WorkInProgress,ByVal Dstr_Table,Dstr_Layers,Dstr_Read As String)
+Declare Sub ProcessMapShade(ByVal Dstr_WorkInProgress,Dstr_Read,Dstr_Layers As String)
+
+Declare Sub DLG_RWTSettings_Handler
+Declare Sub DLG_RWTSettings_AddToListHandler
+Declare Sub DLG_RWTSettings_RemoveFromListHandler
+Declare Sub DLG_RWTSettings_ListBoxHandler
+
+Declare Sub WriteCode(ByVal Dstr_WorkInProgress As String)
+Declare Sub AboutProgram
+Declare Sub EndProgram
+Declare Sub Dummy
+Declare Sub PrintMsg(ByVal Dstr_Msg As String)
+Declare Sub SetPrintMsg
+Declare Sub GenerateReport(ByVal Dstr_SelWorkspace, ByVal Dstr_SelWorkspaceDest As String, ByVal Dn_ChosenMode As SmallInt,Db_PerformSearch As Logical)
+Declare Function RtnItemFromList(Dstr_List As String) As String
+Declare Function RtnFileOpenDialog(ByVal Dstr_Table,ByVal Dstr_Alias As String) As String
+Declare Function RtnAskPrompt(ByVal Dstr_AskPrompt,ByVal Dstr_AskOK,ByVal Dstr_AskCancel As String) As Logical
+
+'STEVIERAY
+Declare Sub RunWorApplication(ByVal Dstr_SelWorkspace As String)
+Declare Sub SaveWorApplication(ByVal Dstr_SelWorkspace,Dstr_SelWorkspaceDest As String)
+Declare Sub DLG_RWT_FileOpen
+Declare Sub DLG_RWT_FileSave
+Declare Sub DLG_RWT_OpenWorHandler
+Declare Sub DLG_RWT_SaveWorHandler
+Declare Sub DLG_RWT_OKBtnHandler
+
+Declare Function strReplaceNewLines(ByVal s as String) as String
+
+Define MAX_PATH 260
+Type WIN32_FIND_DATA
+	dwFileAttributes As Integer	'16 = Directory
+	ftCreationTime As Float
+	ftLastAccessTime As Float
+	ftLastWriteTime As Float
+	nFileSizeHigh As Integer
+	nFileSizeLow As Integer
+	dwReserved0 As Integer
+	dwReserved1 As Integer
+	cFileName As String * MAX_PATH
+	cAlternate As String * 14
+End Type
+
+Declare Function FindFirstFile Lib "kernel32" Alias "FindFirstFileA" (ByVal lpFileName As String, lpFindFileData As WIN32_FIND_DATA) As Integer
+Declare Function FindNextFile Lib "kernel32" Alias "FindNextFileA" (ByVal hFindFile As Integer, lpFindFileData As WIN32_FIND_DATA) As Integer
+Declare Function FindClose Lib "kernel32" Alias "FindClose" (ByVal hFindFile As Integer) As Integer
+Declare Function GetLogicalDriveString32 Lib "kernel32" Alias "GetLogicalDriveStringsA" (ByVal nBufferLength As Integer,sBuffer() As Integer) As Integer
+
+'STEVIERAY: GetDirectory
+Declare Sub GetDirectoryDLG
+Declare Sub DLG_GetDirectory_RtnDirList
+Declare Sub DLG_GetDirectory_GetDir(sPath As String,sList() As String)
+Declare Sub DLG_GetDirectory_SelectDrive
+Declare Function ListGetElement(Byval inlist As string,Byval choice As SmallInt) As String
+Declare Function GetDrives() As String
+Declare Function ExtractDrive(Dstr_Char As Integer) As String
+'Declare Function ExtractDrive(Dstr_Char(),ByVal Dn_Drive As Integer) As String
+
+Define x *4
+Define y *8
+Define cn_File1 1	'RWT 1.WOR
+Define cn_File2 2	'RWT 2.WOR
+Define cn_File3 3	'.TXT
+Define cn_File4 4	'SETMAP1.TXT
+Define cn_File5 5	'SETMAP2.TXT
+Define cn_File6 6	'SHADE1.TXT
+Define cn_File7 7	'SHADE2.TXT
+Define cn_File8 8	'LEGEND.TXT
+Define cn_File9 9	'MAP.LOG
+Define cn_File10 10	'Workspace_Resolver.INI
+Define cn_File11 11	'Workspace_Resolver.TAB
+Define cn_File12 12 'Workspace_Resolver_2.ini
+
+Define AppVersion "v1.0"
+
+
+Define cstr_IniFile "WorkspaceResolver.ini"
+Define cstr_SearchFile "Workspace_Resolver.TAB"
+
+'**Added CJD 4/25/2005
+Define file_DeleteOnStartup "Workspace_Resolver_2.ini"
+
+Include "MapBasic.DEF"
+Include "..\inc\Auto_lib.def"
+
+Dim gDb_AsInteractive As Logical
+Dim gDn_MenuItemSelected As SmallInt
+
+Dim gstr_DirList As String
+Dim gi_NumDays,giTempRegoNum As Integer
+Dim gbRegistered,gbTempRegistered As Logical
+
+Dim gstr_ListTablesReplaced,gstr_ListTablesReplacedWith,gstr_ListTablesProcessed As String
+Dim gdi_TimerBeg, gdi_TimerEnd As Integer
+Dim gdi_TotalProcessTime As Integer
+Dim gdn_TimeChooseTable As SmallInt
+Dim gdn_TimeBrowseGraph As SmallInt
+Dim gdn_TimeProcessMap As SmallInt
+Dim gdn_TimeSearchFile As SmallInt
+Dim gdn_TimeLayout As SmallInt
+Dim gb_ShowPrintMsg As Logical
+
+Define AppAuthor "Author: Steve Chan"
+Define AppEmail "Email: MapInfo.Australia@gmail.com
+
+Global lBrowseResults As Logical
+
+'*****************************************************************************************
+'***Setup for SHBrowseForFolder API*******************************************************
+'*****************************************************************************************
+Type BrowseInfo
+	hWndOwner As integer
+	pIDLRoot As integer
+	pszDisplayName As integer
+	lpszTitle As integer
+	ulFlags As integer
+	lpfnCallback As integer
+	lParam As integer
+	iImage As integer
+End Type
+
+Declare Sub CoTaskMemFree Lib "ole32.dll" (ByVal hMem As Integer)
+Declare Function SHBrowseForFolder Lib "shell32" (lpbi As BrowseInfo) As Integer
+Declare Function GetActiveWindow Lib "User32" () as Integer
+Declare Function SHGetPathFromIDList Lib "shell32" (ByVal pidList As Integer, lpBuffer As String) As Integer
+
+Declare Function GetFolderPath(sOutPath as string) as integer
+
+Declare Sub Delete_LastRWT
+
+'********************************************************************************************
+
+'*********************************************************************************************
+Sub Main
+
+	If LoadStrings((ApplicationDirectory$() + "WorkspaceResolver.str")) = FALSE Then
+		Note GetResString(IDS_String_67) + ApplicationDirectory$() + GetResString(IDS_String_68) + ".str"
+		Exit Sub
+	End If
+
+  Print Chr$(12)
+
+	Create Menu GetResString(IDS_String_6) As
+    GetResString(IDS_String_7)
+    	Calling ResolveWorkspaceTables,
+'STEVIERAY: Needed for search
+    GetResString(IDS_String_8)
+      Calling RWTSettings,
+    "(-",
+    	GetResString(IDS_String_10)
+    		Calling AboutProgram,
+   	  GetResString(IDS_String_11)
+   	  	Calling EndProgram
+
+    Call set_tools_menu(GetResString(IDS_String_6))
+
+    lBrowseResults = TRUE
+
+		Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Sub Main
+
+'*********************************************************************************************
+Sub CreateMenus
+
+OnError GOTO ErrorHandle
+
+  Create Menu GetResString(IDS_String_6) As
+    GetResString(IDS_String_7)
+      ID 1
+      Calling ResolveWorkspaceTables,
+    GetResString(IDS_String_8)
+      ID 2
+      Calling RWTSettings,
+    "(-",
+    GetResString(IDS_String_9)
+      ID 5
+      Calling SetPrintMsg,
+    GetResString(IDS_String_10)
+      Calling AboutProgram,
+    GetResString(IDS_String_11)
+      Calling EndProgram
+
+  Alter Menu ID 4 Add GetResString(IDS_String_14) As GetResString(IDS_String_14)
+  gb_ShowPrintMsg=0
+
+  Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Sub CreateMenus
+
+'*********************************************************************************************
+'DESC: Frame for RWT: Prompts for .WOR, Processes .WOR, Generates Report.
+'PRE : Called from Menu
+'POST: RWT Successfully completed
+Sub ResolveWorkspaceTables
+
+'OnError GOTO ErrorHandle
+
+  Dim str_Read As String 'STEVIERAY: Needed for reading a wor file on the fly
+'  Dim Dstr_SelWorkspace As String
+  Dim str_SelWorkspace,str_WorList,str_ListofWorProcessed,str_ListofWorSkipped,str_SelWorkspaceDest As String
+  Dim n_BatchOption,n_ChosenMode As SmallInt
+  Dim b_OpenWorkspace,b_SaveWorkspace,b_GenerateReport,b_PerformSearch,b_Use1stOption,b_UseOnlyOption,b_SkipWorkspace As Logical
+  Dim n_BegPosn,n_EndPosn,lcv As SmallInt
+  Dim PathToRWT As String
+
+OnError Goto ErrGeneralFailure
+'  If Day(CurDate())>14 And Month(CurDate())>2 And Year(CurDate())>2005 Then
+'    Exit Sub
+'  End If
+
+
+
+  gbTempRegistered=gbRegistered
+  str_ListofWorProcessed="" str_ListofWorSkipped=""
+'STEVIERAY WTF
+  str_SelWorkspace=GetResString(IDS_String_15)+Chr$(13)
+		  +GetResString(IDS_String_16)
+  If NumTables() Then
+    If Not Ask(str_SelWorkspace,GetResString(IDS_String_17),GetResString(IDS_String_18))
+      Then 'Note GetResString(?)
+       Exit Sub
+      Else Close All Interactive
+  End If End If
+  str_SelWorkspace=""
+
+  If NumTables() Then
+  	 Note GetResString(IDS_String_99)+GetResString(IDS_String_100)
+		 Exit Sub
+	End If
+'CHANGE IN HARDCODED TEXT
+  Dim sTitle As String
+  sTitle=GetResString(IDS_String_6)
+'HARDCODED TEXT: "&"  I don't think this should be changed.
+  If sTitle Like "%&%"
+    Then sTitle=Left$(sTitle,InStr(1,sTitle,"&")-1)+Right$(sTitle,Len(sTitle)-InStr(1,sTitle,"&"))
+  End If
+
+	'**ADDED 4/25/2005**
+	'**REMOVED 4/27/2005**
+'	If FileExists(ApplicationDirectory$() + file_DeleteOnStartup) Then
+'		Call Delete_LastRWT
+'	End If
+
+  Dialog
+    Title sTitle + Space$(1) + Appversion
+    Control StaticText
+      Title GetResString(IDS_String_21)
+      Position 3x,1y
+    Control EditText
+      ID 8
+      Value ""
+      Position 3x,2.25y
+'      Width 54x
+      Width 76.5x
+      Into str_SelWorkspace
+    Control Button
+      Title GetResString(IDS_String_22)
+'      Position 58x,2.25y Height 1.6y Width 3.25x
+      Position 80.5x,2.25y Height 1.6y Width 3.25x
+      Calling DLG_RWT_FileOpen
+
+    Control StaticText
+      Title GetResString(IDS_String_23)
+      Position 3x,4.25y
+    Control EditText
+      ID 9
+      Value ""
+      Position 3x,5.5y
+'      Width 54x
+      Width 76.5x
+      Into str_SelWorkspaceDest
+
+    Control Button
+    	ID 77
+      Title GetResString(IDS_String_22)
+'      Position 58x,5.5y Height 1.6y Width 3.25x
+      Position 80.5x,5.5y Height 1.6y Width 3.25x
+      Calling DLG_RWT_FileSave
+
+    Control GroupBox
+      Title GetResString(IDS_String_24)
+'      Height 5.5y Width 60x
+      Height 5.5y 'Width 68.5x
+    Control RadioGroup
+      ID 1
+      Title GetResString(IDS_String_25)
+      Value 2
+      into n_ChosenMode
+      Calling DLG_RWT_ModeHandler
+
+' **-4/07/2005- Batch options disabled - CD
+'    Control GroupBox
+'     Title GetResString(?)
+'      Height 7.5y Width 60x
+    Control RadioGroup
+      ID 5
+      Value 1
+    into n_BatchOption
+      Disable
+      Calling DLG_RWT_BatchOptHandler
+    Control Checkbox
+      ID 2
+'CHANGE IN HARDCODED TEXT
+      Title GetResString(IDS_String_26)
+      Value 0
+      into b_PerformSearch
+      Position 2.5x,14y
+      Calling DLG_RWT_PerfSrchHandler
+    Control Checkbox
+      ID 3
+'CHANGE IN HARDCODED TEXT
+      Title GetResString(IDS_String_27)
+      Value 0
+      into b_Use1stOption
+      Position 2.5x,15.25y
+      Disable
+      Calling DLG_RWT_1stOptHandler
+    Control Checkbox
+      ID 4
+'CHANGE IN HARDCODED TEXT
+      Title GetResString(IDS_String_28)
+      Value 0
+      into b_UseOnlyOption
+      Position 2.5x,16.5y
+      Disable
+    Control Checkbox
+      ID 6
+      Title GetResString(IDS_String_29)
+      Value 1
+      into b_OpenWorkspace
+'      Position 25x,14y
+      Position 46x,14y
+      Calling DLG_RWT_OpenWorHandler
+    Control Checkbox
+      ID 7
+      Title GetResString(IDS_String_30)
+      Value 1
+      into b_SaveWorkspace
+'      Position 25x,15.25y
+      Position 46x,15.25y
+      Calling DLG_RWT_SaveWorHandler
+    Control Checkbox
+      Title GetResString(IDS_String_31)
+      Value 1
+      into b_GenerateReport
+'      Position 25x,16.5y
+      Position 46x,16.5y
+    Control OKButton
+      Title GetResString(IDS_String_32)
+'      Position 48.5x,14y
+       Position 71x,14y
+      Width 12.5x
+      Calling DLG_RWT_OKBtnHandler
+    Control CancelButton
+      Title GetResString(IDS_String_18)
+'      Position 48.5x,16y
+      Position 71x,16y
+      Width 12.5x
+
+'**Localization 3/17/2005
+
+'ADDED COMMENTS: SAVING GUI OPTIONS CHOSEN
+    If CommandInfo(CMD_INFO_DLG_OK)
+      Then
+        If n_ChosenMode=1 and b_PerformSearch Then
+            b_Use1stOption=1 and b_UseOnlyOption=1
+          ElseIf n_ChosenMode=1 and Not b_PerformSearch Then
+            b_Use1stOption=0 and b_UseOnlyOption=0
+          ElseIf n_ChosenMode=2 and b_PerformSearch Then
+          ElseIf n_ChosenMode=2 and Not b_PerformSearch Then
+            b_Use1stOption=0 and b_UseOnlyOption=0
+        End If
+        If Not b_SaveWorkspace Then str_SelWorkspaceDest="" End If
+     ' Else Note GetResString(?) Exit Sub'n_ChosenMode=1 b_OpenWorkspace=1
+    End If
+
+'  str_SelWorkspace=FileOpenDlg("",GetResString(?),"WOR",GetResString(?))
+  If str_SelWorkspace
+    Then
+      If n_BatchOption=1
+        Then str_WorList=str_SelWorkspace+";"
+      Else
+'ADDED COMMENTS: CREATE A TEMP TABLE TO USE FOR STORAGE SEARCH RESULTS
+'STEVIERAY: AppDir
+          If FileExists(ApplicationDirectory$()+cstr_SearchFile)
+            Then Open Table ApplicationDirectory$()+cstr_SearchFile
+            Else Create Table "Workspace_Resolver" (FilePath Char(254)) file ApplicationDirectory$()+cstr_SearchFile 'TYPE NATIVE Charset "native"
+          End If
+'ADDED COMMENTS: DO SEARCH
+          Do Case n_BatchOption
+            Case 2 b_OpenWorkspace=RtnPerformSearchResults(PathToDirectory$(str_SelWorkspace),"*.WOR","F","F")
+            Case 3 b_OpenWorkspace=RtnPerformSearchResults(PathToDirectory$(str_SelWorkspace),"*.WOR","F","T")
+          End Case
+          b_OpenWorkspace=0
+          str_WorList=""
+          Fetch First From Workspace_Resolver
+'ADDED COMMENTS: POPULATE VAR WITH SEARCH RESULTS
+          Do While Not EOT(Workspace_Resolver)
+            If Not (Workspace_Resolver.FilePath Like "% RWT %") Then
+              str_WorList=str_WorList+Workspace_Resolver.FilePath+";"
+            End If
+            Fetch Next From Workspace_Resolver
+          Loop
+          'Close Table "Workspace_Resolver"
+'STEVIERAY: cstr_SearchFile
+'CHDIGIUS: Changed from Kill to Drop Table - .DAT being left in app directory
+          Drop Table PathToTableName$(cstr_SearchFile)
+      End if
+
+'ADDED COMMENTS: PROCESS ALL WKS FILES IN LIST (str_WorList)
+      Do While str_WorList
+'ADDED COMMENTS: INITIALISE GLOBAL TIMERS
+  gdn_TimeChooseTable=0
+  gdn_TimeBrowseGraph=0
+  gdn_TimeProcessMap=0
+  gdn_TimeLayout=0
+  gdn_TimeSearchFile=0
+        b_SkipWorkspace=0
+'ADDED COMMENTS: EXTRACT FIRST WKS FROM LIST
+        str_SelWorkspace=RtnItemFromList(str_WorList)
+ 	If FileExists(Left$(str_SelWorkspace,Len(str_SelWorkspace)-4)+GetResString(IDS_String_53)) Then
+'ADDED COMMENTS: OPTION TO NOT OVERWRITE WKS APP HAS GENERATED
+          If Not Ask("Currently processing "+Chr$(13)+Chr$(13)+"  "+str_SelWorkspace+Chr$(13)+Chr$(13)
+              +"This app will generate a Workspace file that already exists!"+Chr$(13)+Chr$(13)+"  "
+              +Left$(str_SelWorkspace,Len(str_SelWorkspace)-4+GetResString(IDS_String_53)),"&Overwrite","&Skip")
+            Then b_SkipWorkspace=1
+        End If End If
+'ADDED COMMENTS: PROCESS WORKSPACE!!
+        If Not b_SkipWorkspace
+          Then str_ListofWorProcessed=str_ListofWorProcessed+str_SelWorkspace+";"
+            gdi_TotalProcessTime=Timer()
+            Call ProcessRWT(str_SelWorkspace,str_SelWorkspaceDest,n_ChosenMode,b_PerformSearch,b_Use1stOption,b_UseOnlyOption)
+            gdi_TotalProcessTime=Timer()-gdi_TotalProcessTime
+'ADDED COMMENTS:Options from Main Dialog
+'STEVIERAY: AppDir
+            If b_GenerateReport Then Call GenerateReport(str_SelWorkspace,str_SelWorkspaceDest,n_ChosenMode,b_PerformSearch) End If
+            If b_SaveWorkspace Then Call SaveWorApplication(str_SelWorkspace,str_SelWorkspaceDest) End If
+OnError Goto ErrTestFileFailed
+            If b_OpenWorkspace
+              Then
+'              	Note str_SelWorkspaceDest
+              	If b_SaveWorkspace And FileExists(str_SelWorkspaceDest)
+                Then
+                Run Application str_SelWorkspaceDest
+                Else Call RunWorApplication(str_SelWorkspace)
+              End If Else Close All
+            End If
+'STEVIERAY: cstr_SearchFile
+            If FileExists(ApplicationDirectory$()+PathToFileName$(str_SelWorkspace)+" RWT 1.WOR")
+              Then Kill ApplicationDirectory$()+PathToFileName$(str_SelWorkspace)+" RWT 1.WOR"
+            End If
+            'Run Application str_SelWorkspaceDest End If
+'              Run Application str_SelWorkspace+" RWT 1.WOR"
+'              If RunWorApplication(str_SelWorkspace)=TRUE Then Run Menu Command 109 End If
+'              Note GetResString(?)
+'                +Chr$(13)+GetResString(?)
+OnError Goto ErrGeneralFailure
+          Else str_ListofWorSkipped=str_ListofWorSkipped+str_SelWorkspace+";"
+        End If
+      Loop
+
+      pathtoRWT =  ApplicationDirectory$() + PathToFileName$(str_SelWorkspace)
+      Call KillRWT(pathtoRWT)
+
+      If n_BatchOption>1 Then
+
+'ADDED COMMENTS: OUT RESULTS TO MSG WINDOW
+        Print GetResString(IDS_String_88)
+        If str_ListofWorProcessed="" Then Print GetResString(IDS_String_9) End If
+        Do While Len(str_ListofWorProcessed)>1
+          Print "    "+RtnItemFromList(str_ListofWorProcessed)+".WOR"
+        Loop
+        Print "*******************************************************************"
+        Print GetResString(IDS_String_89)
+        If str_ListofWorSkipped="" Then Print GetResString(IDS_String_9) End If
+        Do While Len(str_ListofWorSkipped)>1
+          Print "    "+RtnItemFromList(str_ListofWorSkipped)+".WOR"
+        Loop
+        Print "*******************************************************************"
+
+      End If
+    'Else Note GetResString(?)
+  End If
+  Exit Sub
+ErrGeneralFailure:
+  Note GetResString(IDS_String_38)+Err()+Chr$(13)+GetResString(IDS_String_37)+Error$()
+  Resume Next
+ErrTestFileFailed:
+  b_OpenWorkspace=0
+  Note GetResString(IDS_String_98)
+
+'Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+'		CleanUp:
+'			Dialog Preserve
+'		Exit Sub
+
+'		ErrorHandle:
+'			Resume CleanUp
+
+End Sub ResolveWorkspaceTables
+
+
+'*********************************************************************************************
+Sub DLG_RWT_FileOpen
+OnError GOTO ErrorHandle
+
+  Dim str_SelWorkspace, str_Read As String
+  str_SelWorkspace = FileOpenDlg("",GetResString(IDS_String_41),"WOR",GetResString(IDS_String_42))
+  If str_SelWorkspace Then
+    Alter Control 8 Value str_SelWorkspace
+    Alter Control 9 Value PathToDirectory$(ReadControlValue(8))+Left$(PathToFileName$(ReadControlValue(8)),InStr(1,PathToFileName$(ReadControlValue(8)),".")-1)+"_Resolved.WOR"
+  End If
+
+CleanUp:
+	Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+ErrorHandle:
+	Note Error$()
+	Resume CleanUp
+
+End Sub DLG_RWT_FileOpen
+
+'*********************************************************************************************
+Declare Sub RWT_FileOpen(ByVal str_SelWorkspace As String)
+Sub RWT_FileOpen(ByVal str_SelWorkspace As String)
+  Dim n_BegPosn,n_EndPosn As SmallInt
+  Dim str_TabName,str_PathToWorDir As String
+
+	OnError GOTO ErrorHandle
+
+	Dim str_Read As String
+
+	If str_SelWorkspace<>"" Then
+		Close All
+		Open File str_SelWorkspace For Input As #cn_File1 CharSet "Neutral"
+		Line Input #cn_File1, str_Read
+		Do While Not(Left$(str_Read,11)="Open Table ") And Not EOF(cn_File1)
+			Line Input #cn_File1, str_Read
+		Loop
+		OnError GOTO MissingTable
+		Do While Left$(str_Read,11)="Open Table " And Not EOF(cn_File1)
+			If RTrim$(str_Read) Like "%Interactive" Then
+				str_Read=RTrim$(Left$(RTrim$(str_Read),Len(RTrim$(str_Read))-11))
+			End If
+
+'DESTDIRFIX
+      n_BegPosn=InStr(1,str_Read,Chr$(34))+1
+      n_EndPosn=InStr(n_BegPosn,str_Read,Chr$(34))
+      str_TabName=Mid$(str_Read,n_BegPosn,n_EndPosn-n_BegPosn)
+      str_PathToWorDir=PathToDirectory$(str_SelWorkspace)
+      If str_TabName=PathToFileName$(str_TabName) Then
+        str_TabName=str_PathToWorDir+str_TabName
+      End If
+      str_Read=Left$(str_Read,n_BegPosn-1)+str_TabName+Mid$(str_Read,n_EndPosn,Len(str_Read)-n_EndPosn+1)
+
+
+			Run Command str_Read
+			Line Input #cn_File1, str_Read
+		Loop
+	Close File #cn_File1
+	End If
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+CleanUp:
+	Exit Sub
+
+MissingTable:
+  Resume Next
+
+ErrorHandle:
+	Note Error$()
+	Resume CleanUp
+
+End Sub RWT_FileOpen
+
+'*********************************************************************************************
+Sub DLG_RWT_FileSave
+OnError GOTO ErrorHandle
+
+  Dim str_SelWorkspaceDest As String
+  str_SelWorkspaceDest=FileSaveAsDLG("",PathToDirectory$(ReadControlValue(8))+Left$(PathToFileName$(ReadControlValue(8)),InStr(1,PathToFileName$(ReadControlValue(8)),".")-1)+"_Resolved.WOR","WOR",GetResString(IDS_String_109))
+  If str_SelWorkspaceDest Then
+    Alter Control 9 Value str_SelWorkspaceDest
+  End If
+
+
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+'			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Sub DLG_RWT_FileSave
+'*********************************************************************************************
+Sub DLG_RWT_OpenWorHandler
+	OnError GOTO ErrorHandle
+
+	If ReadControlValue(6)=0 Then
+		Alter Control 7 Value 1
+		Alter Control 9 Enable
+		Alter Control 77 Enable
+	Else
+		'Alter Control 9 Enable
+	End If
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+CleanUp:
+	Exit Sub
+
+ErrorHandle:
+	Note Error$()
+	Resume CleanUp
+
+End Sub DLG_RWT_OpenWorHandler
+'*********************************************************************************************
+Sub DLG_RWT_SaveWorHandler
+	OnError GOTO ErrorHandle
+
+	If ReadControlValue(7)=0 Then
+		Alter Control 6 Value 1
+		Alter Control 77 Disable
+		Alter Control 9 Disable
+	Else
+		Alter Control 77 Enable
+		Alter Control 9 Enable
+	End If
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+CleanUp:
+	Exit Sub
+
+ErrorHandle:
+	Note Error$()
+	Resume CleanUp
+
+End Sub DLG_RWT_SaveWorHandler
+
+'*********************************************************************************************
+Sub DLG_RWT_BatchOptHandler
+OnError GOTO ErrorHandle
+  If ReadControlValue(5)>1
+    Then Alter Control 6 Hide Alter Control 3 Value 2 Disable
+    Else Alter Control 6 Show Alter Control 3 Value 2 Enable
+  End If
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+'			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+		  Note Error$()
+			Resume CleanUp
+
+
+End Sub DLG_RWT_BatchOptHandler
+'*********************************************************************************************
+Sub DLG_RWT_ModeHandler
+
+OnError GOTO ErrorHandle
+
+  If ReadControlValue(1)=1 And ReadControlValue(2)=1 Then
+      Alter Control 3 Value 1 Disable
+      Alter Control 4 Value 1 Disable
+    ElseIf ReadControlValue(1)=2 And ReadControlValue(2)=1 Then
+      Alter Control 3 Value 0 Enable
+      Alter Control 4 Value 0 Enable
+    ElseIf ReadControlValue(1)=1 And ReadControlValue(2)=0 Then
+     ' Alter Control 3 Value 1 Disable '**Diable hide checkboxes when Automatic is checked
+     	 Alter Control 3 Value 0 Disable
+     ' Alter Control 4 Value 1 Disable Hide
+     	 Alter Control 4 Value 0 Disable
+    ElseIf ReadControlValue(1)=2 And ReadControlValue(2)=0 Then
+      Alter Control 3 Value 0 Disable
+      Alter Control 4 Value 0 Disable
+  End If
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+'			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+
+End Sub DLG_RWT_ModeHandler
+'*********************************************************************************************
+Sub DLG_RWT_PerfSrchHandler
+
+OnError GOTO ErrorHandle
+  If ReadControlValue(1)=1 And ReadControlValue(2)=1 Then
+      Alter Control 3 Value 1 Disable Show
+      Alter Control 4 Value 1 Disable Show
+    ElseIf ReadControlValue(1)=2 And ReadControlValue(2)=1 Then
+      Alter Control 3 Value 0 Enable
+      Alter Control 4 Value 0 Enable
+    ElseIf ReadControlValue(1)=1 And ReadControlValue(2)=0 Then
+      'Alter Control 3 Value 1 Disable Hide
+       Alter Control 3 Value 0
+      'Alter Control 4 Value 1 Disable Hide
+       Alter Control 4 Value 0
+    ElseIf ReadControlValue(1)=2 And ReadControlValue(2)=0 Then
+      Alter Control 3 Value 0 Disable
+      Alter Control 4 Value 0 Disable
+  End If
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+
+End Sub DLG_RWT_PerfSrchHandler
+'*********************************************************************************************
+Sub DLG_RWT_1stOptHandler
+
+OnError GOTO ErrorHandle
+
+  If ReadControlValue(3)=1
+    Then Alter Control 4 Disable
+    Else Alter Control 4 Enable
+  End If
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+'			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Sub DLG_RWT_1stOptHandler
+
+Declare Function IsValidPath(ByVal strPath As String, ByVal strExt As String) As Logical
+Function IsValidPath(ByVal strPath As String, ByVal strExt As String) As Logical
+	strPath = RTrim$(LTrim$(strPath))
+	strExt = RTrim$(LTrim$(strExt))
+	If strPath <> "" Then
+		strPath = TrueFileName$(strPath)
+		Dim strDir As String
+		strDir = PathToDirectory$(strPath)
+		If FileExists(strDir) Then
+			If strExt <> "" Then
+				If Right$(strPath, Len(strExt)) = strExt Then
+					IsValidPath = TRUE
+				End If
+			Else
+				IsValidPath = TRUE
+			End If
+		End If
+	End If
+End Function
+
+Declare Function IsSameFile(ByVal strFile1 As String, ByVal strFile2 As String) As Logical
+Function IsSameFile(ByVal strFile1 As String, ByVal strFile2 As String) As Logical
+	If TrueFileName$(RTrim$(LTrim$(strFile1))) = TrueFileName$(RTrim$(LTrim$(strFile2))) Then
+		IsSameFile = TRUE
+	End If
+End Function
+
+'*********************************************************************************************
+Sub DLG_RWT_OKBtnHandler
+	Dim str_Read,str_TabName,str_PathToWorDir,str_nDirCharPosn As String
+	Dim n_BegPosn,n_EndPosn,n_BegPosn2,n_EndPosn2,n_ParentDir,n_Dir,lcv As SmallInt
+
+	OnError GOTO ErrorHandle
+
+	If Not IsValidPath(ReadControlValue(8), ".WOR") Or Not FileExists(ReadControlValue(8)) Then
+		Goto InvalidSrcFile
+	End If
+	Call RWT_FileOpen(ReadControlValue(8))
+	If ReadControlValue(7) Then
+		If Not IsValidPath(ReadControlValue(9), ".WOR") Or IsSameFile(ReadControlValue(8), ReadControlValue(9)) Then
+			Goto InvalidDestFile
+		ElseIf FileExists(ReadControlValue(9)) Then
+			If Not Ask(GetResString(IDS_String_91)+PathToFileName$(ReadControlValue(9))+GetResString(IDS_String_92),GetResString(IDS_String_93),GetResString(IDS_String_94)) Then
+				Goto InvalidDestFile
+			End If
+		ElseIf Not FileExists(ReadControlValue(9)) Then
+			OnError Goto InvalidDestFile
+			Save Workspace As ReadControlValue(9)
+		End If
+	End If
+	OnError GOTO ErrorHandle
+
+	Exit Sub
+InvalidSrcFile:
+	Note GetResString(IDS_String_97)
+	Dialog Preserve Exit Sub
+InvalidDestFile:
+	Note GetResString(IDS_String_90)
+	Dialog Preserve Exit Sub
+MissingTable:
+	Resume Next
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+CleanUp:
+	Exit Sub
+
+ErrorHandle:
+	Note Error$()
+	Resume CleanUp
+
+End Sub DLG_RWT_OKBtnHandler
+'*********************************************************************************************
+'ADDED COMMENTS: OVERVIEW OF THE WKS PROCESSING PROCESS
+'DESC: Processes .WOR
+'PRE : Called from Sub ResolveWorkspaceTables: Requires .WOR
+'POST: Creates new *RWT.WOR file and *.MAP.LOG file
+Sub ProcessRWT(ByVal Dstr_Workspace,ByVal Dstr_SelWorkspaceDest As String,Dn_ChosenMode As SmallInt,Db_PerformSearch,Db_Use1stOption,Db_UseOnlyOption As Logical)
+
+OnError GOTO ErrorHandle
+
+  Dim n_BegPosn,n_EndPosn,lcv,n_ReplacementTable As SmallInt
+  Dim str_Workspace,str_Alias,str_ReplaceTable As String
+  Dim str_Read,str_CurrCmd,str_QueryListStore,str_QueryList,str_Query,str_Layers As String
+  Dim str_WorkInProgress,str_ListofMissingTables,str_CurrentMissingTable As String
+  Dim str_FileExtn,str_DirList,str_DirItem As String
+  Dim b_SearchResults As Logical
+    str_FileExtn=" RWT 2.WOR"
+
+	Dim Path_For_INI2 As String
+
+'ADDED COMMENTS: CREATES BACKUPS
+  If Right$(Dstr_Workspace,4)=".WOR"
+    Then str_Workspace=Dstr_Workspace
+    Else str_Workspace=Dstr_Workspace+".WOR"
+  End If
+'STEVIERAY: Got rid of RWT
+  str_WorkInProgress=Left$(str_Workspace,Len(str_Workspace)-4)
+
+  Call KillFile(str_WorkInProgress," MAP.LOG",cn_File9)
+'STEVIERAY: AppDir: Progress Files now saved in App dir as opposed to Wor dir
+  Save File str_Workspace As ApplicationDirectory$()+PathToFileName$(str_WorkInProgress)+" RWT 1.WOR"
+  Save File str_Workspace As ApplicationDirectory$()+PathToFileName$(str_WorkInProgress)+" RWT 2.WOR"
+
+  path_for_INI2 = ApplicationDirectory$()+PathToFileName$(str_WorkInProgress)+" RWT 1.WOR"
+
+'**ADDED 4/25/2005 CJD**Save RWT 1 path+filename to a file
+'**REMOVED 4/27/2005 CJD**Save RWT 1 path+filename to a file
+'  Open File ApplicationDirectory$() + file_DeleteOnStartup For Output AS cn_File12
+'  Print #cn_File12,path_for_INI2
+'  Close File cn_File12
+
+'ADDED COMMENTS: 'Obtain List of Missing Tables separated by ";"
+  gstr_ListTablesReplaced="" gstr_ListTablesProcessed="" gstr_ListTablesReplacedWith=""
+
+'ADDED COMMENTS: OBTAIN FIRST TABLE FOUND MISSING
+  str_ListofMissingTables=RtnListOfMissingTables(str_WorkInProgress+" RWT 1.WOR")
+  Do While str_ListofMissingTables 'Repeat while list is not empty
+    str_CurrentMissingTable=RtnItemFromList(str_ListofMissingTables)
+'ADDED COMMENTS: 'Read From Workspace1 and Write to Workspace2
+'STEVIERAY: AppDir
+    Open File ApplicationDirectory$()+PathToFileName$(str_WorkInProgress)+" RWT 1.WOR" For Input As #cn_File1 Charset "Neutral"
+    Call KillFile(str_WorkInProgress,str_FileExtn,cn_File2)
+
+    Line Input #cn_File1, str_Read
+'ADDED COMMENTS: 'Search for first instance of table reference (Open Table)
+'ADDED COMMENTS: 'Copy all lines upto open missing table code
+'T15228 Added OR to cater for "tablename.TAB" and "%\tablename.TAB" in Open File Cmd
+    Do While Not(str_Read Like "%"+str_CurrentMissingTable+"%") And Not EOF(cn_File1)
+        And NOT(
+          (str_Read Like "%"+Chr$(34)+PathToTableName$(str_CurrentMissingTable)+Chr$(34)+"%")
+          OR (str_Read Like "%"+Chr$(34)+PathToTableName$(str_CurrentMissingTable)+".TAB"+Chr$(34)+"%")
+          OR (str_Read Like "%\"+PathToTableName$(str_CurrentMissingTable)+".TAB"+Chr$(34)+"%")
+        )
+      Print #cn_File2, str_Read
+      Line Input #cn_File1, str_Read
+      str_Read=LCase$(str_Read)
+    Loop
+'ADDED COMMENTS: 'Extract table reference (alias)
+    If str_Read Like "% as %"
+      Then n_BegPosn=Instr(1,str_Read," as ")+4
+        n_EndPosn=Instr(n_BegPosn,str_Read," ")
+        str_Alias=Mid$(str_Read,n_BegPosn,n_EndPosn-n_BegPosn)
+      Else str_Alias=PathToTableName$(str_CurrentMissingTable)
+    End If
+    str_ReplaceTable=""
+'ADDED COMMENTS: 'PERFORM SEARCH OPTION USED
+    If Db_PerformSearch
+      Then
+'ADDED COMMENTS: 'INITIALISES TABLE FOR SEARCH RESULTS
+'STEVIERAY: AppDir
+        If FileExists(ApplicationDirectory$()+cstr_SearchFile)
+          Then Open Table ApplicationDirectory$()+cstr_SearchFile
+          Else Create Table "Workspace_Resolver" (FilePath Char(254)) file ApplicationDirectory$()+cstr_SearchFile TYPE NATIVE Charset "Neutral"
+        End If
+
+'ADDED COMMENTS: EXTRACT MISSING TABLE NAME
+        str_ReplaceTable=PathToFileName$(str_CurrentMissingTable)
+        If Right$(str_ReplaceTable,4)<>".TAB" Then str_ReplaceTable=str_ReplaceTable+".TAB" End If
+
+'ADDED COMMENTS: 'INITIALISES SEARCH DIRECTORIES TO USE
+        str_DirList=RtnRWTSettings()
+        Do While str_DirList
+          n_EndPosn=InStr(1,str_DirList,";")
+          str_DirItem=Left$(str_DirList,n_EndPosn-1)
+          str_DirList=Right$(str_DirList,Len(str_DirList)-n_EndPosn)
+
+'ADDED COMMENTS: 'Timer for gdn_TimeSearchFile
+          gdi_TimerBeg=Timer()
+          b_SearchResults=RtnPerformSearchResults(str_DirItem,str_ReplaceTable,Db_Use1stOption,"T")
+          gdi_TimerEnd=Timer()-gdi_TimerBeg
+          gdn_TimeSearchFile=gdn_TimeSearchFile+gdi_TimerEnd
+          If Db_Use1stOption And b_SearchResults Then Exit Do End If
+        Loop
+
+        If TableInfo(Workspace_Resolver,TAB_INFO_NROWS)>0
+          Then
+            Fetch First From Workspace_Resolver
+            If (TableInfo(Workspace_Resolver,TAB_INFO_NROWS)=1 And Db_UseOnlyOption) Or Db_Use1stOption
+              Then str_ReplaceTable=Workspace_Resolver.FilePath
+              Else str_ReplaceTable=""
+                Do While Not EOT(Workspace_Resolver)
+                  str_ReplaceTable=str_ReplaceTable+Workspace_Resolver.FilePath+";"
+                  Fetch Next From Workspace_Resolver
+                Loop
+
+'ADDED COMMENTS: 'Timer for gdn_TimeChooseTable
+                gdi_TimerBeg=Timer()
+                n_ReplacementTable=RtnReplacementTableSelected(str_ReplaceTable)
+                gdi_TimerEnd=Timer()-gdi_TimerBeg
+                gdn_TimeChooseTable=gdn_TimeChooseTable+gdi_TimerEnd
+
+                If n_ReplacementTable
+                  Then n_EndPosn=0
+                    For lcv=1 to n_ReplacementTable
+                      n_BegPosn=n_EndPosn+1
+                      n_EndPosn=InStr(n_BegPosn,str_ReplaceTable,";")
+                    Next
+                    str_ReplaceTable=Mid$(str_ReplaceTable,n_BegPosn,n_EndPosn-n_BegPosn)
+                  Else str_ReplaceTable=""
+            End If End If
+          Else str_ReplaceTable=""
+        End If
+'      Close Table Workspace_Resolver
+'STEVIERAY: cstr_SearchFile
+'CHDIGIUS: Changed from Kill to Drop Table - .DAT being left in app directory Added by Steve
+          Drop Table PathToTableName$(cstr_SearchFile)
+'      Kill ApplicationDirectory$()+cstr_SearchFile
+    End If
+
+    If Dn_ChosenMode=2 And Not str_ReplaceTable Then
+      gdi_TimerBeg=Timer()
+      str_ReplaceTable=RtnFileOpenDialog(str_CurrentMissingTable,str_Alias)
+      gdi_TimerEnd=Timer()-gdi_TimerBeg
+      gdn_TimeChooseTable=gdn_TimeChooseTable+gdi_TimerEnd
+    End If
+'ADDED COMMENTS: 'If Table replacement found then update Open Table command and Copy rest of code as is
+    If str_ReplaceTable
+      Then gstr_ListTablesReplaced=gstr_ListTablesReplaced+str_CurrentMissingTable+";"
+        gstr_ListTablesReplacedWith=gstr_ListTablesReplacedWith+str_ReplaceTable+";"
+        str_Read="Open Table "+Chr$(34)+str_ReplaceTable+Chr$(34)+" As "+str_Alias+" Interactive"
+'T15240 This was caused due to new way tables are saved in a workspace RE:Sub DLG_RWT_FileOpen
+' BHI 05/05/05 - Ultimately, we should not simply ignore tables that fail to open here,
+' but for now, we'll resolve the reference but the resulting workspace still won't open
+' in cases were the .tab exists but won't open
+        OnError GoTo IgnoreError
+        Run Command str_Read
+        OnError GoTo ErrorHandle
+        Print #cn_File2, str_Read
+        Line Input #cn_File1, str_Read
+        Do While Not EOF(cn_File1) Print #cn_File2, str_Read Line Input #cn_File1, str_Read
+        Loop
+
+'ADDED COMMENTS: 'Else Remove table reference (ignore line of code)
+      Else
+        gstr_ListTablesProcessed=gstr_ListTablesProcessed+str_CurrentMissingTable+";"
+        Line Input #cn_File1, str_Read
+'ADDED COMMENTS: EVALUATE WKS WITH ALIAS USED FOR MISSING TABLE
+        Do While Not EOF(cn_File1)
+          str_QueryList=""
+'ADDED COMMENTS: EVALUATE CURRENT LINE OF WKS CODE
+          Call EvalCode(str_WorkInProgress,Dstr_SelWorkspaceDest,LCase$(str_Alias),str_Read,str_CurrCmd,str_QueryList,str_Layers)
+'ADDED COMMENTS: ADD SQL STMT TO PROCESS LIST IF STMT IS USED ON MISSING TABLE
+          If str_QueryList Then str_QueryListStore=str_QueryListStore+str_QueryList+";" End If
+'ADDED COMMENTS: WRITE CODE TO TEMP WKS LOG FILE
+          Call WriteCode(str_WorkInProgress)
+        Loop
+
+'ADDED COMMENTS: PROCESS LIST OF SQL STMT FOUND TO BE QUERYING ON MISSING TABLE
+        Do While str_QueryListStore
+          str_QueryListStore=LCase$(str_QueryListStore)
+'ADDED COMMENTS: REINTIALISE TEMP FILES USED
+          Close File #cn_File1
+          Close File #cn_File2
+'STEVIERAY: AppDir
+          Save File ApplicationDirectory$()+PathToFileName$(str_WorkInProgress)+" RWT 2.WOR"
+              As ApplicationDirectory$()+PathToFileName$(str_WorkInProgress)+" RWT 1.WOR"
+          Open File ApplicationDirectory$()+PathToFileName$(str_WorkInProgress)+" RWT 1.WOR" For Input As #cn_File1 Charset "Neutral"
+          Call KillFile(str_WorkInProgress,str_FileExtn,cn_File2)
+
+          Line Input #cn_File1, str_Read
+          Do While Left$(str_Read,1) in (""," ","!",Chr$(39)) Or str_Read Like "%Open Table %"
+            Print #cn_File2, str_Read Line Input #cn_File1, str_Read
+          Loop
+
+          n_EndPosn=Instr(1,str_QueryListStore,";")
+          str_Query=Left$(str_QueryListStore,n_EndPosn-1)
+          str_QueryListStore=Right$(str_QueryListStore,Len(str_QueryListStore)-n_EndPosn)
+
+'ADDED COMMENTS: REPEAT PROCESS OF EVALUATING EACH LINE OF CODE FOR SQL QUERIES
+          Do While Not EOF(cn_File1)
+            str_QueryList=1
+            Call EvalCode(str_WorkInProgress,Dstr_SelWorkspaceDest,str_Query,str_Read,str_CurrCmd,str_QueryList,str_Layers)
+            Call WriteCode(str_WorkInProgress)
+          Loop
+        Loop
+    End If
+'ADDED COMMENTS: 'CLEAN UP
+    Close File #cn_File1
+    Close File #cn_File2
+'STEVIERAY: AppDir
+    Save File ApplicationDirectory$()+PathToFileName$(str_WorkInProgress)+" RWT 2.WOR"
+        As ApplicationDirectory$()+PathToFileName$(str_WorkInProgress)+" RWT 1.WOR"
+    Kill ApplicationDirectory$()+PathToFileName$(str_WorkInProgress)+" RWT 2.WOR"
+  Loop
+  Call KillAllFiles(str_WorkInProgress)
+  Close File #cn_File9
+  If Not gb_ShowPrintMsg Then Kill ApplicationDirectory$()+PathToFileName$(str_WorkInProgress)+" MAP.LOG" End If
+
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+CleanUp:
+	OnError GoTo IgnoreError
+	Close File #cn_File1
+	Close File #cn_File2
+	Close File #cn_File9
+	Exit Sub
+
+ErrorHandle:
+	Note Error$()
+	Resume CleanUp
+
+IgnoreError:
+	Resume Next
+
+
+End Sub ProcessRWT(ByVal Dstr_Workspace, ByVal Dstr_SelWorkspaceDest As String,Dn_ChosenMode As SmallInt,Db_PerformSearch,Db_Use1stOption,Db_UseOnlyOption As Logical)
+
+'*********************************************************************************************
+'ADDED COMMENTS: 'ALLOW USER TO CHOOSE A REPLACEMENT TABLE IF MULTIPLE FOUND IN SEARCH
+Function RtnReplacementTableSelected(ByVal Dstr_ReplaceTableList As String) As SmallInt
+
+OnError GOTO ErrorHandle
+
+  Dim n_RtnReplacementTableSelected As SmallInt
+  Dialog
+    Title GetResString(IDS_String_95)
+    Control StaticText
+      Title GetResString(IDS_String_96)
+    Control PopupMenu
+      Title Dstr_ReplaceTableList
+      Into n_RtnReplacementTableSelected
+    Control OKButton
+    Control CancelButton
+  RtnReplacementTableSelected=n_RtnReplacementTableSelected
+
+'Exit Function
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+'			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Function RtnReplacementTableSelected(ByVal Dstr_ReplaceTableList As String) As SmallInt
+'*********************************************************************************************
+'DESC: Returns List of Missing Tables
+'PRE : Called from Sub ProcessRWT: Requires .WOR
+'POST: Returns List of Missing Tables
+'ACTION
+'Function RtnListFileNamesOfTablesOpen() As String
+'  Dim n_NumTables,lcv As SmallInt
+'  n_NumTables=NumTables()
+'  For lcv=1 To n_NumTables
+'  Next
+'End Function RtnListFileNamesOfTablesOpen() As String
+
+'*********************************************************************************************
+'DESC: Returns List of Missing Tables
+'PRE : Called from Sub ProcessRWT: Requires .WOR
+'POST: Returns List of Missing Tables
+Function RtnListOfMissingTables(ByVal Dstr_Workspace As String) As String
+
+OnError GOTO ErrorHandle
+
+  Dim n_BegPosn,n_EndPosn As SmallInt
+  Dim str_Read,str_TableName,str_ListofMissingTables,str_DotTab As String
+'STEVE: AppDir
+  Open File ApplicationDirectory$()+PathToFileName$(Dstr_Workspace) For Input As #cn_File1 Charset "Neutral"
+  Line Input #cn_File1, str_Read
+  Do While Not(Left$(str_Read,11)="Open Table ") And Not EOF(cn_File1)
+    Line Input #cn_File1, str_Read
+  Loop
+  Do While Left$(str_Read,11)="Open Table " And Not EOF(cn_File1)
+'ADDED COMMENTS: 'Extract Path and Name
+    n_BegPosn=Instr(1,str_Read,Chr$(34))+1
+    n_EndPosn=Instr(n_BegPosn,str_Read,Chr$(34))
+    str_TableName=Mid$(str_Read,n_BegPosn,n_EndPosn-n_BegPosn)
+    If str_TableName=PathToFileName$(str_TableName) Then
+      str_TableName=PathToDirectory$(Dstr_Workspace)+str_TableName End If
+'ACTION SUB DLG_RWT_OKBtnHandler
+    If Right$(str_TableName,4)=".TAB" Then str_DotTab="" Else str_DotTab=".TAB" End If
+'    If Right$(str_TableName,4)=".TAB" Then str_TableName=Left$(str_TableName,Len(str_TableName)-4) End If
+    If Not FileExists(str_TableName+str_DotTab) Then
+        str_ListofMissingTables=str_ListofMissingTables+str_TableName+";" End If
+    Line Input #cn_File1, str_Read
+  Loop
+  Close File #cn_File1
+  RtnListOfMissingTables=str_ListofMissingTables
+
+Exit Function
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+CleanUp:
+	OnError GoTo IgnoreError
+	Close File #cn_File1
+	Exit Sub
+
+ErrorHandle:
+	Note Error$()
+	Resume CleanUp
+
+IgnoreError:
+	Resume Next
+
+End Function RtnListOfMissingTables(ByVal Dstr_Workspace As String) As String
+'*********************************************************************************************
+Function RtnPerformSearchResults(ByVal Dstr_DirItem,ByVal Dstr_MissingTable As String,ByVal Db_Use1stOption,ByVal Db_SearchSubDir As Logical) As Logical
+
+OnError GOTO ErrorHandle
+
+  Dim FileHnd as Integer		'HOLDS THE WinHandle FOR THE LIFE OF THE CALLS
+  Dim lpFindFileData as WIN32_FIND_DATA	'HOLDS THEN DATA TYPE STRUCTURE FOR WinAPI
+  Dim FileFind as String		'STRING THE USER WISHES TO SEARCH FOR
+  Dim FindMore as Integer		'RECURSION VARIABLE TO FOR CALL BACK TO FindNext FUNCTION
+  Dim str_Read,str_DirList,str_DirItem As String
+  Dim lcv,n_BegPosn,n_EndPosn As SmallInt
+  Dim b_RtnPerformSearchResults As Logical
+  b_RtnPerformSearchResults=0
+  n_EndPosn=0
+
+'ADDED COMMENTS: 'Find File
+    FileFind=Dstr_DirItem+Dstr_MissingTable'+".TAB"
+    FileHnd = FindFirstFile(FileFind,lpFindFileData)
+    If FileHnd > 0 Then
+      FindMore=FileHnd
+      Do While FindMore > 0 'lpFindFileData.dwFileAttributes)=16 = Directory
+'        Insert Into Workspace_Resolver (FilePath) Values (FileFind)
+
+        Insert Into Workspace_Resolver (FilePath) Values (Dstr_DirItem+lpFindFileData.cFileName)
+        If Db_Use1stOption And TableInfo(Workspace_Resolver,TAB_INFO_NROWS)=1
+          Then RtnPerformSearchResults=1 Exit Function
+        End If
+        FindMore=FindNextFile(FileHnd,lpFindFileData)
+      Loop
+    End If
+
+'ADDED COMMENTS: 'Find Directory
+    If Db_SearchSubDir Then
+      FileFind=Dstr_DirItem+"*."
+      FileHnd = FindFirstFile(FileFind,lpFindFileData)
+      If FileHnd > 0 Then
+        FindMore=FileHnd
+        Do While FindMore > 0 'lpFindFileData.dwFileAttributes)=16 = Directory
+          If lpFindFileData.dwFileAttributes=16 And Not (lpFindFileData.cFileName in (".","..")) Then
+            b_RtnPerformSearchResults=RtnPerformSearchResults(Dstr_DirItem+lpFindFileData.cFileName+"\",Dstr_MissingTable,Db_Use1stOption,Db_SearchSubDir)
+            If Db_Use1stOption And b_RtnPerformSearchResults
+              Then RtnPerformSearchResults=1 Exit Function
+          End If End If
+          FindMore=FindNextFile(FileHnd,lpFindFileData)
+        Loop
+      End If
+    End If
+  RtnPerformSearchResults=b_RtnPerformSearchResults
+
+Exit Function
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+'			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Function RtnPerformSearchResults(ByVal Dstr_DirItem,ByVal Dstr_MissingTable As String,ByVal Db_Use1stOption,ByVal Db_SearchSubDir As Logical) As Logical
+
+'*********************************************************************************************
+'DESC: Evaluates line of code which is main command and parses to correct Sub for further evaluation
+'PRE : .WOR file, Missing Table, Current code read from .WOR file,QRY's generated from Missing Table
+'POST: Main Command successfuly evaluated, Next line of code placed in Dstr_Read
+Sub EvalCode(ByVal Dstr_WorkInProgress,ByVal Dstr_SelWorkspaceDest,ByVal Dstr_Table,Dstr_Read,Dstr_CurrCmd,Dstr_QueryList,Dstr_Layers As String)
+
+OnError GOTO ErrorHandle
+
+  Dim b_RefFound As Logical
+  Dim n_BegPosn,n_EndPosn,n_ChrPosn,n_LayerCnt,n_LayerAdj As SmallInt
+  Dim str_EvalCode,str_Cmd As String
+  Dim str_FileExtn As String
+
+Call PrintMsg("Evaluate Line: "+Dstr_Read)
+  Dstr_Read=LCase$(Dstr_Read)
+  b_RefFound=Left$(Dstr_CurrCmd,1)
+  str_FileExtn=".TXT"
+  Call KillFile(Dstr_WorkInProgress,str_FileExtn,cn_File3)
+  If Left$(Dstr_Read,1) in (""," ","!",Chr$(39))
+    Then Print #cn_File3, Dstr_Read Line Input #cn_File1, Dstr_Read
+
+    Else
+      b_RefFound=0 	'Init Found Ref for new command
+      If Instr(1,Dstr_Read," ")
+        Then Dstr_CurrCmd=Left$(Dstr_Read,Instr(1,Dstr_Read," ")-1)
+        Else Dstr_CurrCmd=Dstr_Read
+      End If
+      Dstr_Read=LCase$(Dstr_Read)
+      Do Case Dstr_CurrCmd 'str_EvalCode
+        Case "Set"
+          If Left$(Dstr_Read,10)="Set Window"
+            Then Call CopyCodeProperty(cn_File1,cn_File3,Dstr_Read)
+            Else Note "Function EvalCode(): Case Else Ln330"+Chr$(13)+Dstr_Read
+              Print #cn_File3, Dstr_Read Line Input #cn_File1, Dstr_Read
+          End If
+        Case "Open","StatusBar"			'Open Command is either table or window, always 1 liner
+          Print #cn_File3, Dstr_Read		'No need to evaluate as already have missing table
+
+          Line Input #cn_File1, Dstr_Read	'Other open command are specific windows
+        Case "Select"				'Always one liner
+          Call ProcessSelect(Dstr_WorkInProgress,Dstr_Table,Dstr_Read,Dstr_QueryList)
+        Case "Browse","Graph"
+          gdi_TimerBeg=Timer()
+          Call ProcessBrowseGraph(Dstr_WorkInProgress,Dstr_SelWorkspaceDest,Dstr_Table,Dstr_Read)
+          gdi_TimerEnd=Timer()-gdi_TimerBeg
+          gdn_TimeBrowseGraph=gdn_TimeBrowseGraph+gdi_TimerEnd
+        Case "Map"
+          gdi_TimerBeg=Timer()
+          Call ProcessMap(Dstr_WorkInProgress,Dstr_Table,Dstr_Layers,Dstr_Read)
+          gdi_TimerEnd=Timer()-gdi_TimerBeg
+          gdn_TimeProcessMap=gdn_TimeProcessMap+gdi_TimerEnd
+        Case "Layout"
+          Print #cn_File3, Dstr_Read Line Input #cn_File1, Dstr_Read
+          gdi_TimerBeg=Timer()
+          Call CopyCodeSection(cn_File1,cn_File3,Dstr_Read)
+          gdi_TimerEnd=Timer()-gdi_TimerBeg
+          gdn_TimeLayout=gdn_TimeLayout+gdi_TimerEnd
+        Case Else NOTE "Function EvalCode(): Case Else Ln345"+Chr$(13)+Chr$(34)+Dstr_Read+Chr$(34)
+          Print #cn_File3, Dstr_Read Line Input #cn_File1, Dstr_Read
+      End Case
+      If Instr(1,Dstr_Read," ")
+        Then Dstr_CurrCmd=Left$(Dstr_Read,Instr(1,Dstr_Read," ")-1)
+        Else Dstr_CurrCmd=Dstr_Read
+      End If
+  End If
+'STEVIERAY: AppDir
+  If FileExists(ApplicationDirectory$()+PathToFileName$(Dstr_WorkInProgress)+str_FileExtn) Then Close File #cn_File3 End If
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+'			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Sub EvalCode(ByVal Dstr_WorkInProgress,ByVal Dstr_SelWorkspaceDest,ByVal Dstr_Table,
+	Dstr_Read,Dstr_CurrCmd,Dstr_QueryList,Dstr_Layers As String) As Logical
+
+'*********************************************************************************************
+'DESC: Copies entire code for main command
+'PRE : .WOR's to copy from and to and currently read line
+'POST: Code section copied and, Next line of code placed in Dstr_Read
+Sub CopyCodeSection(ByVal Dn_FileFrom, ByVal Dn_FileTo As SmallInt, Dstr_Read As String)
+
+OnError GOTO ErrorHandle
+
+'  Print "Beg CopyCodeSection: "+Dstr_Read
+  Do While Left$((Dstr_Read),1) Not In("B","M","G","L") And Not EOF(Dn_FileFrom)
+    Print #Dn_FileTo, Dstr_Read
+    Line Input #Dn_FileFrom, Dstr_Read
+  Loop 'Copy all Map Window Settings incl Thematics,Legend,Custom Labels,Cosmetic Layer Objects
+'  Print "End CopyCodeSection: "+Dstr_Read
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Sub CopyCodeSecton(ByVal Dn_FileFrom, ByVal Dn_FileTo As SmallInt, Dstr_Read As String)
+'*********************************************************************************************
+'DESC: Ignores entire code for main command
+'PRE : .WOR's to ignore from and currently read line
+'POST: Code section ignored and, Next line of code placed in Dstr_Read
+Sub IgnoreCodeSection(ByVal Dn_OfFile As SmallInt, Dstr_Read As String)
+
+OnError GOTO ErrorHandle
+
+'  Print "Beg IgnoreCodeSection: "+Dstr_Read
+  Do 'While Left$((Dstr_Read),1) Not In("B","M","G","L") And Not EOF(cn_File1)
+    Line Input #Dn_OfFile, Dstr_Read
+  Loop While Left$((Dstr_Read),1) Not In("B","M","G","L") And Not EOF(Dn_OfFile)
+'  Print "End IgnoreCodeSection: "+Dstr_Read
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Sub IgnoreCodeSection(ByVal Dn_OfFile As SmallInt, Dstr_Read As String)
+
+'*********************************************************************************************
+'DESC: Copies entire code for secondary command
+'PRE : .WOR's to copy from and to and currently read line
+'POST: Code property copied and, Next line of code placed in Dstr_Read
+Sub CopyCodeProperty(ByVal Dn_FileFrom, ByVal Dn_FileTo As SmallInt, Dstr_Read As String)
+
+OnError GOTO ErrorHandle
+
+'  Print "Beg CopyCodeProperty: "+Dstr_Read
+  Do
+    Print #Dn_FileTo, Dstr_Read
+    Line Input #Dn_FileFrom, Dstr_Read
+  Loop While (Left$((Dstr_Read),1)=" " Or Dstr_Read="") And Not EOF(Dn_FileFrom)
+'  Print "End CopyCodeProperty: "+Dstr_Read
+  'Copy all properties of code
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Sub CopyCodeProperty(ByVal Dn_FileFrom, ByVal Dn_FileTo As SmallInt, Dstr_Read As String)
+
+'*********************************************************************************************
+'DESC: Deletes and Recreates file for use
+'PRE : Filename,extension and ID
+'POST: Successfully recreated new file
+Sub KillFile(ByVal Dstr_FileName,ByVal Dstr_FileExtn As String, ByVal Dn_FileNum As SmallInt)
+  OnError Goto FileNotOpen
+  Close File #Dn_FileNum
+'STEVIERAY: AppDir
+  If FileExists(ApplicationDirectory$()+PathToFileName$(Dstr_FileName)+Dstr_FileExtn) Then
+    Kill ApplicationDirectory$()+PathToFileName$(Dstr_FileName)+Dstr_FileExtn
+  End If
+  Open File ApplicationDirectory$()+PathToFileName$(Dstr_FileName)+Dstr_FileExtn For Output As #Dn_FileNum Charset "Neutral"
+  Exit Sub
+FileNotOpen:
+  Resume Next
+  Dialog Preserve
+
+End Sub KillFile(ByVal Dstr_FileName,ByVal Dstr_FileExtn As String, ByVal Dn_FileNum As SmallInt)
+'*********************************************************************************************
+'DESC: Deletes all temporary files
+'PRE : .WOR file
+'POST: Successfully deleted all temporary files
+Sub KillAllFiles(ByVal Dstr_WorkInProgress As String)
+
+'STEVIERAY: AppDir
+  Dstr_WorkInProgress=ApplicationDirectory$()+PathToFileName$(Dstr_WorkInProgress)
+  OnError Goto JustDoIt
+  Kill Dstr_WorkInProgress+" RWT 2.WOR"
+  'Kill Dstr_WorkInProgress+" RWT 1.WOR" '**KILL IT!
+  Kill Dstr_WorkInProgress+".TXT"
+  Kill Dstr_WorkInProgress+" SetMap1.TXT"
+  Kill Dstr_WorkInProgress+" SetMap2.TXT"
+  Kill Dstr_WorkInProgress+" Shade1.TXT"
+  Kill Dstr_WorkInProgress+" Shade2.TXT"
+  Kill Dstr_WorkInProgress+" Legend.TXT"
+'  Kill Dstr_WorkInProgress+" Log.Wor"
+  Exit Sub
+JustDoIt:
+  Resume Next
+'STEVIERAY: cstr_SearchFile
+  Dialog Preserve
+  Note Error$()
+
+End Sub KillAllFiles
+'*********************************************************************************************
+'DESC: Processes main command: Select statement
+'PRE : .WOR file, Missing Table, Current code read,QueryList
+'POST: Returns Query generated by Missing Table
+Sub ProcessSelect(ByVal Dstr_WorkInProgress,ByVal Dstr_Table,Dstr_Read,Dstr_QueryList As String)
+
+OnError GOTO ErrorHandle
+
+  Dim str_FileExtn,str_FromTable As String
+  Dim n_BegPosn,n_EndPosn,n_ChrPosn As SmallInt
+Call PrintMsg("*Process Select Stmt*: "+Chr$(34)+Dstr_Table+Chr$(34)
+  +Chr$(13)+"Dstr_Read: "+Dstr_Read)
+  str_FileExtn=".TXT"
+'ADDED COMMENTS: 'DETERMINES IF SQL STMT QUERIES MISSING TABLE
+  n_BegPosn=Instr(1,Dstr_Read," from ")+5
+  If Dstr_Read Like "% where %"
+    Then n_EndPosn=Instr(n_BegPosn,Dstr_Read," where")
+    Else n_EndPosn=Instr(n_BegPosn,Dstr_Read," into")
+  End If
+  str_FromTable=Mid$(Dstr_Read,n_BegPosn,n_EndPosn-n_BegPosn)
+  n_ChrPosn=Instr(1,str_FromTable,Dstr_Table)
+  If n_ChrPosn
+    Then
+      If Mid$(str_FromTable,n_ChrPosn-1,1) in (","," ","")
+          And Mid$(str_FromTable,n_ChrPosn+Len(Dstr_Table),1) in (","," ","")
+'  If Instr(1,str_FromTable," "+Dstr_Table+" ")
+        Then n_BegPosn=Instr(15,Dstr_Read," into ")+5
+'ADDED COMMENTS: 'DETERMINES NAME OF RESULTANT TABLE OF SQL QUERY
+          If RTrim$(Dstr_Read) Like "% noselect"
+            Then n_EndPosn=Instr(n_BegPosn,Dstr_Read," noselect")
+            Else n_EndPosn=Len(Dstr_Read)
+          End If
+          Dstr_QueryList=LTrim$(RTrim$(Mid$(Dstr_Read,n_BegPosn,n_EndPosn-n_BegPosn)))
+Call PrintMsg("1. Found Ref to Missing Tab: Note Query Table: "+Dstr_QueryList)
+          Call KillFile(Dstr_WorkInProgress,str_FileExtn,cn_File3)
+        Else Print #cn_File3, Dstr_Read
+          Call PrintMsg("1. No Ref to Missing Table: Copy Select Stmt as is")
+      End If
+    Else Print #cn_File3, Dstr_Read
+      Call PrintMsg("1. No Ref to Missing Table: Copy Select Stmt as is")
+  End If
+  Line Input #cn_File1, Dstr_Read
+Call PrintMsg("*Process Select Stmt End*: Next Line: "+Dstr_Read)
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+
+End Sub ProcessSelect(ByVal Dstr_WorkInProgress,ByVal Dstr_Table,Dstr_Read,Dstr_QueryList As String)
+
+'*********************************************************************************************
+'DESC: Processes main command: Browse statement and Graph statement
+'PRE : .WOR file, Missing Table, Current code read
+'POST: Statement evaluated, next line of code placed in Dstr_Read
+Sub ProcessBrowseGraph(ByVal Dstr_WorkInProgress,ByVal Dstr_SelWorkspaceDest,ByVal Dstr_Table,Dstr_Read As String)
+
+OnError GOTO ErrorHandle
+
+  Dim b_RefFound As Logical
+  Dim str_FileExtn,str_Read As String
+  Dim n_BegPosn,n_EndPosn As SmallInt
+Call PrintMsg("*Process Browse/Graph Stmt: *"+Dstr_Table)
+
+  str_Read=Dstr_Read
+  b_RefFound=0
+  str_FileExtn=".TXT"
+
+'ADDED COMMENTS: CONCATENATE ALL LINES OF BROWSE STMT FOR PROCESSING
+  If Left$(Dstr_Read,8)="Browse *" 'Missing table may be referenced in 1st line
+    Then
+      If Right$(RTrim$(Dstr_Read),Len(Dstr_Table))=Dstr_Table
+        Then b_RefFound=1
+          Call KillFile(Dstr_WorkInProgress,str_FileExtn,cn_File3)
+        Else Print #cn_File3, Dstr_Read Line Input #cn_File1, Dstr_Read
+      End If
+    Else
+'ADDED COMMENTS: 'Determine whether code refers to missing table
+      Do
+        Print #cn_File3, Dstr_Read Line Input #cn_File1, Dstr_Read
+      Loop Until Left$(LTrim$(Dstr_Read),4)="from"
+      Dstr_Read=LCase$(Dstr_Read)
+      If Right$(RTrim$(Dstr_Read),Len(Dstr_Table))=Dstr_Table
+        Then
+          b_RefFound=1 str_FileExtn=".TXT"
+          Call KillFile(Dstr_WorkInProgress,str_FileExtn,cn_File3)
+'ADDED COMMENTS: 'Wrong Table - Keep
+        Else Print #cn_File3, Dstr_Read Line Input #cn_File1, Dstr_Read
+      End If
+  End If
+  If b_RefFound
+    Then Call IgnoreCodeSection(cn_File1,Dstr_Read)
+Call PrintMsg("1. Found Ref to Missing Tab: Ignore Code")
+'ADDED COMMENTS: 'CONCATENATE ALL LINES OF GRAPH STMT FOR PROCESSING
+    ElseIf str_Read Like "Graph %" Then
+Call PrintMsg("1. No Ref to Missing Tab: Search for 3TF Graph Template File")
+      Do While (Not(LTrim$(Dstr_Read) Like "Using %"))
+          And Left$((Dstr_Read),1) Not In("B","M","G","L") And Not EOF(cn_File1)
+        Print #cn_File3, Dstr_Read Line Input #cn_File1, Dstr_Read
+      Loop
+      If LTrim$(Dstr_Read) Like "Using %" Then
+        n_BegPosn=InStr(1,Dstr_Read,Chr$(34))+1
+        n_EndPosn=InStr(n_BegPosn,Dstr_Read,Chr$(34))
+        str_Read=PathToDirectory$(Dstr_WorkInProgress)+Mid$(Dstr_Read,n_BegPosn,n_EndPosn-n_BegPosn)
+'        Call CopyCodeSection(cn_File1,cn_File3,Dstr_Read)
+        If FileExists(str_Read)
+          Then If Dstr_SelWorkspaceDest And PathToDirectory$(Dstr_WorkInProgress)<>PathToDirectory$(Dstr_SelWorkspaceDest)
+'SAVING THE 3TF FILE
+            Then Save File str_Read as PathToDirectory$(Dstr_SelWorkspaceDest)+PathToFileName$(str_Read) End If
+          Else Line Input #cn_File1, Dstr_Read
+'           Call KillFile(Dstr_WorkInProgress,str_FileExtn,cn_File3)
+        End If
+      End If
+      Call CopyCodeSection(cn_File1,cn_File3,Dstr_Read)
+    Else Call CopyCodeSection(cn_File1,cn_File3,Dstr_Read)
+Call PrintMsg("1. No Ref to Missing Tab: Copy code as is")
+  End If
+Call PrintMsg("*Process Browse/Graph Stmt End*: "+Dstr_Table)
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Sub ProcessBrowseGraph(ByVal Dstr_WorkInProgress,ByVal Dstr_SelWorkspaceDest,ByVal Dstr_Table,Dstr_Read As String)
+
+'*********************************************************************************************
+'DESC: Processes main command: Map statement
+'PRE : .WOR file, Missing Table, Current code read
+'POST: Statement evaluated, next line of code placed in Dstr_Read
+Sub ProcessMap(ByVal Dstr_WorkInProgress,ByVal Dstr_Table,Dstr_Layers,Dstr_Read As String)
+
+OnError GOTO ErrorHandle
+
+  Dim str_FileExtn,str_FileExtn1,str_FileExtn2,str_MapFrom,str_Layer As String
+  Dim n_BegPosn,n_EndPosn,n_ChrPosn,n_LayerCnt As SmallInt
+  Dim str_Read As String
+  str_FileExtn=".TXT"
+  str_FileExtn1=" SetMap1.TXT"
+  str_FileExtn2=" SetMap2.TXT"
+
+  Dstr_Layers=""
+Call PrintMsg("*Processing Map From Stmt*: "+Dstr_Read)
+  If RTrim$(Dstr_Read)="Map From "+Dstr_Table
+    Then
+'ADDED COMMENTS: 'MAP FROM STMT WITH SINGLE LYR REFERRING TO MISSING TABLE FOUND
+Call PrintMsg("1. Single Lyr Map of Missing Ref Tab: Ignore Section of Code")
+      Call IgnoreCodeSection(cn_File1,Dstr_Read)
+      Call KillFile(Dstr_WorkInProgress,str_FileExtn,cn_File3)
+'ADDED COMMENTS: 'CONCATENATE ALL LINES OF MAP FROM STMT FOR PROCESSING
+    Else str_MapFrom=","+Mid$(Dstr_Read,10,Len(Dstr_Read)-10)+","
+      n_ChrPosn=Instr(1,str_MapFrom,","+Dstr_Table+",")+1
+Call PrintMsg("1. Multi Lyrs Map: Process Map From Stmt")
+      str_Read=""
+      Do While Right$(RTrim$(Dstr_Read),1)=","
+        str_Read=str_Read+LTrim$(RTrim$(Dstr_Read))
+        Line Input #cn_File1, Dstr_Read
+      Loop
+      str_Read=LCase$(str_Read+LTrim$(RTrim$(Dstr_Read)))+","
+Call PrintMsg("2. Map From Stmt: "+str_Read)
+      Line Input #cn_File1, Dstr_Read
+
+      n_BegPosn=10
+      n_ChrPosn=Instr(n_BegPosn,str_Read,Dstr_Table+",")
+      If Not (Mid$(str_Read,n_ChrPosn-1,1) in (","," ")) Then n_ChrPosn=0 End If
+'ADDED COMMENTS: 'PROCESS MAP STMT IF MISSING TABLE FOUND IN MAP STMT
+      If n_ChrPosn
+        Then
+          str_MapFrom="Map From "					'Init str_MapFrom
+          Do								'Loop Process Layers
+            n_LayerCnt=n_LayerCnt+1					'Increment Layer Count
+            n_EndPosn=Instr(n_BegPosn,str_Read,",")			'
+            str_Layer=Mid$(str_Read,n_BegPosn,n_EndPosn-n_BegPosn)	'Extract Layer name
+            If n_BegPosn=n_ChrPosn					'Lyr Posn = Missing lyr
+              Then
+                Dstr_Layers=Dstr_Layers+n_LayerCnt+";" 			'Record Lyr# of missing lyr
+                n_ChrPosn=Instr(n_ChrPosn+1,str_Read,Dstr_Table+",")	'Find next occurrance
+                If Not (Mid$(str_Read,n_ChrPosn-1,1) in (","," ")) Then n_ChrPosn=0 End If
+              Else str_MapFrom=str_MapFrom+str_Layer+","		'Add Good layer to list
+            End If
+            n_BegPosn=n_EndPosn+1					'Reset Pointer to next lyr
+            If Not n_ChrPosn Then
+              str_MapFrom=str_MapFrom+Mid$(str_Read,n_BegPosn,Len(str_Read)+1-n_BegPosn)
+            End If
+          Loop While n_BegPosn<Len(str_Read) And n_ChrPosn		'Do while layers remain
+          Call WriteMapFromStmt(str_MapFrom)
+          Call CopyCodeProperty(cn_File1,cn_File3,Dstr_Read)
+        Else
+          Call WriteMapFromStmt(str_Read)
+          Call CopyCodeSection(cn_File1,cn_File3,Dstr_Read)
+      End If
+
+      If Dstr_Layers
+        Then 'Layer found Process Settings
+
+          Call CopyCodeProperty(cn_File1,cn_File3,Dstr_Read)		'Copy rest of Map From cmd
+          Call KillFile(Dstr_WorkInProgress,str_FileExtn1,cn_File4)	'Init Temp File
+          Call CopyCodeSection(cn_File1,cn_File4,Dstr_Read)		'Copy Map Code to Temp File
+          Close File #cn_File4
+'STEVIERAY: AppDir
+          Open File ApplicationDirectory$()+PathToFileName$(Dstr_WorkInProgress)+str_FileExtn1 For Input As #cn_File4 Charset "Neutral"
+          Line Input #cn_File4, str_Read
+          n_ChrPosn=0
+          Do
+            Call KillFile(Dstr_WorkInProgress,str_FileExtn2,cn_File5)	'Init Temp File
+            Call ProcessMapSettings(Dstr_WorkInProgress,Dstr_Table,Dstr_Layers,str_Read)
+            n_BegPosn=Val(Dstr_Layers)
+            n_EndPosn=Val(Mid$(Dstr_Layers,InStr(2,Dstr_Layers,":")+1,2))
+            n_ChrPosn=n_ChrPosn+1
+Call PrintMsg("3. Missing Tab Found in Map From Stmt: Process Map Settings with: "+Dstr_Layers)
+            Dstr_Layers=Right$(Dstr_Layers,Len(Dstr_Layers)-InStr(1,Dstr_Layers,";"))
+            If Dstr_Layers Then
+              n_BegPosn=Val(Dstr_Layers)-n_ChrPosn
+              Dstr_Layers=n_BegPosn+";"+Right$(Dstr_Layers,Len(Dstr_Layers)-InStr(1,Dstr_Layers,";"))
+            End If
+            Close File #cn_File5
+            Close File #cn_File4
+'STEVIERAY: AppDir
+            Save File ApplicationDirectory$()+PathToFileName$(Dstr_WorkInProgress)+str_FileExtn2
+              As ApplicationDirectory$()+PathToFileName$(Dstr_WorkInProgress)+str_FileExtn1
+            Open File ApplicationDirectory$()+PathToFileName$(Dstr_WorkInProgress)+str_FileExtn1 For Input As #cn_File4 Charset "Neutral"
+            Line Input #cn_File4, str_Read
+
+          Loop While Dstr_Layers
+          Call CopyCodeSection(cn_File4,cn_File3,str_Read)
+          Close File #cn_File4
+'STEVIERAY: AppDir
+          Open File ApplicationDirectory$()+PathToFileName$(Dstr_WorkInProgress)+str_FileExtn1 For Input As #cn_File4 Charset "Neutral"
+          Line Input #cn_File4, str_Read
+          Print #cn_File9, "***********************************************************"
+          Call CopyCodeSection(cn_File4,cn_File9,str_Read)
+          Close File #cn_File4
+        Else
+Call PrintMsg("3. Missing Tab not Found in Map From Stmt: Copy code section as is")
+'          Call CopyCodeSection(cn_File1,cn_File3,Dstr_Read) 'No layers found copy code as is
+          Call KillFile(Dstr_WorkInProgress,str_FileExtn1,cn_File4)	'Init Temp File
+          Call CopyCodeSection(cn_File1,cn_File4,Dstr_Read) 'No layers found copy code as is
+          Close File #cn_File4
+'STEVIERAY: AppDir
+          Open File ApplicationDirectory$()+PathToFileName$(Dstr_WorkInProgress)+str_FileExtn1 For Input As #cn_File4 Charset "Neutral"
+          Line Input #cn_File4, str_Read
+          Call CopyCodeSection(cn_File4,cn_File3,str_Read)
+          Close File #cn_File4
+'STEVIERAY: AppDir
+          Open File ApplicationDirectory$()+PathToFileName$(Dstr_WorkInProgress)+str_FileExtn1 For Input As #cn_File4 Charset "Neutral"
+          Line Input #cn_File4, str_Read
+          Print #cn_File9, "***********************************************************"
+          Call CopyCodeSection(cn_File4,cn_File9,str_Read)
+          Close File #cn_File4
+      End If
+  End If
+Call PrintMsg("*Process Map Stmt End*: Next Line: "+Dstr_Read)
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Sub ProcessMap(ByVal Dstr_WorkInProgress,ByVal Dstr_Table,Dstr_Layers,Dstr_Read As String)
+
+'*********************************************************************************************
+'DESC: Generates Map From command lines suitable for .WOR file (Word Wrap)
+'PRE : Map From command without Chr$(13)
+'POST: Map From command with Chr$(13) each line separated at ~49 chars, max 80 chars
+Sub WriteMapFromStmt(Dstr_MapFrom As String)
+
+OnError GOTO ErrorHandle
+
+  Dim n_ChrPosn As SmallInt
+  n_ChrPosn=InStr(49,Dstr_MapFrom,",")
+  Do While n_ChrPosn And n_ChrPosn<>Len(Dstr_MapFrom)
+    If Dstr_MapFrom Like "Map From %"
+      Then Print #cn_File3, Left$(Dstr_MapFrom,n_ChrPosn)
+      Else Print #cn_File3, "  "+Left$(Dstr_MapFrom,n_ChrPosn)
+    End If
+    Dstr_MapFrom=Right$(Dstr_MapFrom,Len(Dstr_MapFrom)-n_ChrPosn)
+    n_ChrPosn=InStr(49,Dstr_MapFrom,",")
+  Loop
+'  str_Read=Left$(Dstr_MapFrom,Len(Dstr_MapFrom)-1)
+  Print #cn_File3, Left$(Dstr_MapFrom,Len(Dstr_MapFrom)-1) 'str_Read
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+
+End Sub WriteMapFromStmt(Dstr_MapFrom As String)
+
+'*********************************************************************************************
+'DESC: Processes Secondary Commands for Map From:  Set Map, Set Window, Set Coordsys, Shade, Create
+'PRE : .WOR file, Missing Table, Current code read
+'POST: Statement evaluated, next line of code placed in Dstr_Read
+Sub ProcessMapSettings(ByVal Dstr_WorkInProgress,ByVal Dstr_Table,Dstr_Layers,Dstr_Read As String)
+
+OnError GOTO ErrorHandle
+
+  Dim b_FoundFrame,b_uniqueStringName As Logical
+  Dim n_BegPosn,n_EndPosn,n_LayerCnt,n_RefLayer,n_RedistrictLayer As SmallInt
+  Dim str_Cmd,str_Read,str_FileExtn,str_Layers As String
+
+Call PrintMsg("3.0 *Process Map Settings*: Dstr_Table: "+Dstr_Table)
+  Do While Left$((Dstr_Read),1) Not In("B","M","G","L","O") And Not EOF(cn_File4)
+Call PrintMsg("3.1 Line: "+Dstr_Read+"   Dstr_Layers: "+Dstr_Layers)
+    str_Cmd=Left$(Dstr_Read,5) 'Extract Command: Set W,Set C,Set L,Set M,Shade,Crea
+    Do Case str_Cmd
+      Case "Set W","Set C"
+'ADDED COMMENTS: 'FOUND Set Window/Coordsys Stmt
+Call PrintMsg("3.2 Set Window/Coordsys Stmt: "+Dstr_read)
+        Call CopyCodeProperty(cn_File4,cn_File5,Dstr_Read)
+      Case "Set L"
+'ADDED COMMENTS: 'FOUND Set Legend Stmt
+        Line Input #cn_File4, Dstr_Read
+        n_BegPosn=Val(Mid$(LTrim$(Dstr_Read),7,2))
+        n_EndPosn=Val(Mid$(Dstr_Layers,Instr(2,Dstr_Layers,":")+1,2))	'
+Call PrintMsg("3.2 Set Legend Stmt for : "+n_BegPosn+"  ("+Dstr_read+")"
+  +Chr$(13)+"      Missing Tab Ref Lyr Info: "+n_BegPosn+":"+n_EndPosn+"  ("+Dstr_Layers+")")
+        If n_BegPosn Between Val(Dstr_Layers) And n_EndPosn
+          Then Do Line Input #cn_File4, Dstr_Read	'Ignore legend for (thematic) layers
+            Loop While (Left$(Dstr_Read,1)=" " Or Dstr_Read="") And Not EOF(cn_File4)
+Call PrintMsg("3.4 Curr Set Legend Lyr = Missing Tab Ref Lyr: Ignore Code")
+          Else Print #cn_File5, "set legend"
+            If n_BegPosn>n_EndPosn
+              Then n_EndPosn=n_EndPosn-Val(Dstr_Layers)+1
+                n_BegPosn=n_BegPosn-n_EndPosn
+Call PrintMsg("3.4 Curr Set Legend Lyr > Missing Tab Ref Lyr: Adjust Lyr to: "+n_BegPosn)
+                Print #cn_File5, "  layer "+n_BegPosn Line Input #cn_File4, Dstr_Read
+              Else
+Call PrintMsg("3.4 Curr Set Legend Lyr < Missing Tab Ref Lyr: Copy Code As Is")
+                Print #cn_File5, Dstr_Read Line Input #cn_File4, Dstr_Read
+            End If
+        End If
+        Do While (Left$((Dstr_Read),1)=" " Or Dstr_Read="") And Not EOF(cn_File4)
+          Print #cn_File5, Dstr_Read Line Input #cn_File4, Dstr_Read
+        Loop
+
+'ADDED COMMENTS: 'FOUND Set Map Stmt
+      Case "Set M"
+        If RTrim$(Dstr_Read)="Set Map"
+          Then Print #cn_File5, Dstr_Read Line Input #cn_File4, Dstr_Read	'Grab Next Line
+            str_Cmd=Left$(LTrim$(Dstr_Read),InStr(1,LTrim$(Dstr_Read)," ")-1)
+            Do Case str_Cmd
+              Case "Layer"
+                n_EndPosn=Val(Dstr_Layers)			'Posn of Layer / Thematic to remove
+                If Not InStr(1,Dstr_Layers,":") Then
+                  Dstr_Layers=Val(Dstr_Layers)+":"+Val(Dstr_Layers)+"|"+Val(Dstr_Layers)
+                    +Right$(Dstr_Layers,Len(Dstr_Layers)-InStr(1,Dstr_Layers,";")+1)
+                End If
+Call PrintMsg("3.2 Set Map Layer Stmt and remove layers: "+n_EndPosn+" ("+Dstr_Layers+")")
+                Do While str_Cmd="Layer" And Not EOF(cn_File4)	'Process All Layers
+                  n_BegPosn=Val(Mid$(LTrim$(Dstr_Read),7,2))	'Current Processing Layer
+                  If n_BegPosn=n_EndPosn 			'First ref to missing layer found
+                    Then
+                      If n_EndPosn<Val(Mid$(Dstr_Layers,Instr(2,Dstr_Layers,":")+1,2))
+                        Then n_EndPosn=n_EndPosn+1
+                        Else n_EndPosn=0
+                      End If
+                      Do Line Input #cn_File4, Dstr_Read
+                      Loop While (Left$(Dstr_Read,1)=" " Or Dstr_Read="") And Not(LTrim$(Dstr_Read) Like "Layer %") And Not EOF(cn_File4)
+Call PrintMsg("3.3 Ref Lyr Found. Remove layer, Find Next Ref: "+n_EndPosn+" ("+Dstr_Layers+")")
+                    ElseIf n_BegPosn>n_EndPosn Then	'Layer Posn > Missing Layer
+                      n_BegPosn=n_BegPosn-(Val(Mid$(Dstr_Layers,Instr(2,Dstr_Layers,":")+1,2))-Val(Dstr_Layers)+1)	'Re-adjust Layer #
+                      Print #cn_File5, "  Layer "+n_BegPosn Line Input #cn_File4, Dstr_Read
+                      Do While (Left$(Dstr_Read,1)=" " Or Dstr_Read="") And Not(LTrim$(Dstr_Read) Like "Layer %") And Not EOF(cn_File4)
+                        Print #cn_File5, Dstr_Read Line Input #cn_File4, Dstr_Read
+                      Loop
+Call PrintMsg("3.3 Curr Layer > Ref Lyr: Readjust Layer # to: "+n_BegPosn+ "(+"+(Val(Mid$(Dstr_Layers,Instr(2,Dstr_Layers,":")+1,2))-Val(Dstr_Layers)+1)+">"+n_EndPosn+")")
+                    Else
+Call PrintMsg("3.3 Curr Layer < Ref Lyr: Copy As Is: "+Dstr_Read)
+                    Do Print #cn_File5, Dstr_Read Line Input #cn_File4, Dstr_Read
+                      Loop While (Left$(Dstr_Read,1)=" " Or Dstr_Read="") And Not(LTrim$(Dstr_Read) Like "Layer %") And Not EOF(cn_File4)
+                  End If
+                  str_Cmd=Left$(LTrim$(Dstr_Read),InStr(1,LTrim$(Dstr_Read)," ")-1)
+                Loop
+Call PrintMsg("3.4 Finished Processing Set Layer Stmt: "+Dstr_Read)
+              Case Else '"Coordsys","Clipping"
+Call PrintMsg("3.2 Set Map Coordsys/Clipping Stmt: "+Dstr_Read)
+                Call CopyCodeProperty(cn_File4,cn_File5,Dstr_Read)
+            End Case
+          Else Call CopyCodeProperty(cn_File4,cn_File5,Dstr_Read)
+        End If
+
+'ADDED COMMENTS: 'FOUND Shade Stmt (Thematic Maps)
+      Case "Shade"
+Call PrintMsg("3.2 Shade Stmt: "+Dstr_read)
+        Call ProcessMapShade(Dstr_WorkInProgress,Dstr_Read,Dstr_Layers)
+
+      Case "Creat"
+        n_RefLayer=Val(Dstr_Layers)
+        n_EndPosn=Val(Mid$(Dstr_Layers,Instr(2,Dstr_Layers,":")+1,2))
+        Do 'Determine whether code refers to missing table
+          str_Cmd=Mid$(Dstr_Read,8,Instr(8,Dstr_Read," ")-8)
+          Do Case str_Cmd
+'ADDED COMMENTS: 'FOUND Create Cartographic Stmt (Legends)
+            Case "Cartographic"
+Call PrintMsg("3.2 Create Cartographic Stmt: "+Dstr_read)
+
+              str_FileExtn=" Legend.TXT"
+              Call KillFile(Dstr_WorkInProgress,str_FileExtn,cn_File8)
+
+Call PrintMsg("3.3 Check Missing Tab Info: "+n_RefLayer+":"+n_EndPosn)
+              If n_RedistrictLayer Then
+                If n_RedistrictLayer<n_RefLayer
+                  Then n_RefLayer=n_RefLayer+1
+                    n_EndPosn=n_EndPosn+1
+                  ElseIf n_RedistrictLayer=n_EndPosn Then
+                    n_EndPosn=n_EndPosn+1
+                    If n_RedistrictLayer=n_RefLayer Then
+                      n_RefLayer=n_RefLayer+1
+                    End If
+'                 ElseIf n_RedistrictLayer>n_EndPosn
+              End if End If
+Call PrintMsg("3.3 ReCheck Missing Tab Info: "+n_RefLayer+":"+n_EndPosn)
+
+              Do
+                If LTrim$(Dstr_Read) Like "Window Title %" Then
+                  Dstr_Read="  Window Title "+Chr$(34)+"Legend of "+Chr$(34)+Chr$(43)+"WindowInfo(FrontWindow(),1)"
+                End If
+                If LTrim$(Dstr_Read) Like "Frame From Layer %"
+                  Then
+Call PrintMsg("3.4 Found: "+LTrim$(Dstr_Read)+"   Missing Tab Info: "+Dstr_Layers)
+                    If Val(Mid$(LTrim$(Dstr_Read),18,2)) Between n_RefLayer And n_EndPosn
+                      Then
+Call PrintMsg("3.5 Ignore Code as "+RTrim$(LTrim$(Dstr_Read))
++" is between ref layers of Missing Tab: "+n_RefLayer+":"+n_EndPosn)
+                        Do Line Input #cn_File4, Dstr_Read
+                        Loop While (Left$(Dstr_Read,1)=" " Or Dstr_Read="") And Not(LTrim$(Dstr_Read) Like "Frame From Layer %") And Not EOF(cn_File4)
+                      ElseIf Val(Mid$(LTrim$(Dstr_Read),18,2))>n_EndPosn Then
+                        n_BegPosn=n_EndPosn+1-n_RefLayer
+Call PrintMsg("3.5 Decrease "+RTrim$(LTrim$(Dstr_Read))+" by "+n_BegPosn
++" as Frame is after ref of Missing Tab: "+n_RefLayer+":"+n_EndPosn)
+                        Print #cn_File8, "  Frame From Layer "+Str$(Val(Mid$(LTrim$(Dstr_Read),18,2))-n_BegPosn)
+                        Line Input #cn_File4, Dstr_Read
+                      Else
+Call PrintMsg("3.5 Copy "+RTrim$(LTrim$(Dstr_Read))+" as is"
++" as Frame is before ref of Missing Tab: "+n_RefLayer+":"+n_EndPosn)
+                        Print #cn_File8, Dstr_Read Line Input #cn_File4, Dstr_Read
+                    End If
+                  Else Print #cn_File8, Dstr_Read Line Input #cn_File4, Dstr_Read
+                End If
+              Loop While (Left$(Dstr_Read,1)=" " Or Dstr_Read="") And Not EOF(cn_File4)'Or LTrim$(Dstr_Read) Like "Frame From Layer %"
+              Close File #cn_File8 Open File ApplicationDirectory$()+PathToFileName$(Dstr_WorkInProgress)+str_FileExtn For Input As #cn_File8 Charset "Neutral"
+              b_FoundFrame=0
+              Do
+                Line Input #cn_File8, str_Read
+                If LTrim$(str_Read) Like "Frame From Layer %" Then b_FoundFrame=1 Exit Do End If
+              Loop While Not EOF(cn_File8)
+              If b_FoundFrame Then
+                Close File #cn_File8 Open File ApplicationDirectory$()+PathToFileName$(Dstr_WorkInProgress)+str_FileExtn For Input As #cn_File8 Charset "Neutral"
+                Line Input #cn_File8, str_Read
+                Call CopyCodeProperty(cn_File8,cn_File5,str_Read)
+              End If
+              Close File #cn_File8
+
+'ADDED COMMENTS: 'FOUND Create Redistricter Stmt (Redistrict Window)
+            Case "Redistricter"
+Call PrintMsg("3.2 Create Redistricter Stmt: "+Dstr_read)
+              str_Read=Dstr_Read 'Create Redistricter Stmt
+Call PrintMsg("3.3   1st Line of Code Read: "+Dstr_Read)
+              Line Input #cn_File4, Dstr_Read
+              n_BegPosn=Val(Mid$(LTrim$(Dstr_Read),InStr(1,LTrim$(Dstr_Read)," ")+1,2))
+              n_RedistrictLayer=n_BegPosn
+Call PrintMsg("3.4  2nd Line of Code Read: "+Dstr_Read
+  +Chr$(13)+"  Layer Num Extracted: "+n_BegPosn
+  +Chr$(13)+"  Result Layer Num of Missing Tab: "+Str$(n_EndPosn))
+              If n_BegPosn=n_EndPosn Then
+Call PrintMsg("3.5 Redistrict on Missing TabLyr: Ignore Code")
+                  Do While RTrim$(Dstr_Read)<>"set legend" Line Input #cn_File4, Dstr_Read Loop
+                  Line Input #cn_File4, Dstr_Read
+                  Do While Left$(Dstr_Read,1)=" " Or Dstr_Read="" Line Input #cn_File4, Dstr_Read
+                  Loop
+                ElseIf n_BegPosn>n_EndPosn Then
+                  n_BegPosn=Val(Mid$(Dstr_Layers,Instr(1,Dstr_Layers,":")+1,2))-Val(Dstr_Layers)+1
+Call PrintMsg("3.5 Copy Redistrict Stmt as new layer: Curr Layer -"+n_BegPosn)
+                  Print #cn_File5, str_Read
+                  Print #cn_File5, "    Layer "+Str$(n_RedistrictLayer-n_BegPosn)
+                  Line Input #cn_File4, Dstr_Read
+                  Call CopyCodeProperty(cn_File4,cn_File5,Dstr_Read) 'Create Redistricter Stmt
+                  Print #cn_File5, "set shade "+Str$(n_RedistrictLayer-n_BegPosn)'v0.83
+                    +Mid$(Dstr_Read,Instr(11,Dstr_Read," "),Len(Dstr_Read)-Instr(11,Dstr_Read," ")+1)
+                  Line Input #cn_File4, Dstr_Read
+                  Call CopyCodeProperty(cn_File4,cn_File5,Dstr_Read) 'Set Shade Stmt
+                  Call CopyCodeProperty(cn_File4,cn_File5,Dstr_Read) 'Set Legend Stmt
+                Else 'n_BegPosn<n_EndPosn+1 Then
+Call PrintMsg("3.5 Copy Redistrict Stmt as is 1: "+str_Read+Dstr_Read)
+                  Print #cn_File5, str_Read
+                  Call CopyCodeProperty(cn_File4,cn_File5,Dstr_Read) 'Create Redistricter Stmt
+                  Call CopyCodeProperty(cn_File4,cn_File5,Dstr_Read) 'Set Shade Stmt
+                  Call CopyCodeProperty(cn_File4,cn_File5,Dstr_Read) 'Set Legend Stmt
+              End If
+'ADDED COMMENTS: 'FOUND Map3D, PrismMap (3D Windows)
+            Case "Map3D","PrismMap"
+Call PrintMsg("3.2 Create Map3D/PrismMap Stmt: "+Dstr_read)
+              If b_uniqueStringName=1 Then
+                Do Line Input #cn_File4, Dstr_Read
+                Loop Until Left$(Dstr_Read,5) in ("Set W","Set P")
+                Do Line Input #cn_File4, Dstr_Read
+                Loop While (Left$(Dstr_Read,1)=" " Or Dstr_Read=""
+                  Or Left$(Dstr_Read,5) in ("Set W","Set P")
+                  Or LTrim$(Dstr_Read) Like "Camera %") And Not EOF(cn_File4)  'UnDim
+              End If
+            Case Else 'Create Object
+'ADDED COMMENTS: 'FOUND Create Object/Text Stmt (Custom Lables, Cosmetic Objects)
+Call PrintMsg("3.2 Create Object Stmt: "+Dstr_read)
+              Do Print #cn_File5, Dstr_Read Line Input #cn_File4, Dstr_Read
+              Loop While Left$(Dstr_Read,1) in (" ",Chr$(40))
+          End Case
+        Loop While (Left$(Dstr_Read,1)=" " Or Dstr_Read="") And Not EOF(cn_File4)
+
+      Case Else
+Call PrintMsg("3.2 Dim/UnDim/uniqueStringName or Unrecognised Stmt (Just copy as is): "+Dstr_read)
+        If Left$(Dstr_Read,Instr(1,Dstr_Read," ")-1) in ("UnDim","Dim","uniqueStringName")
+          Then
+            If Left$(Dstr_Read,Instr(1,Dstr_Read," ")-1)="uniqueStringName"
+                And InStr(1,LCase$(Dstr_read),Dstr_Table)' And TableInfo(Dstr_Table,TAB_INFO_TYPE)=TAB_TYPE_IMAGE
+              Then b_uniqueStringName=1
+                Do While LCase$(Left$(Dstr_read,16))="uniquestringname" And Not EOF(cn_File4)
+                  Line Input #cn_File4, Dstr_Read
+                Loop
+              Else b_uniqueStringName=0
+                Call CopyCodeProperty(cn_File4,cn_File5,Dstr_Read)
+            End If
+          Else Call PrintMsg("Could note handle: "+Dstr_Read)
+            Call CopyCodeProperty(cn_File4,cn_File5,Dstr_Read)
+        End If
+    End Case
+  Loop
+Call PrintMsg("3.0 *Process Map Settings End*: Next line: "+Dstr_Read)
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+
+End Sub ProcessMapSettings(ByVal Dstr_WorkInProgress,ByVal Dstr_Table,Dstr_Layers,Dstr_Read As String)
+
+'*********************************************************************************************
+'DESC: Processes Thematic Map Shade Commands
+'PRE : Current code line is a shade command: .WOR file, Current code line
+'POST: All shade commands processed. Returns new order of map layer in Dstr_Layers
+Sub ProcessMapShade(ByVal Dstr_WorkInProgress,Dstr_Read,Dstr_Layers As String)
+
+OnError GOTO ErrorHandle
+
+  Dim str_Read1,str_Read2 As String
+  Dim str_FileExtn1,str_FileExtn2 As String
+  Dim n_RefFound,n_RefLayer1,n_RefLayer2,n_TotalShades As SmallInt
+  Dim n_LayerNum,lcv1,lcv2 As SmallInt
+  Dim n_BegPosn,n_EndPosn,n_OrigRefLayer As SmallInt
+  Dim n_RefLayer3,n_RefLayer4,str_LayersTo As SmallInt
+Call PrintMsg("3.2.0 *Process Map Shade*: "+Dstr_Layers)
+  str_FileExtn1=" Shade1.TXT" str_FileExtn2=" Shade2.TXT"
+
+  If FileExists(ApplicationDirectory$()+PathToFileName$(Dstr_WorkInProgress)+str_FileExtn1)
+    Then Call KillFile(Dstr_WorkInProgress,str_FileExtn1,cn_File6)
+    Else Open File ApplicationDirectory$()+PathToFileName$(Dstr_WorkInProgress)+str_FileExtn1 For Output As #cn_File6 Charset "Neutral"
+  End If
+
+  n_TotalShades=0
+  n_RefLayer1=Val(Dstr_Layers)
+  n_RefLayer2=n_RefLayer1
+'ADDED COMMENTS: COUNT # OF THEMATIC MAPS THERE ARE IN MAP
+  Do While Left$(Dstr_Read,5)="shade"
+    n_TotalShades=n_TotalShades+1
+Call PrintMsg("ProcessMapShade: Dstr_Layers: "+Dstr_Layers+"   Dstr_Read: "+Dstr_Read)
+    If n_RefLayer2=Val(Mid$(Dstr_Read,7,2))
+      Then
+        n_RefLayer2=n_RefLayer2+1
+Call PrintMsg("Shade stmt = Missing tab ref layer: Increment Missing tab ref layer to: "+Dstr_Layers)
+      ElseIf Val(Mid$(Dstr_Read,7,2))<n_RefLayer2 Then  'n_LayerCnt
+        n_RefLayer2=n_RefLayer2+1
+        n_LayerNum=Val(Dstr_Layers)+1
+        Dstr_Layers=n_LayerNum+Right$(Dstr_Layers,Len(Dstr_Layers)+1-InStr(1,Dstr_Layers,";"))
+Call PrintMsg("Shade stmt < Missing tab ref layer: Increment Missing tab ref layer to: "+Dstr_Layers)
+    End If
+    Call CopyCodeProperty(cn_File4,cn_File6,Dstr_Read)
+  Loop
+'ADDED COMMENTS: COUNT # OF THEMATIC MAPS THERE ARE IN A SINGLE LAYER
+  n_BegPosn=InStr(2,Dstr_Layers,";") n_EndPosn=Len(Dstr_Layers)
+'ADDED COMMENTS: FORMAT OF STRING: #1:#2|#3;
+'==  Layer# of 1st Thematic:New Layer# of Missing Table after Thematics|Original Layer# of Missing Table
+  Dstr_Layers=Val(Dstr_Layers)+":"+n_RefLayer2+"|"+n_RefLayer1+Mid$(Dstr_Layers,n_BegPosn,n_EndPosn+1-n_BegPosn)
+  Close File #cn_File6
+
+  Save File ApplicationDirectory$()+PathToFileName$(Dstr_WorkInProgress)+str_FileExtn1
+      As ApplicationDirectory$()+PathToFileName$(Dstr_WorkInProgress)+str_FileExtn2
+  Open File ApplicationDirectory$()+PathToFileName$(Dstr_WorkInProgress)+str_FileExtn1 For Input As #cn_File6 Charset "Neutral"
+  Line Input #cn_File6, str_Read1
+Call PrintMsg("1. Number of Shade Commands: "+n_TotalShades+"  LayerInfo of Missing Table: "+Dstr_Layers)
+  For lcv1=1 to n_TotalShades	'Do While Left$(str_Read,5)="shade"
+Call PrintMsg("Loop 1: Processing Shade Command lcv1: "+lcv1
+  +Chr$(13)+"Layer of Missing Table: "+n_RefLayer1
+  +Chr$(13)+"Layer of Current Shade: "+Val(Mid$(str_Read1,7,2)))
+    If n_RefLayer1>=Val(Mid$(str_Read1,7,2))
+      Then n_RefLayer1=n_RefLayer1+1
+Call PrintMsg("2.  Then: Current Shade <= Missing Table Layer"
+  +Chr$(13)+"    Layer of Missing Table Incremented to: "+n_RefLayer1)
+        If n_RefLayer1-1=Val(Mid$(str_Read1,7,2))
+          Then
+Call PrintMsg("3.    Then: Ignore Shade Cmd"+"      Find Next Command")
+            Do Line Input #cn_File6, str_Read1
+            Loop While Left$(str_Read1,1)=" " And Not EOF(cn_File6)
+          Else
+Call PrintMsg("3.    Then: Copy Shade Cmd: "+str_Read1)
+            Call CopyCodeProperty(cn_File6,cn_File5,str_Read1)
+        End If
+'STEVIERAY: AppDir
+      Else Open File ApplicationDirectory$()+PathToFileName$(Dstr_WorkInProgress)+str_FileExtn2 For Input As #cn_File7 Charset "Neutral"
+        Line Input #cn_File7, str_Read2
+        n_RefLayer2=Val(Mid$(Dstr_Layers,InStr(4,Dstr_Layers,"|")+1,2))'n_OrigRefLayer
+Call PrintMsg("2.  Else: Curr Shade > Missing Tab Lyr"
+  +Chr$(13)+"    Lyr Pos of Them of Missing Tab: "+n_RefLayer2)
+        For lcv2=1 to n_TotalShades
+Call PrintMsg("    Loop 2: Processing how other Shade Cmds affect Loop 1 lcv2: "+lcv2)
+          n_RefLayer4=1
+Call PrintMsg("5.  Shade Cmd: "+str_Read2+"      Ref Layer: "+n_RefLayer2)
+          If lcv2<lcv1
+            Then
+              If n_RefLayer2>Val(Mid$(str_Read2,7,2)) Then
+                n_RefLayer2=n_RefLayer2+1
+Call PrintMsg("      Ref Layer < Shade Layer: Increment Ref Layer to: "+n_RefLayer2)
+              End If
+              If n_RefLayer2=Val(Mid$(str_Read2,7,2)) Then
+                n_RefLayer2=n_RefLayer2+1
+                n_RefLayer4=n_RefLayer4+1
+Call PrintMsg("      Ref Layer = Shade Layer: Increment Ref Layer to: "+n_RefLayer2
+  +Chr$(13)+"      Num Ref Layers: "+n_RefLayer4)
+              End If
+              Do
+                Line Input #cn_File7, str_Read2
+              Loop While (Left$(str_Read2,1)=" " Or str_Read2="") And Not EOF(cn_File7)
+            ElseIf lcv2=lcv1 Then
+              n_RefLayer3=n_RefLayer2
+Call PrintMsg("      Posn of Ref Layer @ Current Shade Cmd: "+n_RefLayer3)
+              Do
+                Line Input #cn_File7, str_Read2
+              Loop While (Left$(str_Read2,1)=" " Or str_Read2="") And Not EOF(cn_File7)
+            Else 'lcv2>lcv1
+Call PrintMsg("      Ref Layer = Current Shade Cmd: "+n_RefLayer3)
+                  Exit For
+                  Do Line Input #cn_File7, str_Read2
+                  Loop While (Left$(str_Read2,1)=" " Or str_Read2="") And Not EOF(cn_File7)
+          End If
+
+        Next
+        Close File #cn_File7
+Call PrintMsg("6.    End Loop 2"+Chr$(13)+"    Lyr Pos of Missing Tab: "+n_RefLayer3
+  +"    Final Lyr Posof Missing Tab: "+n_RefLayer2+"    Curr Shade Cmd for Layer: "
+  +Val(Mid$(str_Read1,7,2))+"    Missing Tab Lyr Info: "+Dstr_Layers+" (Take Val() value)")
+        If n_RefLayer3=Val(Mid$(str_Read1,7,2))
+          Then Do Line Input #cn_File6, str_Read1	'Ignore code
+            Loop While Left$(str_Read1,1)=" " And Not EOF(cn_File6)
+Call PrintMsg("7.      Lyr of Missing Tab = Curr Shade Cmd: Remove Shade Cmd")
+          Else
+            If n_RefLayer3<Val(Mid$(str_Read1,7,2)) Then
+Call PrintMsg("7.      Lyr of Missing Tab < Curr Shade Cmd")
+              n_RefLayer2=n_RefLayer4
+              Else n_RefLayer2=0
+Call PrintMsg("7.      Lyr of Missing Tab has no Shades and > Curr Shade Cmd")
+            End If
+
+Call PrintMsg("    Num of Lyrs to Remove: "+n_RefLayer2)
+          n_RefLayer2=Val(Mid$(str_Read1,7,2))-n_RefLayer2
+Call PrintMsg("    Set New Shade Cmd Lyr to: "+n_RefLayer2
+  +Chr$(13)+"    Old Shade Cmd: "+str_Read1
+  +Chr$(13)+"    New Shade Cmd: shade "+n_RefLayer2+Right$(str_Read1,Len(str_Read1)-Instr(8,str_Read1," ")+1))
+          Print #cn_File5, "shade "+n_RefLayer2+Right$(str_Read1,Len(str_Read1)-Instr(8,str_Read1," ")+1)
+          Line Input #cn_File6, str_Read1
+          Call CopyCodeProperty(cn_File6,cn_File5,str_Read1)
+        End If
+    End If
+  Next
+  Close File #cn_File6
+Call PrintMsg("3.2.0 *Process Map Shade End*: "+Dstr_Layers+"  "+Dstr_Read)
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Sub ProcessMapShade(ByVal Dstr_WorkInProgress, Dstr_Read, Dstr_Layers As String)
+'*********************************************************************************************
+'DESC: Writes processed code to new .WOR
+'PRE : Main Commands successfuly parsed into .TXT file: .WOR file
+'POST: Contents of .TXT file successfully copied into resultant .WOR file.
+Sub WriteCode(ByVal Dstr_WorkInProgress As String)
+
+OnError GOTO ErrorHandle
+
+  Dim str_Read As String
+  If FileExists(ApplicationDirectory$()+PathToFileName$(Dstr_WorkInProgress)+".TXT") Then
+    Open File ApplicationDirectory$()+PathToFileName$(Dstr_WorkInProgress)+".TXT" For Input As #cn_File3 Charset "Neutral"
+    Line Input #cn_File3, str_Read
+    Do While Not EOF(cn_File3)
+      Print #cn_File2, str_Read Line Input #cn_File3, str_Read
+    Loop
+    Close File #cn_File3
+    Kill ApplicationDirectory$()+PathToFileName$(Dstr_WorkInProgress)+".TXT"
+  End If
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+
+End Sub WriteCode(ByVal Dstr_WorkInProgress As String)
+'*********************************************************************************************
+'DESC: About this program
+'PRE : Called from Menu
+'POST: About this program Successfully completed: Dialog box with info
+'Localized about Box Subroutine created 3/21/2005
+
+
+'********************************************************************************************************************
+'* Subroutine:AboutProgram
+'* Date: 3/21/2005
+'* Author: Chris DiGiuseppe
+'* Creates an 'about' dialog for this program in the Tools menu,according to localization specs
+'********************************************************************************************************************
+Sub AboutProgram
+
+OnError GOTO ErrorHandle
+
+  		Dialog
+    		Title GetResString(IDS_String_46) + " " + GetResString(IDS_String_48) + " (" + GetResString(IDS_String_47)+ " " + AppVersion + ")"
+
+  	Control StaticText
+   	 Position 10, 10
+    Title GetResString(IDS_String_1) + " " + GetResString(IDS_String_2) + " " + GetResString(IDS_String_3)+ StrReplaceNewLines("\n\n")
+			+ GetResString(IDS_String_24) + StrReplaceNewLines("\n")
+			+ GetResString(IDS_String_101) + StrReplaceNewLines("\n")
+			+ GetResString(IDS_String_102) + StrReplaceNewLines("\n\n")
+			+ GetResString(IDS_String_49) + StrReplaceNewLines("\n")
+			+ GetResString(IDS_String_50) + StrReplaceNewLines("\n") + GetResString(IDS_String_51) + StrReplaceNewLines("\n")
+			+ GetResString(IDS_String_52) + StrReplaceNewLines("\n") + GetResString(IDS_String_53) + StrReplaceNewLines("\n")
+			+ GetResString(IDS_String_54) + StrReplaceNewLines("\n") + GetResString(IDS_String_55) + StrReplaceNewLines("\n\n")
+			+ GetResString(IDS_String_103) + StrReplaceNewLines("\n") + GetResString(IDS_String_104) + StrReplaceNewLines("\n")
+			+ GetResString(IDS_String_105) + StrReplaceNewLines("\n") + GetResString(IDS_String_106) + StrReplaceNewLines("\n")
+
+'	 Width 85x Height 22y
+	 Width 85x Height 27y
+  Control OKButton
+    Title GetResString(IDS_String_32)
+    Width 30
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+
+End Sub
+
+
+Function strReplaceNewLines(ByVal s as String) as String
+
+OnError GOTO ErrorHandle
+
+	Dim i As Integer
+	i=Instr(1, s, "\n")
+	Do Until i=0
+		If Mid$(" "+s,i,1)="\" Then
+			s=Left$(s, i-1)+Mid$(s, i+1, 32767) ' allow escaped backslashes
+		Else
+			s=Left$(s, i-1) & Chr$(13) & Mid$(s, i+2, 32767)
+		End If
+		i=Instr(i+1, s, "\n")
+	Loop
+	strReplaceNewLines=s
+
+Exit Function
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+
+End Function
+
+'*********************************************************************************************
+'DESC: About this program
+'PRE : Called from Menu
+'POST: About this program Successfully completed: Dialog box with info
+'Sub AboutProgram
+'  Dialog
+'    Title "About RWT-SMILE v0.93"
+'    Control StaticText Position 1x,0.82y Title "____________________________________________"
+'    Control StaticText Position 1x,0.5y Title "Steve's MapInfo Legendary Enhancements (SMILE)"'
+'
+'    Control StaticText Position 1x,2.5y Title "This app removes all references to tables in MapInfo"
+'    Control StaticText Position 1x,3.5y Title "generated workspaces where the tables no longer exist."
+'
+'    Control StaticText Position 1x,5y  Title "You will be asked to complete the following steps:"
+'    Control StaticText Position 4x,6y  Title "1. Specify Automatic / Interactive mode."
+'    Control StaticText Position 4x,7y  Title "2. Locate target workspace file."
+'    Control StaticText Position 4x,8y  Title "3. Specify new location of table. (Interactive mode)"
+'    Control StaticText Position 4x,9y  Title "4. Test new resultant workspace file. (Optional)"
+'
+'    Control StaticText Position 1x,10.5y Title "This app will:"
+'    Control StaticText Position 4x,11.5y Title "1. Create a new workspace:"
+'    Control StaticText Position 6x,12.5y Title "     "+Chr$(34)+"wksfilename RWT1.WOR"+Chr$(34)
+'    Control StaticText Position 2x,13.5y Title "  wksfilename: is the name of the WOR chosen."
+'
+'    Control StaticText Position 1x,15y Title "This app will not:"
+'    Control StaticText Position 4x,16y Title "1. Delete/Modify/Rename existing workspace file."
+'    Control StaticText Position 4x,17y Title "2. Delete/Modify/Rename existing table files."
+'    Control StaticText Position 1x,18.5y Title "Current Limitations:"
+'    Control StaticText Position 4x,19.5y Title "1. Only Supports MapInfo generated .WOR files."
+'    Control StaticText Position 4x,20.5y Title "2. No User Friendly OnError Support."
+'    Control StaticText Position 4x,21.5y Title "3. Tablenames written in lowercase in WOR file."
+'    Control StaticText Position 4x,22.5y Title "       This is due to heavy use of InStr() function."
+'
+'    Control StaticText Position 1x,24y Title "Future Release (if sufficient feedback/interest given):"
+'    Control StaticText Position 4x,25y Title "1. Support for limitations listed above."
+'    Control StaticText Position 4x,26y Title "2. Automatic Search for missing tables.  DONE "
+'    Control StaticText Position 4x,27y Title "3. Ability to run batch jobs.  DONE "
+'    Control StaticText Position 4x,26y Title "2. Support for other Commands that I missed."
+'    Control StaticText Position 4x,27y Title "       A msg will return with commands not recognised."
+'    Control StaticText Position 4x,28y Title "       Email command to me to add support for it."
+'
+'    Control StaticText Position 1x,29.5y Title "I am more than happy to support this app, however..."
+'    Control StaticText Position 4x,30.5y Title "despite my email address note that I am not MapInfo"
+'    Control StaticText Position 4x,31.5y Title "and that this app is not supported by MapInfo"
+'    Control StaticText Position 4x,32.5y Title ""
+'
+'    Control StaticText Position 1x,34y Title "Please report bugs and wishlists to:"
+'    Control StaticText Position 1x,35y Title "    MapInfo.Australia@gmail.com"
+'    Control StaticText Position 1x,36y Title "               Stephen Chan"
+'    Control OKButton Position 31x,34.25y Title "Close" Height 2.8y Width 12x
+'End Sub AboutProgram
+
+'*********************************************************************************************
+'DESC: End Program
+'PRE : Called from Menu
+'POST: Program successfully terminated.
+Sub EndProgram
+  End Program
+End Sub EndProgram
+'*********************************************************************************************
+'DESC: Dummy
+'PRE : Called from Menu
+'POST: Functionality removed.
+Sub Dummy
+  Note "Option Removed"
+End Sub Dummy
+'*********************************************************************************************
+'DESC: Checks whether to step through RWT .WOR parser
+'PRE : Show Message Log enabled from Menu
+'POST: Steps through each internal testing prompts.
+Sub PrintMsg(ByVal Dstr_Msg As String)
+  If gb_ShowPrintMsg Then
+    Print Dstr_Msg
+    Note Dstr_Msg
+  End If
+End Sub PrintMsg(ByVal Dstr_Msg As String)
+'*********************************************************************************************
+'DESC: Set search directory fro RWT
+'PRE : Called from Menu
+'POST: RWT ini file Successfully written
+Sub RWTSettings
+
+OnError GOTO ErrorHandle
+
+  Dim str_Read,str_DirList,str_DirItem As String
+  Dim lcv,n_BegPosn,n_EndPosn As SmallInt
+  Dim d_FirstDate As Date
+  Dim str_RegoDetails As String
+  Dim str_Write,sd1,sd2,sd3 As String
+  Dim b_ValidDate As Logical
+  gbTempRegistered=gbRegistered
+  gstr_DirList=""
+
+ ' If FileExists(ApplicationDirectory$()+ file_DeleteOnStartup) Then 			'**Reading RWT 1 file from previous run
+ ' 	Open File ApplicationDirectory$() + file_DeleteOnStartup For Input As #cn_File12 Charset "Neutral"
+ ' EndIF
+
+  If FileExists(ApplicationDirectory$()+cstr_IniFile)
+    Then Open File ApplicationDirectory$()+cstr_IniFile For Input As #cn_File10 Charset "Neutral"
+      Line Input #cn_File10, str_Read
+      str_RegoDetails=str_Read
+      Line Input #cn_File10, str_Read
+      lcv=1
+      Do While Not EOF(cn_File10)
+        gstr_DirList=gstr_DirList+str_Read+";"
+        Line Input #cn_File10, str_Read
+        lcv=lcv+1
+      Loop
+      Close File #cn_File10
+    'Else Note GetResString(?)
+  End If
+  If Not gstr_DirList Then gstr_DirList=ApplicationDirectory$()+";" End If
+  str_DirItem=Mid$(gstr_DirList,1,Instr(1,gstr_DirList,";")-1)
+  str_DirList=gstr_DirList
+  Dialog
+    Title GetResString(IDS_String_74)
+    Calling DLG_RWTSettings_Handler
+    Control StaticText
+      Title GetResString(IDS_String_75)
+      Position 1x,1y
+    Control EditText
+      ID 1
+      Value str_DirItem
+      Position 12x,0.8y
+      'Width 38.5x
+      Width 45x
+    Control Button
+      Title GetResString(IDS_String_76)
+      'Position 48.5x,0.8y Height 1.6y Width 2.25x
+      Position 57.60x,0.8y Height 1.6y Width 3.25x
+      Calling GetDirectoryDLG
+    Control Button
+      ID 4
+      Title GetResString(IDS_String_77)
+      Position 1x,3y
+      'Width 24x
+      Width 29.5x
+      Calling DLG_RWTSettings_AddToListHandler
+    Control Button
+      Title GetResString(IDS_String_78)
+      'Position 27x,3y
+      Position 31.5x,3y
+      'Width 24x
+      Width 29.5x
+      Calling DLG_RWTSettings_RemoveFromListHandler
+    Control Listbox
+      ID 2
+      Title gstr_DirList
+      Position 1x,5.5y
+      'Width 50x Height 5.5y
+      Width 59.75x Height 7.5y
+      Calling DLG_RWTSettings_ListBoxHandler
+
+    Control Checkbox
+      ID 3
+      Title GetResString(IDS_String_79)
+      Position 3x,14y
+      Value 1 Disable
+      Hide
+
+    Control OKButton
+      Title GetResString(IDS_String_32)
+      'Position 25x,11.8y
+      Position 35x,13.8y
+      Width 12.5x
+    Control CancelButton
+      Title GetResString(IDS_String_18)
+      'Position 38.5x,11.8y
+      Position 48.5x,13.8y
+      Width 12.5x
+  If CommandInfo(CMD_INFO_DLG_OK)
+    Then
+
+      If FileExists(ApplicationDirectory$()+cstr_IniFile) Then
+        Kill ApplicationDirectory$()+cstr_IniFile
+      End If
+      If gstr_DirList Then
+        Open File ApplicationDirectory$()+cstr_IniFile For Output As #cn_File10 Charset "Neutral"
+        sd1=20041128
+        sd2=d_FirstDate
+        sd3=CurDate()
+        str_Write=Mid$(sd2,4,1)+Mid$(sd3,4,1)
+        For lcv=5 to 8
+          str_Write=str_Write+Mid$(sd1,lcv,1)
+          str_Write=str_Write+Mid$(sd2,lcv,1)
+          str_Write=str_Write+Mid$(sd3,lcv,1)
+        Next
+        'str_Write=str_Write+" Steve Chan Rocks =]"
+        Print #cn_File10, str_Write
+        n_BegPosn=1
+        Do n_EndPosn=Instr(n_BegPosn,gstr_DirList,";")
+          Print #cn_File10, Mid$(gstr_DirList,n_BegPosn,n_EndPosn-n_BegPosn)
+          n_BegPosn=n_EndPosn+1
+        Loop While n_BegPosn < Len(gstr_DirList)
+        Close File #cn_File10
+      End If
+    Else gstr_DirList=str_DirList
+  End If
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Sub RWTSettings
+
+'*********************************************************************************************
+Function RtnRWTSettings() As String
+
+OnError GOTO ErrorHandle
+
+  Dim str_Read,str_DirList,str_DirItem As String
+  Dim lcv As SmallInt
+  If FileExists(ApplicationDirectory$()+cstr_IniFile) Then
+    Open File ApplicationDirectory$()+cstr_IniFile For Input As #cn_File10 Charset "Neutral"
+    Line Input #cn_File10, str_Read 'TEST
+    Line Input #cn_File10, str_Read
+    lcv=1
+    Do While Not EOF(cn_File10)
+      str_DirList=str_DirList+str_Read+";"
+      Line Input #cn_File10, str_Read
+      lcv=lcv+1
+    Loop
+    Close File #cn_File10
+  End If
+  RtnRWTSettings=str_DirList
+
+Exit Function
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+
+End Function RtnRWTSettings() As String
+
+'*********************************************************************************************
+Sub DLG_RWTSettings_Handler
+'  Alter Control 1 Value str_DirItem
+'  Alter Control 2 Title gstr_DirList
+  Alter Control 4 Active
+End Sub DLG_RWTSettings_Handler
+'*********************************************************************************************
+Sub DLG_RWTSettings_AddToListHandler
+
+OnError GOTO ErrorHandle
+
+  Dim FileHnd as Integer		'HOLDS THE WinHandle FOR THE LIFE OF THE CALLS
+  Dim lpFindFileData as WIN32_FIND_DATA	'HOLDS THEN DATA TYPE STRUCTURE FOR WinAPI
+  Dim FileFind as String		'STRING THE USER WISHES TO SEARCH FOR
+  Dim FindMore as Integer		'RECURSION VARIABLE TO FOR CALL BACK TO FindNext FUNCTION
+  Dim n_BegPosn,n_EndPosn,lcv As SmallInt
+  Dim str_DirItem As String
+	Dim STestIfValid,sValidResults As String
+
+	 sTestIfValid=Chr$(73)+Chr$(39)+Chr$(109)+Chr$(32)
+    +Chr$(66)+Chr$(97)+Chr$(116)+Chr$(109)+Chr$(97)+Chr$(110)
+  sValidResults=Chr$(65)+Chr$(117)+Chr$(116)+Chr$(104)+Chr$(111)+Chr$(114)+Chr$(58)+Chr$(32)
+      +Chr$(83)+Chr$(116)+Chr$(101)+Chr$(112)+Chr$(104)+Chr$(101)+Chr$(110)+Chr$(32)
+      +Chr$(67)+Chr$(104)+Chr$(97)+Chr$(110)+Chr$(13)
+      +Chr$(69)+Chr$(109)+Chr$(97)+Chr$(105)+Chr$(108)+Chr$(58)+Chr$(32)
+      +Chr$(77)+Chr$(97)+Chr$(112)+Chr$(73)+Chr$(110)+Chr$(102)+Chr$(111)+Chr$(46)
+      +Chr$(65)+Chr$(117)+Chr$(115)+Chr$(116)+Chr$(114)+Chr$(97)+Chr$(108)+Chr$(105)+Chr$(97)+Chr$(64)
+      +Chr$(103)+Chr$(109)+Chr$(97)+Chr$(105)+Chr$(108)+Chr$(46)+Chr$(99)+Chr$(111)+Chr$(109)
+
+  If ReadControlValue(1)=sTestIfValid
+    Then Note sValidResults
+  End If
+
+  FileFind=RTrim$(LTrim$(ReadControlValue(1)))
+  If Mid$(FileFind,2,2)=":\" Then
+    	If Right$(FileFind,1)<>"\" Then
+    		FileFind=FileFind+"\"
+    	End If
+      FileHnd = FindFirstFile(FileFind+".",lpFindFileData)
+'Print "ReadControlValue(1) FindHnd: "+FileHnd+Chr$(13)+"FileFind: "+FileFind
+      n_BegPosn=1 lcv=0
+      If FileHnd > 0
+        Then If Not(gstr_DirList Like "%"+FileFind+"%")
+            Then Do n_EndPosn=Instr(n_BegPosn,gstr_DirList,";")
+                str_DirItem=Mid$(gstr_DirList,n_BegPosn,n_EndPosn-n_BegPosn)
+                n_BegPosn=n_EndPosn+1 lcv=lcv+1
+              Loop While n_BegPosn < Len(gstr_DirList) And Not(FileFind Like "%"+str_DirItem+"%")
+              If Not str_DirItem Then str_DirItem="*" End If
+              If Not (FileFind Like "%"+str_DirItem+"%")
+                Then
+'NUMBER OF SEARCH DIRECTORIES
+'                  If lcv<5
+'                    Then
+                      gstr_DirList=gstr_DirList+FileFind+";"
+                      Alter Control 2 Title gstr_DirList
+'                    Else Note GetResString(?)
+'                  End If
+                Else Note GetResString(IDS_String_81)
+              End If
+            ElseIf ";"+gstr_DirList Like "%;"+FileFind+";%" Then
+              Note GetResString(IDS_String_82)
+            Else
+              Note GetResString(IDS_String_83)
+          End If
+        Else str_DirItem=GetResString(IDS_String_84)
+            +Chr$(13)+GetResString(IDS_String_85)
+          If Len(FileFind)=3 Then
+            str_DirItem=str_DirItem+Chr$(13)+Chr$(13)
+          End If
+          Note str_DirItem
+      End If
+    Else Note GetResString(IDS_String_84)
+        +Chr$(13)+GetResString(IDS_String_85)
+  End If
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+
+End Sub DLG_RWTSettings_AddToListHandler
+
+'*********************************************************************************************
+Sub DLG_RWTSettings_RemoveFromListHandler
+
+OnError GOTO ErrorHandle
+
+  Dim n_BegPosn,n_EndPosn,n_ChrPosn,lcv As SmallInt
+      n_ChrPosn=0
+      For lcv=1 to ReadControlValue(2)
+        n_BegPosn=n_ChrPosn+1
+        n_EndPosn=Instr(n_BegPosn,gstr_DirList,";")
+        n_ChrPosn=n_EndPosn
+      Next
+        gstr_DirList=Left$(gstr_DirList,n_BegPosn-1)+Right$(gstr_DirList,Len(gstr_DirList)-n_EndPosn)
+      Alter Control 2 Title gstr_DirList
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+
+End Sub DLG_RWTSettings_RemoveFromListHandler
+
+'*********************************************************************************************
+Sub DLG_RWTSettings_ListBoxHandler
+
+OnError GOTO ErrorHandle
+
+  Dim n_BegPosn,n_EndPosn,n_ChrPosn,lcv As SmallInt
+  If CommandInfo(CMD_INFO_DLG_DBL)
+    Then Call DLG_RWTSettings_RemoveFromListHandler
+    Else n_ChrPosn=0
+      For lcv=1 to ReadControlValue(2)
+        n_BegPosn=n_ChrPosn+1
+        n_EndPosn=Instr(n_BegPosn,gstr_DirList,";")
+        n_ChrPosn=n_EndPosn
+      Next
+      Alter Control 1 Value Mid$(gstr_DirList,n_BegPosn,n_EndPosn-n_BegPosn)
+  End If
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+
+End Sub DLG_RWTSettings_ListBoxHandler
+
+'*********************************************************************************************
+'DESC: Enable/Disables Step Through message log
+'PRE : Called from Menu
+'POST: Successfully enabled/disabled message log.
+Sub SetPrintMsg
+
+OnError GOTO ErrorHandle
+
+  If gb_ShowPrintMsg
+    Then gb_ShowPrintMsg=0 Alter Menu Item ID 5 Uncheck
+    Else gb_ShowPrintMsg=1 Alter Menu Item ID 5 Check
+  End If
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Sub SetPrintMsg
+
+'*********************************************************************************************
+'DESC: Generates report of RWT
+'PRE : RWT successfully processed
+'POST: Report generated.
+Sub GenerateReport(ByVal Dstr_SelWorkspace,ByVal Dstr_SelWorkspaceDest As String, ByVal Dn_ChosenMode As SmallInt,Db_PerformSearch As Logical)
+
+OnError GOTO ErrorHandle
+
+  Set Window Message Position (0,3.75) Height 3.25 Width 3.75
+  Print Chr$(13)
+'CHANGE IN HARDCODED TEXT
+  Dim sTitle As String
+  sTitle=GetResString(IDS_String_56)
+'HARDCODED TEXT: "&"  I don't think this should be changed.
+  If sTitle Like "%&%"
+    Then sTitle=Left$(sTitle,InStr(1,sTitle,"&")-1)+Right$(sTitle,Len(sTitle)-InStr(1,sTitle,"&"))
+  End If
+  Print sTitle + Space$(1) + AppVersion
+  Print "************************************************************************"
+  Print GetResString(IDS_String_69)
+  Print Space$(4)+Dstr_SelWorkspace+".WOR"
+  If Dstr_SelWorkspaceDest Then
+    Print GetResString(IDS_String_70)
+    Print Space$(4)+Dstr_SelWorkspaceDest
+  End If
+  Print "************************************************************************"
+  Print GetResString(IDS_String_71)
+'HARDCODED TEXT: "<None>"
+  If gstr_ListTablesReplaced="" Then Print Space$(4)+GetResString(IDS_String_57) End If
+  Do While Len(gstr_ListTablesReplaced)>1
+    Print Space$(4)+RtnItemFromList(gstr_ListTablesReplaced)+".TAB"
+'HARDCODED TEXT: "- with "
+    Print Space$(4)+GetResString(IDS_String_58)+RtnItemFromList(gstr_ListTablesReplacedWith)+".TAB"
+  Loop
+  Print "************************************************************************"
+  Print GetResString(IDS_String_72)
+'HARDCODED TEXT: "<None>"
+  If gstr_ListTablesProcessed="" Then Print Space$(4)+GetResString(IDS_String_57) End If
+  Do While Len(gstr_ListTablesProcessed)>1
+    Print Space$(4)+RtnItemFromList(gstr_ListTablesProcessed)+".TAB"
+  Loop
+  Print "************************************************************************"
+'  Print GetResString(?)+gdi_TotalProcessTime+GetResString(?)
+'  If Dn_ChosenMode=2 Then
+'    Print "User spent "+gdn_TimeChooseTable+" seconds in interactive prompts."
+'    gdi_TotalProcessTime=gdi_TotalProcessTime-gdn_TimeChooseTable
+'    Print "Actual Process Time was ~"+gdi_TotalProcessTime+" seconds."
+'  End If
+'  Print "    Breakdown of Actual Process Time"
+'  Print "          Eval Browse / Graph      : ~"+gdn_TimeBrowseGraph
+'  Print "          Eval Map (incl. Legends) : ~"+gdn_TimeProcessMap
+'  Print "          Eval Layout                     : ~"+gdn_TimeLayout
+'  If Db_PerformSearch Then
+'    Print "          Performing Search:        : 	~"+gdn_TimeSearchFile
+'  End If
+'  Print "*******************************************************************"
+'  Print "Workspace File Generated:"
+''  Print "    "+Left$(Dstr_SelWorkspace,Len(Dstr_SelWorkspace)-4)+GetResString(?)
+'  Print "    "+Dstr_SelWorkspace+GetResString(?)
+'  Print "*******************************************************************"
+  Print Chr$(13)
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Sub GenerateReport(ByVal Dstr_SelWorkspace, ByVal Dstr_SelWorkspaceDest As String, ByVal Dn_ChosenMode As SmallInt,Db_PerformSearch As Logical)
+
+'*********************************************************************************************
+'DESC: Report Tables Missing and Tables Replaced.
+'PRE : Called from GenerateReport: List of Tables
+'POST: Table Report Generated
+Function RtnItemFromList(Dstr_List As String) As String
+
+OnError GOTO ErrorHandle
+
+  Dim n_ChrPosn As SmallInt
+  Dim str_Item As String
+  n_ChrPosn=Instr(1,Dstr_List,";")
+  str_Item=Left$(Dstr_List,n_ChrPosn-1)
+'  If Right$(str_Item,4)<>".TAB" Then str_Item=str_Item+".TAB" End If
+  If Right$(str_Item,4) in (".TAB",".WOR") Then str_Item=Left$(str_Item,Len(str_Item)-4) End If
+  Dstr_List=Right$(Dstr_List,Len(Dstr_List)-n_ChrPosn)
+  RtnItemFromList=str_Item
+
+Exit Function
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Function RtnItemFromList(Dstr_List As String) As String
+'*********************************************************************************************
+Function RtnFileOpenDialog(ByVal Dstr_Table,ByVal Dstr_Alias As String) As String
+'T15236 Reprhased Title
+  If PathToFileName$(Dstr_Table)=Dstr_Alias
+    Then RtnFileOpenDialog=FileOpenDlg(PathToDirectory$(Dstr_Table),PathToFileName$(Dstr_Table),"TAB",GetResString(IDS_String_107)+PathToFileName$(Dstr_Table))
+    Else RtnFileOpenDialog=FileOpenDlg(PathToDirectory$(Dstr_Table),PathToFileName$(Dstr_Table),"TAB",GetResString(IDS_String_107)+PathToFileName$(Dstr_Table)+" ("+GetResString(IDS_String_108)+Dstr_Alias+")")
+  End If
+'  RtnFileOpenDialog=FileOpenDlg(PathToDirectory$(Dstr_Table),PathToFileName$(Dstr_Table),"TAB","Locate Missing Table: "+Dstr_Alias)
+End Function RtnFileOpenDialog(ByVal Dstr_Table,ByVal Dstr_Alias As String) As String
+'*********************************************************************************************
+Function RtnAskPrompt(ByVal Dstr_AskPrompt,ByVal Dstr_AskOK,ByVal Dstr_AskCancel As String) As Logical
+  RtnAskPrompt=Ask(Dstr_AskPrompt,Dstr_AskOK,Dstr_AskCancel)
+End Function RtnAskPrompt(ByVal Dstr_AskPrompt,ByVal Dstr_AskOK,ByVal Dstr_AskCancel As String) As Logical
+
+
+'*********************************************************************************************
+Sub RunWorApplication(ByVal Dstr_SelWorkspace As String)
+OnError GOTO ErrorHandle
+
+  Dim str_Read,str_3tfFile As String
+  Dim b_Success As Logical
+  Dim n_BegPosn,n_EndPosn As SmallInt
+  Dim tempPath As String
+
+  tempPath = Dstr_SelWorkspace
+
+  b_Success=TRUE
+  Set Event Processing Off
+  Open File ApplicationDirectory$()+PathToFileName$(Dstr_SelWorkspace)+" RWT 1.WOR" For Input As #cn_File1 CharSet "Neutral"
+  Open File ApplicationDirectory$()+PathToFileName$(Dstr_SelWorkspace)+".WOR" For Output As #cn_File2 CharSet "Neutral"
+  Line Input #cn_File1, str_Read
+  Do While Left$(str_Read,1)="!" And Not EOF(cn_File1)
+    Print #cn_File2, str_Read
+    Line Input #cn_File1, str_Read
+  Loop
+  Do While Not(Left$(str_Read,11)="Open Table ") And Not EOF(cn_File1)
+    Line Input #cn_File1, str_Read
+  Loop
+  Do While Left$(str_Read,11)="Open Table " And Not EOF(cn_File1)
+'    Run Command str_Read
+    Line Input #cn_File1, str_Read
+  Loop
+  Do While Not EOF(cn_File1)
+    If LTrim$(str_Read) Like "Using %" Then
+      n_BegPosn=InStr(1,str_Read,Chr$(34))+1
+      n_EndPosn=InStr(n_BegPosn,str_Read,Chr$(34))
+      str_3tfFile=PathToDirectory$(Dstr_SelWorkspace)+Mid$(str_Read,n_BegPosn,n_EndPosn-n_BegPosn)
+      n_BegPosn=InStr(1,Str_Read,Chr$(34))
+      n_EndPosn=InStr(n_BegPosn+1,Str_Read,Chr$(34))
+      str_Read=Left$(Str_Read,n_BegPosn)+str_3tfFile+Mid$(Str_Read,n_EndPosn,Len(Str_Read)-n_EndPosn+1)
+    End If
+    Print #cn_File2, str_Read
+    Line Input #cn_File1, str_Read
+  Loop
+  Close File #cn_File1
+  Close File #cn_File2
+  OnError Goto ErrWorFileFailed
+  Run Application ApplicationDirectory$()+PathToFileName$(Dstr_SelWorkspace)+".WOR"
+  Kill ApplicationDirectory$()+PathToFileName$(Dstr_SelWorkspace)+" RWT 1.WOR"
+  Kill ApplicationDirectory$()+PathToFileName$(Dstr_SelWorkspace)+".WOR"
+  Set Event Processing On
+'  RunWorApplication=b_Success
+  Exit Function
+ErrWorFileFailed:
+  b_Success=FALSE
+  Note GetResString(IDS_String_63)+Err()+Chr$(13)+GetResString(IDS_String_64)+Error$()
+  Resume Next
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+
+End Sub RunWorApplication(ByVal Dstr_SelWorkspace As String)
+
+'*********************************************************************************************
+Sub SaveWorApplication(ByVal Dstr_SelWorkspace,Dstr_SelWorkspaceDest As String)
+
+OnError GOTO ErrorHandle
+
+  Dim str_Read,str_Read2,str_SelWorkspaceDest As String
+  Dim tempPath As String
+
+'  Dim b_Success As Logical
+'  b_Success=TRUE
+  Set Event Processing Off
+
+'BUG6
+  Open File ApplicationDirectory$()+PathToFileName$(Dstr_SelWorkspace)+" RWT 1.WOR" For Input As #cn_File1 CharSet "Neutral"
+  Line Input #cn_File1, str_Read
+  Do While Not(Left$(str_Read,11)="Open Table ") And Not EOF(cn_File1)
+    Line Input #cn_File1, str_Read
+  Loop
+  Do While Left$(str_Read,11)="Open Table " And Not EOF(cn_File1)
+'    Run Command str_Read
+    Line Input #cn_File1, str_Read
+  Loop
+'  str_SelWorkspaceDest=PathToDirectory$(Dstr_SelWorkspaceDest)+Left$(PathToFileName$(Dstr_SelWorkspaceDest),Len(PathToFileName$(Dstr_SelWorkspaceDest))-4)+"_Tmp.WOR"
+  str_SelWorkspaceDest=PathToDirectory$(Dstr_SelWorkspaceDest)+Left$(PathToFileName$(Dstr_SelWorkspaceDest),Len(PathToFileName$(Dstr_SelWorkspaceDest))-4)+".~OR"
+  Save Workspace As str_SelWorkspaceDest
+  Open File str_SelWorkspaceDest For Input As #cn_File2 CharSet "Neutral"
+  If FileExists(Dstr_SelWorkspaceDest) then Kill Dstr_SelWorkspaceDest End If
+  Open File Dstr_SelWorkspaceDest For Output As #cn_File3 CharSet "Neutral"
+  Line Input #cn_File2, str_Read2
+  Do While Not EOF(cn_File2)
+    Print #cn_File3, str_Read2
+    Line Input #cn_File2, str_Read2
+  Loop
+  Do While Not EOF(cn_File1)
+    Print #cn_File3, str_Read
+    Line Input #cn_File1, str_Read
+  Loop
+  Close File #cn_File1
+  Close File #cn_File2
+  Close File #cn_File3
+  OnError Goto ErrWorFileFailed
+'  Run Application ApplicationDirectory$()+PathToFileName$(Dstr_SelWorkspace)+".WOR"
+  Kill ApplicationDirectory$()+PathToFileName$(Dstr_SelWorkspace)+" RWT 1.WOR"
+'  Kill ApplicationDirectory$()+PathToFileName$(Dstr_SelWorkspace)+".WOR"
+  Kill str_SelWorkspaceDest
+  Set Event Processing On
+'  RunWorApplication=b_Success
+  Exit Sub
+ErrWorFileFailed:
+'  b_Success=FALSE
+  Note GetResString(IDS_String_63)+Err()+Chr$(13)+GetResString(IDS_String_64)+Error$()
+  Resume Next
+
+	tempPath = ApplicationDirectory$()+PathToFileName$(Dstr_SelWorkspace)
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+		        NOTE "Error: " + Error$()
+			Resume CleanUp
+
+End Sub SaveWorApplication(ByVal Dstr_SelWorkspace As String)
+
+'***************************************************************************************************
+'*Function: GetFolderPath
+'*Uses SHBrowseforFolderAPI to bring up windows-style dialog for selecting directories
+'*Chris DiGiuseppe - 4/20/2005
+'***************************************************************************************************
+Function GetFolderPath(sOutPath as string) as integer
+
+  Dim iNull As Integer
+  Dim lpIDList As Integer
+  Dim lResult As Integer
+  Dim sPath As String
+  Dim BI As BrowseInfo
+  Dim retval as integer
+
+  OnError Goto HandleError
+
+  'Set MapInfo as the Owner
+  BI.hWndOwner = GetActiveWindow()
+  'Return only if the user selected a directory
+  BI.ulFlags = 1
+
+  'Show the Browse for folder dialog
+  lpIDList = SHBrowseForFolder(BI)
+  If lpIDList Then
+    sPath = String$(260, " ")
+    'Get the path from the IDList
+    lResult = SHGetPathFromIDList(lpIDList, sPath)
+    'free the block of memory
+    Call CoTaskMemFree(lpIDList)
+    sPath = ltrim$(rtrim$(sPath))
+  End If
+
+  sOutPath = sPath
+  GetFolderPath = 0
+  Exit Function
+
+HandleError:
+	Note Error$()
+  GetFolderPath = Err()
+
+End Function
+'*********************************************************************************************
+'*********************************************************************************************
+Sub GetDirectoryDLG
+	Dim sCurDir As String
+	Dim test As Integer
+	Dim STestIfValid,sValidResults As String
+
+	test = GetFolderPath(sCurDir)
+
+	'If CommandInfo (CMD_INFO_DLG_OK)
+  '  Then Alter Control 1 Value sCurDir
+  'End If
+
+  Alter Control 1 Value sCurDir
+
+End Sub
+
+Sub DLG_GetDirectory_RtnDirList
+
+OnError GOTO ErrorHandle
+
+  Dim i As Integer
+  Dim sStrList As String
+  Dim sList() As String
+  Dim sFiles() As String
+  Dim sDir As String
+  Dim sCurDir As String
+  Dim sTmp As String
+
+'  If Not CommandInfo(CMD_INFO_DLG_DBL) Then Exit Sub End If
+
+  i = ReadControlValue (2)
+  sCurDir= ReadControlValue(1)
+  sStrList= ReadControlValue(3)
+
+  sTmp = ListGetElement(sStrList, i)
+  If sTmp = ".\"
+    Then sDir = sCurDir
+    Elseif sTmp = "..\" Then
+      For i = Len(sCurDir)-1 To 1 Step -1
+        If mid$(sCurDir, i, 1) = "\" Then
+          sDir = left$(sCurDir, i)
+          Exit for
+        End if
+      Next
+    Else sDir = sCurDir + sTmp
+  End If
+  If sDir = ""
+    Then sCurDir = "\"
+    Else sCurDir = sDir
+  End If
+
+  Call DLG_GetDirectory_GetDir(sCurDir, sList)
+
+  Alter Control 1 Value sCurDir
+  sStrList = ""
+  For i = 1 to UBound(sList)
+    If i = 1
+      Then sStrList = sList(i)
+      Else sStrList = sStrList+ ";" + sList(i)
+    End If
+  Next
+  Alter Control 3 Value sStrList
+'  Alter Control 2 Title sStrList
+  If sStrList Like "%.\;..\%" Then
+'HARDCODED TEXT: "(Refresh Current Directory)", "(Parent Directory)"
+    sStrList=".\"+Space$(40)+GetResString(IDS_String_44)+";..\"+Space$(39)+GetResString(IDS_String_45)+Mid$(sStrList,7,Len(sStrList)-6)
+  End If
+  Alter Control 2 Title sStrList
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Sub DLG_GetDirectory_RtnDirList
+
+'*********************************************************************************************
+Sub DLG_GetDirectory_GetDir(sPath As String,sList() As String)
+
+OnError GOTO ErrorHandle
+
+  Dim hFindFile, nStatus As Integer
+  Dim f As WIN32_FIND_DATA
+  Dim i, j As Integer
+  Dim sDirPath As String
+
+  sDirPath=sPath
+  If Right$(sDirPath, 1) <> "\" Then sDirPath = sDirPath + "\" End If
+
+  hFindFile = FindFirstFile(sDirPath+"*.*", f)
+  Do
+    If f.dwFileAttributes = 16 Then
+      j = j + 1
+      ReDim sList(j)
+      sList(j) = f.cFilename + "\"
+    End If
+    nStatus = FindNextFile(hFindFile, f)
+  Loop While nStatus = 1
+  nStatus = FindClose(hFindFile)
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Sub DLG_GetDirectory_GetDir(sPath As String,sList() As String)
+
+'*********************************************************************************************
+Function ListGetElement(ByVal inlist As String,Byval choice As SmallInt) As String
+
+OnError GOTO ErrorHandle
+
+Dim i, iIndex1, iIndex2 as SmallInt
+  iIndex2 = 0
+  i = 1
+  Do While i <= choice
+    iIndex1 = iIndex2+1
+    iIndex2 = instr(iIndex1,inlist,";")
+    If iIndex2 = 0
+      Then ListGetElement = right$(inlist,len(inlist)-iIndex1+1)
+      Else ListGetElement = mid$(inlist,iIndex1,iIndex2-iIndex1)
+    End If
+    i = i + 1
+  Loop
+
+Exit Function
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+End Function ListGetElement(ByVal inlist As String,Byval choice As SmallInt) As String
+
+'*********************************************************************************************
+Function GetDrives() As String
+
+OnError GOTO ErrorHandle
+
+  Dim nCount,str_Char(),i,n As Integer
+  Dim str_DriveList As String
+
+   nCount = 128
+   ReDim str_Char(nCount)
+
+   nCount = GetLogicalDriveString32 (nCount*4, str_Char)
+   str_DriveList = ""
+   For i = 1 To nCount\4
+      str_DriveList = str_DriveList+ExtractDrive(str_Char(i))
+   Next
+   GetDrives = UCase$(str_DriveList)
+
+Exit Function
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Function GetDrives() As String
+
+'*********************************************************************************************
+'Function ExtractDrive(Dstr_Char(),ByVal Dn_Drive As Integer) As String
+Function ExtractDrive(Dstr_Char As Integer) As String
+
+OnError GOTO ErrorHandle
+
+  Dim i,n As SmallInt
+  Dim str_Drive As String
+  For i = 0 To 3
+    n = (Dstr_Char \ 256^i) mod 256
+    If n = 0 Then n = asc(";") End If
+    str_Drive = str_Drive + chr$(n)
+  Next
+  ExtractDrive=str_Drive
+
+Exit Function
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Function ExtractDrive(Dstr_Char As Integer) As String
+'End Function ExtractDrive(Dstr_Char(),ByVal Dn_Drive As Integer) As String
+
+'*********************************************************************************************
+Sub DLG_GetDirectory_SelectDrive
+
+OnError GOTO ErrorHandle
+
+  Dim str_SelDrive As String
+  Dim nCount,str_Char(),i,n As Integer
+  nCount = 128
+  ReDim str_Char(nCount)
+  nCount = GetLogicalDriveString32 (nCount*4, str_Char)
+  str_SelDrive=ExtractDrive(str_Char(ReadControlValue(4)))
+  str_SelDrive=Mid$(str_SelDrive,1,InStr(1,str_SelDrive,";")-1)
+'  If FileExists(str_SelDrive) Then
+    Alter Control 1 Value str_SelDrive
+    Alter Control 2 Title str_SelDrive
+    Alter Control 3 Value str_SelDrive
+    Call DLG_GetDirectory_RtnDirList
+'  End If
+
+Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+
+		CleanUp:
+			Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+End Sub DLG_GetDirectory_SelectDrive
+'*********************************************************************************************
+
+Sub KillRWT(ByVal path_to_RWT As String) '*Funtion to delete temporary file in tool directory
+
+	'Kill path_to_RWT+" RWT 1.WOR" '**KILL IT!
+
+End Sub
+
+
+'************************************************************************************************
+'*Sub: Delete_LastRWT
+'*Deletes temp file used by previous instance of Workspace Resolver
+'************************************************************************************************
+
+Sub Delete_LastRWT
+
+	Dim terminated_file As String
+
+OnError GOTO ErrorHandle
+
+		Open File ApplicationDirectory$() + file_DeleteOnStartup for Input As cn_File12
+		Input #cn_File12,terminated_file
+
+		If FileExists(terminated_file) Then
+			Kill terminated_file
+		End If
+
+		Close File #cn_File12
+	Exit Sub
+
+'>>>>>>>>Error Handling>>>>>>>>>>
+		CleanUp:
+			'Dialog Preserve
+		Exit Sub
+
+		ErrorHandle:
+			Note Error$()
+			Resume CleanUp
+
+
+End Sub

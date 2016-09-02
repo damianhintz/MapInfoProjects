@@ -1,0 +1,507 @@
+'****************************************************************************
+'
+' Program: SHIELDS.MB
+'
+'    This program draws "shield-shaped" outlines around any
+'    currently selected text objects (e.g. highway labels).
+'    The purpose is primarily cosmetic.  The way it works: 
+'     (1) the user draws highway labels 
+'     (2) the user SELECTS one or more of the labels 
+'     (3) the user picks Create Shields from the custom menu;
+'         the application then lets the user choose various
+'         settings (e.g. color, shape).  When the user clicks
+'         OK, the application draws shield-shaped region 
+'         objects, sized and positioned to fit around each
+'         selected text object. 
+'
+' MapBasic commands, procedures and statements featured:
+'     Create Menu
+'     Dialog 
+'     SelectionInfo()
+'     Alter Object...Node Add 
+'     ObjectGeography()
+'     Open File,  Input #
+'     ProgressBar 
+'     OnError 
+'****************************************************************************
+
+'****************************************************************************
+'
+' Include files and Define statements
+'
+'****************************************************************************
+Include "mapbasic.def"
+Include "..\Inc\Auto_lib.Def"
+
+'****************************************************************************
+'
+' Declare sub procedures
+'
+'****************************************************************************
+Declare Sub Main
+Declare Sub About
+Declare Sub Create_shield
+Declare Sub GroupHandler
+Declare Sub NextShield
+Declare Sub Bye
+
+'****************************************************************************
+'
+' Declare global variables. 
+'
+'****************************************************************************
+Global on_layout As Logical 
+Global filename, into_table As String
+Global pstyle As Pen, bstyle As Brush
+Global shield_type, table_count, num_rows, next_row, num_drawn As Integer
+
+
+'****************************************************************************
+'
+' Sub procedure: Main
+'
+' The Main procedure adds a menu to the menu bar and displays a message.
+' After that, the application doesn't do anything until the user
+' picks one of the menu items that we added.
+'
+'****************************************************************************
+Sub Main
+
+  gsAppFilename =  "shields.mbx"   ' name of MapBasic app file  
+  gsAppDescription = "Shields"     ' short description of MB application 
+
+   Create Menu "S&hields" As
+      "&Create Shields..."  Calling Create_shield,
+      "(-",  
+      "&About Shields..."    Calling About,
+      "E&xit Shields"        Calling Bye
+
+   Call set_tools_menu("Shields")
+
+   pstyle = MakePen(1, 2, BLACK)   ' create a default line style
+   bstyle = MakeBrush(1, 0, 0)     ' create a default fill style
+   shield_type = 1 
+
+End Sub
+
+
+'****************************************************************************
+'
+' Sub procedure: About
+'
+' The About procedure displays a brief explanatory blurb.
+'
+'****************************************************************************
+Sub About
+  Dialog 
+    Title "About Shields..."
+    Control StaticText  
+      Title  "This application draws decorative frames"    
+      Position 10, 10
+    Control StaticText  
+      Title  "around text objects (e.g. highway labels)."  
+      Position 10, 18
+    Control StaticText  
+      Title  "To use Shields, first select one or more"    
+      Position 10, 40
+    Control StaticText  
+      Title  "text objects, then pick Create Shields "     
+      Position 10, 48
+    Control StaticText  
+      Title  "from the Shields menu."                      
+      Position 10, 56
+    Control StaticText  
+      Title  "Note: the Shields application does not"      
+      Position 10, 80
+    Control StaticText  
+      Title  "support non-Earth maps (e.g. floorplans),"   
+      Position 10, 88
+    Control StaticText  
+      Title  "and the application does not work with 4.0"   
+      Position 10, 96
+    Control StaticText  
+      Title  "style symbols which are not text objects."   
+      Position 10, 104
+
+    Control OKButton Title  "OK" Position 56, 125
+
+End Sub
+
+
+'****************************************************************************
+'
+' Sub procedure: Create
+'
+' The Create procedure gets called when the user picks
+' the "Create Shields" menu item.
+' Most of the work done in this procedure relates to displaying
+' a dialog to let the user set various options.
+'**********************************************************************
+Sub Create_shield
+   ' Declare local variables
+   Dim i, table_num, destination As SmallInt
+   Dim shield_file_name, shield_file_path As String 
+   Dim table_name, table_list, table_array(0) As String
+
+   ' If nothing is currently selected, advise user to select something
+   num_rows = SelectionInfo(SEL_INFO_NROWS)
+   If num_rows < 1 Then
+      Note "You must select one or more text objects" + Chr$(13) 
+           + "before drawing Shield-shaped frames."
+      Exit Sub
+   End If
+
+   ' Check to see if the items that are selected are LAYOUT objects.
+   ' If they are, set a variable so we can compensate in later 
+   ' calculations. 
+  
+   on_layout = FALSE
+   table_name = SelectionInfo(SEL_INFO_TABLENAME)
+   If TableInfo(table_name, TAB_INFO_TEMP) = TRUE And 
+   Left$(table_name, 6) = "Layout" Then 
+     on_layout = TRUE 
+   End If 
+
+   ' Build a semicolon-separated list of table names, so that the 
+   ' Dialog can include a ListBox control listing available tables.
+   ' The list should only include tables that are "mappable."
+   ' Also, while we're at it, copy each table name into an array;
+   ' that way, after the Dialog indicates that "the user chose 
+   ' the Nth table from the list", we'll be able to easily
+   ' get the selected table name by referencing  table_array(N). 
+
+   table_count = 0
+   Redim table_array( NumTables() +  1) 
+
+   ' If the selected objects are on a Layout window, then
+   ' we'll only let the user store the Shield objects
+   ' on the same layout window.  Otherwise, we'll let the user 
+   ' store layout objects in any open, mappable, editable table. 
+
+   If on_layout Then 
+     table_count = 1
+     table_array(table_count) = table_name 
+     table_list = table_name + ";"
+   Else 
+     For i = 1 to NumTables()
+        If TableInfo(i, TAB_INFO_MAPPABLE) And  
+        Not TableInfo(i, TAB_INFO_READONLY) Then 
+           table_count = table_count + 1
+           table_array(table_count) = TableInfo(i, TAB_INFO_NAME) 
+           table_list = table_list + TableInfo(i, TAB_INFO_NAME) + ";"
+        End If
+     Next
+     If  table_count = 0 And TableInfo(table_name, TAB_INFO_READONLY) Then 
+       Note "There are no editable tables to hold the Shield objects... " + 
+            "try drawing labels to the Mapper's Cosmetic Layer."
+       Exit Sub
+     End If 
+   End If 
+
+   ' Display a dialog to let the user specify various settings.
+
+   Dialog   Title "Draw Shields"
+      Control StaticText 
+         Title "Draw Shields Around Selected Text Objects" 
+         Position 30, 5
+      Control GroupBox
+         Title "Enclose selected labels in:"
+         Position 10,20  
+         Width 125  
+         Height 35
+      Control RadioGroup
+         Title "&Interstate shields;&U.S. Highway shields"
+         Position 20,30
+         Value shield_type
+         Into shield_type
+      Control StaticText
+         Title "Line style:"
+         Position 10,65
+      Control PenPicker
+         Value pstyle
+         Into pstyle
+         Position 50,65  
+         Width 20  
+         Height 20
+      Control StaticText
+         Title "Fill style:"
+         Position 100,65
+      Control BrushPicker
+         Value bstyle
+         Into bstyle
+         Position 140,65  
+         Width 20  
+         Height 20
+      Control GroupBox
+         Title "Store shield outlines in:"
+         Position 10,105  
+         Width 180  
+         Height 50
+      Control RadioGroup
+         Title "The same layer containing the labels;This table:"
+         Position 20,115
+         Into destination
+         Calling GroupHandler	
+         ID 1
+      Control PopupMenu
+         Title  table_list
+         Position 30, 140    
+         Width 60
+         Into table_num
+         ID 2
+         Disable
+      Control OKButton
+         Title "OK"
+         Position 155, 165
+      Control CancelButton
+         Title "Cancel"
+         Position 105, 165
+
+   'The dialog is done.  If the user clicked "Cancel", let's just quit.
+
+   If Not CommandInfo(CMD_INFO_DLG_OK) Then
+      Exit Sub
+   End If
+
+   ' Now obtain the name of the table where we'll store 
+   ' the shield objects we draw.  If the user chose
+   ' "Store shield outlines in the same layer containing the labels",
+   ' we'll  use the SelectionInfo() function to get the Selection
+   ' table's "real" name. (Note: usually, labels are drawn
+   ' to a mapper's "Cosmetic" layer, in which case the table
+   ' has a special name such as "Cosmetic1").
+
+   If destination = 1 Then
+      into_table = SelectionInfo(SEL_INFO_TABLENAME)
+   Else
+      into_table = table_array(table_num) 
+   End If
+
+   ' When it comes time to draw shield objects, we'll read
+   ' coordinates in from a text file.  If the user chose
+   ' interstate shields, we'll read coordinates from SHIELD1.TXT; 
+   ' if user chose U.S. highway shields, we'll read from SHIELD2.TXT.
+   shield_file_path = ""
+   If shield_type = 1 Then
+     shield_file_name = ApplicationDirectory$() + "shield1.txt" 
+   Else
+     shield_file_name = ApplicationDirectory$() + "shield2.txt" 
+   End If
+   OnError Goto no_file         ' set up error trapping for file problems
+
+retry_open: 
+   Open File shield_file_name For Input As #1
+   OnError Goto 0               ' reset default error trapping 
+   num_drawn = 0                ' initialize count of "# of shields drawn"
+   next_row = 1             
+
+   ' If the selected objects are on a Layout window, 
+   ' we have to execute a special Set CoordSys statement 
+   ' before doing any object querying or object creating. 
+
+   If on_layout Then 
+     Set CoordSys Layout Units "mm" 
+   Else 
+     Set CoordSys Earth 
+   End If 
+
+   ' Use the ProgressBar statement to display a "% done" dialog.
+   ' the ProgressBar statement repeatedly calls the NEXTSHIELD
+   ' procedure until the job finishes or until user hits CANCEL.
+
+   ProgressBar "Drawing Shield outlines around labels..."
+      Calling NextShield  Range num_rows
+
+   If CommandInfo(CMD_INFO_DLG_OK) Then
+      Note "Finished. " + Chr$(13)
+           + Str$(num_drawn) + " shield outline(s) drawn."
+   Else
+      Note "Process interrupted! " + Chr$(13)
+           + Str$(num_drawn) + " shield outline(s) drawn."
+   End If
+   Close File #1
+   Exit Sub
+
+' Error-trapping routine, to handle case where we can't
+' open the text file containing the shield coordinates. 
+' If we couldn't find "SHIELD1.TXT" in current directory,
+' try looking in the directory where MapInfo is installed. 
+' If we try that directory, and we still get an error 
+' on the Open File, then we'll just quit. 
+no_file: 
+   If shield_file_path = "" Then 
+     '
+     ' ...then we haven't yet tried looking in 
+     ' the MapInfo directory.  Try looking there. 
+     '
+     shield_file_path = ProgramDirectory$()
+     shield_file_name = shield_file_path + shield_file_name  
+     Resume retry_open        ' go back and retry the Open File statement
+   Else  
+     '
+     ' ... we couldn't find the file in the MapInfo directory. 
+     ' Let user know why we failed, then stop. 
+     '
+     Note "Problem: couldn't open the file" + Chr$(13) + 
+          "   " + shield_file_name + Chr$(13) +
+          "Shields application stopping."
+     Resume leave_because_of_errors  
+   End If
+
+leave_because_of_errors: 
+
+End Sub
+
+
+'****************************************************************************
+'
+' Sub procedure: GroupHandler
+'
+' the GroupHandler procedure is called automatically if the user clicks
+' on the "draw shields in:" RadioGroup control in the main dialog.
+'
+' The dialog has a PopupMenu control containing a list of tables;
+' enable or disable the PopupMenu based on which radio group was chosen.
+'
+'****************************************************************************
+Sub  GroupHandler
+   Dim selected As SmallInt
+   selected = ReadControlValue(1)   ' see which radio button the user chose
+   If selected = 1 Then             ' if user chose "store in same layer"...
+      Alter Control 2 Disable       ' disable the PopupMenu control.
+   Else                             ' Or, if user chose "store in table"...
+      If table_count > 0 Then       ' If tables are available...
+         Alter Control 2 Enable     ' enable the tables PopupMenu.
+      Else		                      ' But if no tables are available...
+         Alter Control 2 Disable    ' disable the tables PopupMenu.
+         Alter Control 1 Value 1    ' and reset the RadioGroup as well. 
+      End If
+   End If
+End Sub
+
+
+'****************************************************************************
+'
+' Sub procedure: NextShield
+'
+' The NextShield procedure draws one shield around a label.
+' The ProgressBar statement (above) repeatedly calls NEXTSHIELD
+' until the job is done or until the user clicks Cancel.
+'
+'****************************************************************************
+Sub NextShield
+   ' Declare local variables
+   Dim lim, shield As Object
+   Dim origin_x, width, height As Float 
+   Dim dx, dy, center_x, center_y, next_x, next_y As Float
+
+   ' Retrieve the Nth selected object.  
+   Fetch Rec next_row From Selection 
+
+   ' Only draw a Shield around this object if it's a TEXT object
+   If Str$(Selection.obj) = "Text" Then 
+
+      ' Determine the extents of the text object 
+      lim = MBR(Selection.obj)
+
+      ' Now that we've fetched the Text object, we'll 
+      ' figure out its height, width, and center point. 
+      ' We'll need that information later on when we calculate
+      ' where the shield object should be drawn.  
+      
+      ' NOTE: we must compensate for the fact that the MBR of a Mapper
+      ' text object is padded at the right, to provide About 20% 
+      ' extra room.  (That padding is used to adjust for 
+      ' possible differences between printer font metrics
+      ' vs. screen font metrics caused by map projections). 
+      ' We want to calculate the center of
+      '  "the area actually covered by the text";
+      ' thus we'll divide the MBR's width dimension by 1.2.  
+      ' However, we should only do this compensation for Mappers, 
+      ' not for objects on the Layout window. 
+
+      height = ObjectGeography(lim, OBJ_GEO_MAXY) -
+                                 ObjectGeography(lim, OBJ_GEO_MINY)   
+      width =  ObjectGeography(lim, OBJ_GEO_MAXX) - 
+                                 ObjectGeography(lim, OBJ_GEO_MINX)   
+      dy = 0.6  *  height 
+      dx = 0.65 *  width   
+
+      center_y = CentroidY(lim) 
+      center_x = CentroidX(lim) 
+
+      ' If the user selected text objects on a Layout window,
+      ' then we'll draw the shields to the layout window. 
+      ' In that case, we should flip the Y coordinate multiplier
+      ' (because the Layout window uses the "Fourth quadrant"). 
+      If on_layout Then 
+        dy = dy * -1 
+      Else                     ' we must be drawing to a Mapper...
+        dx = dx / 1.2          ' so we'll compensate for the MBR's padding.
+        center_x = center_x - (0.1 * width) 
+      End If 
+
+      ' 
+      ' If the text object is very narrow, the shield won't look good. 
+      ' So for cosmetic reasons, let's make sure the width is at least
+      ' as big as 80% of the height. 
+      ' 
+      dx = Maximum(dx, Abs(0.80 * dy) )  
+
+      ' First we'll create a featureless, "empty" region object
+      ' for the shield.  We'll add details (i.e. nodes) later on.
+      Create Region
+         Into Variable shield
+         0                         ' no nodes for now...
+         Pen pstyle                
+         Brush bstyle
+
+      ' In each iteration of the loop below, we read a coordinate 
+      ' pair from the text file (e.g. SHIELD1.TXT), then we scale
+      ' the coordinate pair (i.e. multiply it by DX or DY to bring  
+      ' it to a size that's appropriate for this text object).   
+      ' Each coordinate pair will be offset from the location 
+      ' (CENTER_X, CENTER_Y)  so that the shield will be centered
+      ' around the text object.  Also, each coordinate pair
+      ' will be divided by 32; this is because in SHIELD1.TXT, 
+      ' the coordinates range from -32 to +32, and what we really 
+      ' want here is a percentage.  
+
+      Seek 1, 1                     ' start from beginning of SHIELD1.TXT
+      Do While Not EOF(1)           ' read until we reach end of SHIELD1.TXT 
+         Input #1, next_x, next_y   ' read an x,y coordinate pair. 
+         If Not EOF(1)  Then        ' if we managed to read two values... 
+           next_x = ( (next_x / 32)  *  dx)  + center_x 
+           next_y = ( (next_y / 32)  *  dy)  + center_y 
+           Alter Object shield Node Add (next_x, next_y)
+         End If 
+      Loop
+
+      ' At this point, we've added enough nodes to the object
+      ' that it has the shape of a "shield." Now we insert the
+      ' object into the appropriate table.  
+
+      Insert Into into_table (obj) Values (shield)
+      num_drawn = num_drawn + 1 
+   End If
+
+   If  next_row >= num_rows Then  ' If this was row #N out of N...
+      ProgressBar = -1            ' tell caller "all done"
+   Else                           ' Otherwise...
+      ProgressBar = next_row      ' tell caller "not done, but getting there"
+   End If 
+   next_row = next_row + 1
+End Sub
+
+
+'****************************************************************************
+'
+' Sub procedure: Bye
+'
+' The Bye procedure terminates the program.
+'
+'****************************************************************************
+Sub Bye
+   End Program
+End Sub
+

@@ -1,0 +1,42 @@
+'
+'  It provides subroutines to save and apply  
+'  docking and position related information
+'  for toolbars created by Mapbasic Application 
+'
+declare sub setToolBarPosition(Byval sToolbarName as string, Byval sToolBarPosFileName as string)
+
+declare Sub saveToolbarPositionInfo(Byval sToolbarName as string, Byval sToolBarPosFileName as string)
+
+'Strings not to be localized
+Define   STR_TOOLBAR_POS_FILE_EXT           ".ini"
+Define   STR_EQUAL_TO                       "="
+Define   STR_TOOLBAR_DOCKED                 "ToolbarDocked"
+Define   STR_TOOLBAR_X                      "ToolbarX"
+Define   STR_TOOLBAR_Y                      "ToolbarY"
+Define   STR_TOOLBAR_NBTNS                  "ToolbarNBTNS"
+Define   STR_TOOLBAR_WIDTH                  "ToolbarWIDTH"
+Define   STR_TOOLBAR_DOCK_POSITION          "ToolBarDockPosition"
+Define   STR_DOCKED                         "docked"
+Define   STR_NOT_DOCKED                     "not_docked"
+Define   STR_LEFT                           " Left "
+Define   STR_TOOLBAR_POSITION               " ToolbarPosition"
+Define   STR_TOP                            " Top "
+Define   STR_RIGHT                          " Right "
+Define   STR_BOTTOM                         " Bottom "
+Define   STR_SPACE                          " "
+Define   STR_POSITION                       " Position"
+Define   STR_UNITS                          " units "
+Define   STR_ALTER_BUTTONPAD                " Alter ButtonPad "
+Define   STR_FLOAT                          " float "
+Define   STR_CM                             "cm"
+Define   STR_SHOW                           " show "
+Define   STR_WIDTH                          " Width "
+Define   STR_OPEN_BRAC                      "("
+Define   STR_CLOSE_BRAC                     ")"
+Define   STR_COMMA                          ","
+Define   STR_DEFAULT_DOCK_X                 "0"
+Define   STR_DEFAULT_DOCK_Y                 "0"
+Define   STR_DEFAULT_DOCK_POSITION          " Fixed "
+Define   STR_DEFAULT_TOOLBAR_WIDTH          "1"
+Define   STR_FN_SAVE_TB_POS_INFO            "saveToolbarPositionInfo: "
+Define   STR_FN_SET_TB_POS                  "setToolBarPosition: "

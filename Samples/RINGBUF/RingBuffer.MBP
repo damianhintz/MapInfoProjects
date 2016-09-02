@@ -1,0 +1,5 @@
+[Link] 
+Application=RingBuffer.mbx 
+Module=RingBuffer.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\Lib\resstrng.mbo

@@ -1,0 +1,953 @@
+Include "Mapbasic.def"
+Include "Geoset.def" ' needed only for gsGeosetVersion and GEOSET_VERSION_500
+Include "GeosetLoad.def"
+Include "Error.def"
+Include "Service.def"
+
+Dim gsDistUnit   As String
+
+'---------------------------------------
+' Set Distance units
+'---------------------------------------
+Sub SetMapUnits( ByVal lWinID As Integer, sMapUnit As String ) ' 30.09.98
+  OnError Goto ErrorTrap
+    
+    If sMapUnit <> "" Then
+        gsDistUnit = UnitNumberToUnitAbbr( Val( sMapUnit ) ) 
+    Else
+        gsDistUnit = UnitNumberToUnitAbbr( miUnitMile ) 
+    End If
+    
+    Set Map Window lWinID Distance Units gsDistUnit                    ' 30.09.98
+
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "SetMapUnits: " & Error$()
+  Resume Done
+End Sub 'SetMapUnits
+
+Sub SetLayerProperties( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+  OnError Goto ErrorTrap
+  Dim lfMin, lfMax    As Float
+  Dim sUnit as String
+
+    ' Make Layer selectable or not depending on corresponding value
+    Call SetLayerSelectableMode( lWinID, vtGeosetTable )
+       
+    ' Make Layer Editable or not depending on corresponding value
+    Call SetLayerEditableMode( lWinID, vtGeosetTable )
+       
+    ' Make Layer visible or not depending on corresponding value
+    Call SetLayerVisibleMode( lWinID, vtGeosetTable )
+
+    ' Turn on Auto label mode or not depending on corresponding value
+    Call SetLayerAutoLabelMode( lWinID, vtGeosetTable ) 
+
+    ' Set Display mode of Layer
+    Call SetLayerDisplayMode( lWinID, vtGeosetTable )
+
+    ' Set Label mode of Layer
+    Call SetLayerLabelMode( lWinID, vtGeosetTable )
+
+    If GetZoomValues( vtGeosetTable.vtZoom, lfMin, lfMax, sUnit ) Then
+        ' sUnit only applies in MapX 5.0 geosets --
+        If gsGeoSetVersion <> GEOSET_VERSION_500 Then
+            sUnit=gsDistUnit ' use the default from the geoset
+        End If
+        Set Map Window lWinID  
+            Layer vtGeosetTable.sRealName   
+            Zoom  (lfMin, lfMax ) Units sUnit On
+    End If
+
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "SetLayerProperties: " & Error$()
+  Resume Done
+End Sub 'SetLayerProperties
+
+
+'---------------------------------------
+' Make Layer selectable or not depend on corresponded value
+'---------------------------------------
+Sub SetLayerSelectableMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+  OnError Goto ErrorTrap 
+  Dim bFlag           As Logical
+
+    If vtGeosetTable.sSelectable <> "" Then
+        bFlag = vtGeosetTable.sSelectable
+        If bFlag Then
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   Selectable On 
+        Else
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   Selectable Off 
+        End If
+    End If
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "SetLayerSelectableMode: " & Error$()
+  Resume Done
+End Sub 'SetLayerSelectableMode
+
+'---------------------------------------
+' Make Layer Editable or not depending on corresponding value
+'---------------------------------------
+Sub SetLayerEditableMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+  OnError Goto ErrorTrap 
+  Dim bFlag           As Logical
+
+    If vtGeosetTable.sEditable <> "" Then
+        bFlag = vtGeosetTable.sEditable
+        If bFlag Then
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   Editable On 
+        Else
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   Editable Off 
+        End If
+    End If
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "SetLayerSelectableMode: " & Error$()
+  Resume Done
+End Sub 'SetLayerSelectableMode
+
+'---------------------------------------
+' Make Layer visible or not depending on corresponding value
+'---------------------------------------
+Sub SetLayerVisibleMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+  OnError Goto ErrorTrap 
+  Dim bFlag           As Logical
+
+    If vtGeosetTable.sIsVisible <> "" Then
+        bFlag = vtGeosetTable.sIsVisible
+        If bFlag Then
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   Display Graphic 
+        Else
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   Display Off 
+        End If
+    End If
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "SetLayerVisibleMode: " & Error$()
+  Resume Done
+End Sub 'SetLayerVisibleMode
+
+'---------------------------------------
+' Turn on Auto label mode or not depending on corresponding value
+'---------------------------------------
+Sub SetLayerAutoLabelMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+  OnError Goto ErrorTrap 
+  Dim bFlag           As Logical
+
+    If vtGeosetTable.sAutoLabel <> "" Then
+        bFlag = vtGeosetTable.sAutoLabel
+        If bFlag Then
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   Label Auto On 
+        Else
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   Label Auto Off 
+        End If
+    End If
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "SetLayerAutoLabelMode: " & Error$()
+  Resume Done
+End Sub 'SetLayerAutoLabelMode
+
+'---------------------------------------
+' Set Display mode of Layer
+'---------------------------------------
+Sub SetLayerDisplayMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+  OnError Goto ErrorTrap 
+  Dim brBrush    As Brush
+  Dim pnPen      As Pen
+  Dim fnFont     As Font
+  Dim smSymbol   As Symbol
+  Dim bFlag           As Logical
+
+    ' Set Brush style if it is defined
+    If GetBrushStyle( brBrush, vtGeosetTable.vtDisplay.vtBrush ) Then
+        Set Map Window lWinID  
+            Layer vtGeosetTable.sRealName   
+                Display Global 
+                    Global Brush brBrush
+    End If
+
+    ' Set Line style if it is defined
+    If GetPenStyle( pnPen, vtGeosetTable.vtDisplay.vtLinePen ) Then
+        Set Map Window lWinID  
+            Layer vtGeosetTable.sRealName   
+                Display Global 
+                    Global Line pnPen
+    End If
+
+    ' Set Border Pen style if it is defined
+    If GetPenStyle( pnPen, vtGeosetTable.vtDisplay.vtPen ) Then
+        Set Map Window lWinID  
+            Layer vtGeosetTable.sRealName   
+                Display Global 
+                    Global Pen pnPen
+    End If
+
+    ' Set Font style if it is defined
+    If GetFontStyle( fnFont, vtGeosetTable.vtDisplay.vtFont ) Then
+        Set Map Window lWinID  
+            Layer vtGeosetTable.sRealName   
+                Display Global 
+                    Global Font fnFont
+    End If
+
+    ' Set Symbol style if it is defined
+    If GetSymbolStyle( smSymbol, vtGeosetTable.vtDisplay.vtSymbol ) Then
+        Set Map Window lWinID  
+            Layer vtGeosetTable.sRealName   
+                Display Global 
+                    Global Symbol smSymbol
+    End If
+
+    ' Set Line Direction  if it is defined
+    If vtGeosetTable.sShowLineDirection <> "" Then
+        bFlag = vtGeosetTable.sShowLineDirection
+        If bFlag Then
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   Arrows On 
+        Else
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   Arrows Off 
+        End If
+    End If
+
+    ' Set Nodes if it is defined
+    If vtGeosetTable.sShowNodes <> "" Then
+        bFlag = vtGeosetTable.sShowNodes
+        If bFlag Then
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   Nodes On 
+        Else
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   Nodes Off 
+        End If
+    End If
+
+    ' Set Centroids if it is defined
+    If vtGeosetTable.sShowCentroids <> "" Then
+        bFlag = vtGeosetTable.sShowCentroids
+        If bFlag Then
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   Centroids On 
+        Else
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   Centroids Off 
+        End If
+    End If
+
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "SetLayerDisplayMode: " & Error$()
+  Resume Done
+End Sub 'SetLayerDisplayMode
+
+
+'---------------------------------------
+' Get Zoom Values
+'---------------------------------------
+Function GetZoomValues( vtZoom As tZoom, lfMin As Float, lfMax As Float, sUnit as String ) As Logical
+  OnError Goto ErrorTrap
+  
+    If vtZoom.sMin = "" Or vtZoom.sMax = "" Then
+        Exit Function
+    End If
+    
+    lfMin = Val( vtZoom.sMin )
+    lfMax = Val( vtZoom.sMax )
+    sUnit = UnitNumberToUnitAbbr(vtZoom.sUnit)
+    GetZoomValues = TRUE
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "GetZoomValues: " & Error$()
+  Resume Done
+End Function 'GetZoomValues
+
+'---------------------------------------
+' Get Brush value
+'---------------------------------------
+Function GetBrushStyle( brBrush As Brush, vtBrush As tBrush ) As Logical
+  OnError Goto ErrorTrap 
+  Dim lBackColor, lForeColor, lPattern  As Integer
+  Dim bTransparentFlag                  As Logical
+
+
+    If vtBrush.sBackColor = "" And 
+       vtBrush.sForeColor = "" And
+       vtBrush.sPattern = ""   Then
+        Exit Function ' Style isn't defined
+    End If
+
+    If vtBrush.sBackColor <> "" Then
+        lBackColor = Int( Val( vtBrush.sBackColor ) )
+    Else
+        lBackColor = StyleAttr( CurrentBrush(), BRUSH_BACKCOLOR )
+    End If
+
+    If vtBrush.sForeColor <> "" Then
+        lForeColor = Int( Val( vtBrush.sForeColor ) )
+    Else
+        lForeColor = StyleAttr( CurrentBrush(), BRUSH_FORECOLOR )
+    End If
+
+    If vtBrush.sPattern <> "" Then
+        lPattern = Int( Val( vtBrush.sPattern ) )
+        If lPattern = 0 Then      ' BP 30.09.98
+            lPattern = 1          ' BP 30.09.98
+        End If                    ' BP 30.09.98
+    Else
+        lPattern =  StyleAttr( CurrentBrush(), BRUSH_PATTERN )
+    End If
+
+    If vtBrush.sTransparent <> "" Then
+        bTransparentFlag =  vtBrush.sTransparent 
+    End If
+
+    If bTransparentFlag Then
+        lBackColor = -1
+    End If
+
+    brBrush = MakeBrush( lPattern, lForeColor, lBackColor )
+
+    GetBrushStyle = TRUE
+Done:
+  Exit Function
+
+ErrorTrap:
+  If Err() = 465 Then
+     Call PrintErrMsg( SVRT_WARNING, ERR_AREA_BRUSH_STYLE, 
+                       "Brush( " & lPattern & ", " & lForeColor & ", " & lBackColor & " )" )
+     brBrush = CurrentBrush() 
+     Resume Next
+  End If
+
+  Print "GetBrushStyle: " & Error$()
+  Resume Done
+
+
+End Function 'GetBrushStyle
+
+'---------------------------------------
+' Get Pen Value
+'---------------------------------------
+Function GetPenStyle( pnPen As Pen, vtPen As tPen ) As Logical
+  OnError Goto ErrorTrap 
+  Dim lWidth, lPattern, lColor  As Integer
+
+    If vtPen.sColor = ""     And 
+       vtPen.sLineWidth = "" And
+       vtPen.sLineStyle = "" Then
+        Exit Function ' Style isn't defined
+    End If
+
+    If vtPen.sColor <> "" Then
+        lColor = Int( Val( vtPen.sColor ) )
+    Else
+        lColor = StyleAttr( CurrentPen(), PEN_COLOR )
+    End If
+
+    If vtPen.sLineWidth <> "" Then
+        lWidth = Int( Val( vtPen.sLineWidth ) )
+    Else
+        lWidth = StyleAttr( CurrentPen(), PEN_WIDTH )
+    End If
+
+    If vtPen.sLineStyle <> "" Then
+        lPattern = Int( Val( vtPen.sLineStyle ) )
+' BP 14.06.98
+        Do Case lPattern
+            Case 0       ' Null style
+                lPattern = 1
+            Case 1, 2    ' Solid style
+                lPattern = 2
+'            Case Else    ' Other style
+'                lPattern = lPattern
+        End Case
+
+'        lPattern = lPattern + 1 ' BP 12.06.98
+' BP 14.06.98
+    Else
+        lPattern = StyleAttr( CurrentPen(), PEN_PATTERN )
+    End If
+
+    pnPen = MakePen( lWidth, lPattern, lColor )
+    GetPenStyle = TRUE
+Done:
+  Exit Function
+
+ErrorTrap:
+  If Err() = 465 Then
+     Call PrintErrMsg( SVRT_WARNING, ERR_AREA_PEN_STYLE, 
+                       "Pen( " & lWidth & ", " & lPattern & ", " & lColor & " )" )
+     pnPen = CurrentPen() 
+     Resume Next
+  End If
+
+  Print "GetPenStyle: " & Error$()
+  Resume Done
+End Function 'GetPenStyle
+
+'---------------------------------------
+' Get Font Value
+'---------------------------------------
+Function GetFontStyle( fnFont As Font, vtFont As tFont ) As Logical
+  OnError Goto ErrorTrap 
+  Dim sFontName                 As String
+  Dim lForeColor, lBackColor    As Integer
+  Dim lStyle, lExtStyle, lSize  As Integer
+  Dim bOpaque                   As Logical   ' BP 30.09.98
+
+    If vtFont.sBackColor   = "" And 
+       vtFont.sDescription = "" And  
+       vtFont.sExtStyle    = "" And  
+       vtFont.sForeColor   = "" And  
+       vtFont.sOpaque      = "" And  'AED072298
+       vtFont.sSize        = "" And  
+       vtFont.sStyle       = "" Then
+        Exit Function ' Style isn't defined 
+    End If  
+
+    If vtFont.sDescription <> "" Then
+        sFontName = vtFont.sDescription 
+    Else 
+        sFontName = StyleAttr( CurrentFont(), FONT_NAME )
+    End If
+
+    If vtFont.sSize <> "" Then
+        lSize = Int( Val( vtFont.sSize ) )
+    Else
+        lSize = StyleAttr( CurrentFont(), FONT_POINTSIZE )
+    End If
+
+    If vtFont.sOpaque = "TRUE" Then 'AED072298
+      If vtFont.sBackColor <> "" Then
+        lBackColor = Int( Val( vtFont.sBackColor ) )
+      Else
+        lBackColor = StyleAttr( CurrentFont(), FONT_BACKCOLOR )
+      End If
+    Else 'AED072298
+      lBackColor = -1 'AED072298
+    End If 'AED072298
+
+    If vtFont.sForeColor <> "" Then
+        lForeColor = Int( Val( vtFont.sForeColor ) )
+    Else
+        lForeColor = StyleAttr( CurrentFont(), FONT_FORECOLOR )
+    End If
+
+    If vtFont.sStyle <> "" Then
+        lStyle = Int( Val( vtFont.sStyle ) )
+    Else
+        lStyle = StyleAttr( CurrentFont(), FONT_STYLE ) Mod 256
+    End If
+
+    If vtFont.sExtStyle <> "" Then
+        lExtStyle = Int( Val( vtFont.sExtStyle ) )
+    Else
+        lExtStyle = StyleAttr( CurrentFont(), FONT_STYLE ) \ 256
+    End If
+
+' BP 30.09.98
+    If vtFont.sOpaque <> "" Then      ' MI doesn't have equivalent for OPAQUE key.
+        bOpaque = vtFont.sOpaque      ' But this key does have an influence !
+        If Not bOpaque And 
+           lExtStyle Mod 2 = 1  Then  ' Use BackColor if Halo style is set.
+             If vtFont.sBackColor <> "" Then
+               lBackColor = Int( Val( vtFont.sBackColor ) )
+             Else
+              lBackColor = -1
+             End If
+        End If
+    End If
+
+    lStyle = lStyle + lExtStyle * 256
+    fnFont = MakeFont( sFontName, lStyle, lSize, lForeColor, lBackColor )
+
+    GetFontStyle = TRUE
+Done:
+  Exit Function
+
+ErrorTrap:
+  If Err() = 465 Then
+     Call PrintErrMsg( SVRT_WARNING, ERR_AREA_FONT_STYLE, 
+                       "Font( " & sFontName & ", " & lStyle & ", " & lSize & ", " &
+                                lForeColor & ", " & lBackColor & " )" )
+     fnFont = CurrentFont() 
+     Resume Next
+  End If
+
+  Print "GetFontStyle: " & Error$()
+  Resume Done
+End Function 'GetFontStyle
+
+'---------------------------------------
+' Get Symbol Value
+'---------------------------------------
+Function GetSymbolStyle( smSymbol As Symbol, vtSymbol As tSymbol ) As Logical
+  OnError Goto ErrorTrap 
+  Dim lCode, lColor          As Integer
+  Dim lStyle, lExtStyle      As Integer
+  Dim lRotation, lPointSize  As Integer
+  Dim bFontFlag, bBitmapFlag As Logical
+
+  bFontFlag = FALSE
+  bBitmapFlag = FALSE
+  If vtSymbol.vtFont.sDescription <> "" Then
+    bFontFlag = TRUE 
+  ElseIf vtSymbol.vtBitMap.sName <> "" Then
+    bBitmapFlag = TRUE
+  End If
+
+  If bFontFlag = TRUE Then
+    If vtSymbol.vtFont.sRotation <> "" Then
+      lRotation = Int( Val( vtSymbol.vtFont.sRotation ) )
+    Else 
+      lRotation = StyleAttr( CurrentSymbol(), SYMBOL_ANGLE )
+    End If
+
+    If vtSymbol.vtFont.sStyle <> "" Then
+      lStyle = Int( Val( vtSymbol.vtFont.sStyle ) )
+    Else
+      lStyle = StyleAttr( CurrentFont(), FONT_STYLE ) Mod 256
+    End If
+
+    If vtSymbol.vtFont.sExtStyle <> "" Then
+      lExtStyle = Int( Val( vtSymbol.vtFont.sExtStyle ) )
+    Else
+      lExtStyle = StyleAttr( CurrentFont(), FONT_STYLE ) \ 256
+    End If
+
+    lStyle = lStyle + lExtStyle * 256
+  End If
+
+  If Not bFontFlag            And
+     Not bBitmapFlag          And
+     vtSymbol.sColor     = "" And  
+     vtSymbol.sCode      = "" And  
+     vtSymbol.sPointSize = "" Then
+    Exit Function ' Style isn't defined 
+  End If  
+
+  If vtSymbol.sColor <> "" Then
+    lColor = Int( Val( vtSymbol.sColor ) )
+  Else 
+    lColor = StyleAttr( CurrentSymbol(), SYMBOL_COLOR )
+  End If
+
+  If vtSymbol.sCode <> "" Then
+    lCode = Int( Val( vtSymbol.sCode ) )
+  Else 
+    lCode = StyleAttr( CurrentSymbol(), SYMBOL_CODE )
+  End If
+
+  If vtSymbol.sPointSize <> "" Then
+    lPointSize = Int( Val( vtSymbol.sPointSize ) )
+  Else 
+    lPointSize = StyleAttr( CurrentSymbol(), SYMBOL_POINTSIZE )
+  End If
+
+  If bFontFlag Then
+    smSymbol = MakeFontSymbol( lCode, lColor, lPointSize, 
+                               vtSymbol.vtFont.sDescription, 
+                               lStyle, lRotation )
+  ElseIf bBitmapFlag Then
+    smSymbol = MakeCustomSymbol( vtSymbol.vtBitMap.sName, lColor, lPointSize, lCode )
+  Else
+    smSymbol = MakeSymbol( lCode, lColor, lPointSize ) 
+  End If
+
+  GetSymbolStyle = TRUE
+
+Done:
+  Exit Function
+
+ErrorTrap:
+  If Err() = 465 Then
+      If bFontFlag Then
+          Call PrintErrMsg( SVRT_WARNING, ERR_AREA_SYMBOL_STYLE, 
+                        "FontSymbol( " & lCode & ", " & lColor & ", " & lPointSize & ", " &
+                        vtSymbol.vtFont.sDescription & ", " & lStyle & ", " & lRotation & " )" )
+      Else
+          Call PrintErrMsg( SVRT_WARNING, ERR_AREA_SYMBOL_STYLE, 
+                        "Symbol( " & lCode & ", " & lColor & ", " & lPointSize & " )" )
+      End If
+      smSymbol = CurrentSymbol() 
+      Resume Next
+  End If
+
+  Print "GetSymbolStyle: " & Error$()
+  Resume Done
+End Function 'GetSymbolStyle
+
+
+'---------------------------------------
+' Set Label mode of Layer
+'---------------------------------------
+Sub SetLayerLabelMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+  OnError Goto ErrorTrap 
+  Dim fnFont         As Font
+  Dim lfMin, lfMax   As Float
+  Dim sUnit          As String
+  
+    If GetZoomValues( vtGeosetTable.vtLabel.vtZoom, lfMin, lfMax, sUnit ) Then
+        ' sUnit only applies in MapX 5.0 geosets --
+        If gsGeoSetVersion <> GEOSET_VERSION_500 Then
+          sUnit=gsDistUnit ' use the default from the geoset
+        End If
+        Set Map Window lWinID  
+            Layer vtGeosetTable.sRealName   
+            Label Visibility Zoom ( lfMin, lfMax ) Units sUnit
+    End If
+
+    ' Set Font style if it is defined
+    If GetFontStyle( fnFont, vtGeosetTable.vtLabel.vtFont ) Then
+        Set Map Window lWinID  
+            Layer vtGeosetTable.sRealName   
+                Label Font fnFont
+    End If
+
+    ' Permit Duplicate label or not depending on corresponding value
+    Call SetLabelDuplicateMode( lWinID, vtGeosetTable )
+
+    ' Turn on Overlap label mode or not depending on corresponding value
+    Call SetLabelOverlapMode( lWinID, vtGeosetTable )
+
+    ' Turn on Paralllel label mode or not depending on corresponding value
+    Call SetLabelParallelMode( lWinID, vtGeosetTable )
+
+    ' Turn on Partial Segment label mode or not depending on corresponding value
+    Call SetLabelPartialSegmentMode( lWinID, vtGeosetTable )
+
+    ' Set Line Type label property
+    Call SetLabelLineTypeProperty( lWinID, vtGeosetTable )
+
+    ' Set Max Labels label property
+    Call SetLabelMaxLabelsProperty( lWinID, vtGeosetTable )
+
+    ' Set Position label property
+    Call SetLabelPositionProperty( lWinID, vtGeosetTable )
+
+    ' Set Offset label property
+    Call SetLabelOffsetProperty( lWinID, vtGeosetTable )
+
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "SetLayerLabelMode: " & Error$()
+  Resume Done
+End Sub 'SetLayerLabelMode
+
+'---------------------------------------
+' Permit Duplicate label or not depending on corresponding value
+'---------------------------------------
+Sub SetLabelDuplicateMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+  OnError Goto ErrorTrap 
+  Dim bFlag           As Logical
+
+    If vtGeosetTable.vtLabel.sDuplicate <> "" Then
+        bFlag = vtGeosetTable.vtLabel.sDuplicate
+        If bFlag Then
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   
+                   Label Duplicates On
+        Else
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   
+                   Label Duplicates Off
+        End If
+    End If
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "SetLabelDuplicateMode: " & Error$()
+  Resume Done
+End Sub 'SetLabelDuplicateMode
+
+'---------------------------------------
+' Turn on Overlap label mode or not depending on corresponding value
+'---------------------------------------
+Sub SetLabelOverlapMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+  OnError Goto ErrorTrap 
+  Dim bFlag           As Logical
+
+    If vtGeosetTable.vtLabel.sOverlap <> "" Then
+        bFlag = vtGeosetTable.vtLabel.sOverlap
+        If bFlag Then
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   
+                   Label Overlap On
+        Else
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   
+                   Label Overlap Off
+        End If
+    End If
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "SetLabelOverlapMode: " & Error$()
+  Resume Done
+End Sub 'SetLabelOverlapMode
+
+'---------------------------------------
+' Turn on Parallel label mode or not depending on corresponding value
+'---------------------------------------
+Sub SetLabelParallelMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+  OnError Goto ErrorTrap 
+  Dim bFlag           As Logical
+
+    If vtGeosetTable.vtLabel.sParallel <> "" Then
+        bFlag = vtGeosetTable.vtLabel.sParallel
+        If bFlag Then
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   
+                   Label Parallel On
+        Else
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   
+                   Label Parallel Off
+        End If
+    End If
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "SetLabelParallelMode: " & Error$()
+  Resume Done
+End Sub 'SetLabelParallelMode
+
+'---------------------------------------
+' Turn on Partial Segment label mode or not depending on corresponding value
+'---------------------------------------
+Sub SetLabelPartialSegmentMode( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+  OnError Goto ErrorTrap 
+  Dim bFlag           As Logical
+
+    If vtGeosetTable.vtLabel.sPartialSegments <> "" Then
+        bFlag = vtGeosetTable.vtLabel.sPartialSegments
+        If bFlag Then
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   
+                   Label PartialSegments On
+        Else
+            Set Map Window lWinID  
+                Layer vtGeosetTable.sRealName   
+                   Label PartialSegments Off
+        End If
+    End If
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "SetLabelParallelMode: " & Error$()
+  Resume Done
+End Sub 'SetLabelParallelMode
+
+'---------------------------------------
+' Set Line Type label property
+'---------------------------------------
+Sub SetLabelLineTypeProperty( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+  OnError Goto ErrorTrap 
+  Dim lLineType     As Integer
+
+    If vtGeosetTable.vtLabel.sLineType <> "" Then
+        lLineType = Val( vtGeosetTable.vtLabel.sLineType )
+        Do Case lLineType
+            Case miLineTypeNone
+                Set Map Window lWinID  
+                    Layer vtGeosetTable.sRealName   
+                        Label Line None
+            Case miLineTypeSimple
+                Set Map Window lWinID  
+                    Layer vtGeosetTable.sRealName   
+                        Label Line Simple 
+            Case miLineTypeArrow
+                Set Map Window lWinID  
+                    Layer vtGeosetTable.sRealName   
+                        Label Line Arrow 
+        End Case
+    End If
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "SetLabelLineTypeProperty: " & Error$()
+  Resume Done
+End Sub 'SetLabelLineTypeProperty
+
+'---------------------------------------
+' Set Max Labels label property
+'---------------------------------------
+Sub SetLabelMaxLabelsProperty( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+  OnError Goto ErrorTrap 
+  Dim lMaxLabels As Integer
+  Dim sCommand As String
+
+    If vtGeosetTable.vtLabel.sMaxLabels <> "" Then
+        lMaxLabels = Int( Val( vtGeosetTable.vtLabel.sMaxLabels ) )
+        sCommand = "Set Map Window " + lWinID + 
+                   " Layer " + vtGeosetTable.sRealName +
+                   " Label Max " + lMaxLabels
+        Run Command sCommand
+    End If
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "SetLabelMaxLabelsProperty: " & Error$()
+  Resume Done
+End Sub 'SetLabelMaxLabelsProperty
+
+'---------------------------------------
+' Set Offset label property
+'---------------------------------------
+Sub SetLabelOffsetProperty( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+  OnError Goto ErrorTrap 
+  Dim lOffset As Integer
+  Dim sCommand As String
+
+    If vtGeosetTable.vtLabel.sOffset <> "" Then
+        lOffset = Int( Val( vtGeosetTable.vtLabel.sOffset ) )
+        sCommand = "Set Map Window " + lWinID + 
+                   " Layer " + vtGeosetTable.sRealName +
+                   " Label Offset " + lOffset
+        Run Command sCommand
+    End If
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "SetLabelOffsetProperty: " & Error$()
+  Resume Done
+End Sub 'SetLabelOffsetProperty 
+
+'---------------------------------------
+' Set Position label property
+'---------------------------------------
+Sub SetLabelPositionProperty( ByVal lWinID As Integer, vtGeosetTable As tGeoSetTable )
+  OnError Goto ErrorTrap 
+  Dim lPosition     As Integer
+
+    If vtGeosetTable.vtLabel.sPosition <> "" Then
+        lPosition = Val( vtGeosetTable.vtLabel.sPosition )
+        Do Case lPosition
+            Case miPositionCC      'Centered
+                Set Map Window lWinID  
+                    Layer vtGeosetTable.sRealName   
+                        Label Position  Center
+
+            Case miPositionTL      'Top Left
+                Set Map Window lWinID  
+                    Layer vtGeosetTable.sRealName   
+                        Label Position  Above  Left
+
+            Case miPositionTC      'Top Center
+                Set Map Window lWinID  
+                    Layer vtGeosetTable.sRealName   
+                        Label Position  Center Above  
+
+            Case miPositionTR      'Top Right
+                Set Map Window lWinID  
+                    Layer vtGeosetTable.sRealName   
+                        Label Position  Above  Right 
+
+            Case miPositionCL      'Left of Center
+                Set Map Window lWinID  
+                    Layer vtGeosetTable.sRealName   
+                        Label Position  Center Left  
+
+            Case miPositionCR      'Right of Center
+                Set Map Window lWinID  
+                    Layer vtGeosetTable.sRealName   
+                        Label Position  Center Right 
+
+            Case miPositionBL      'Bottom Left
+                Set Map Window lWinID  
+                    Layer vtGeosetTable.sRealName   
+                        Label Position  Below  Left  
+
+            Case miPositionBC      'Bottom Center
+                Set Map Window lWinID  
+                    Layer vtGeosetTable.sRealName   
+                        Label Position  Center Below  
+
+            Case miPositionBR      'Bottom Right
+                Set Map Window lWinID  
+                    Layer vtGeosetTable.sRealName   
+                        Label Position  Below  Right  
+        End Case
+    End If
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "SetLabelPositionProperty: " & Error$()
+  Resume Done
+End Sub 'SetLabelPositionProperty
+
+
+'---------------------------------------
+' Interpret Geoset Distance units
+'---------------------------------------
+Sub InterpretGeosetMapUnits( sMapUnit As String )   ' BP 30.09.98
+  OnError Goto ErrorTrap
+    
+    If sMapUnit <> "" Then
+        gsDistUnit = UnitNumberToUnitAbbr( Val( sMapUnit ) ) 
+    Else
+        gsDistUnit = UnitNumberToUnitAbbr( miUnitMile ) 
+    End If
+Done:
+  Exit Sub
+
+ErrorTrap:
+  Print "InterpretMapUnits: " & Error$()
+  Resume Done
+End Sub 'InterpretMapUnits
+
+'---------------------------------------
+' Get current Distance units
+'---------------------------------------
+Function GetMapUnits() As String              ' BP 30.09.98
+  OnError Goto ErrorTrap
+    
+    If gsDistUnit <> "" Then
+        GetMapUnits = gsDistUnit 
+    Else
+        GetMapUnits = UnitNumberToUnitAbbr( miUnitMile ) 
+    End If
+Done:
+  Exit Function
+
+ErrorTrap:
+  Print "GetMapUnits: " & Error$()
+  Resume Done
+End Function 'GetMapUnits

@@ -1,0 +1,77 @@
+Declare Function bGetTabFileSize(ByVal strFileName as String, dblTotalSize as Float) as Logical
+Declare Function bGetFileSize(ByVal strFileName as String, dblSize as Float) as Logical
+Declare Function dblGetTabFileSize(ByVal strFileName as String) as Float
+Declare Function dblGetFileSize(ByVal strFileName as String) as Float
+
+' wrapper functions to ignore errors when this information is not needed
+
+Function dblGetTabFileSize(ByVal strFileName as String) as Float
+	dim dblSize as Float
+
+	if bGetTabFileSize(strFileName, dblSize) then dblGetTabFileSize=dblSize Exit Function end if
+End Function
+
+
+Function dblGetFileSize(ByVal strFileName as String) as Float
+	dim dblSize as Float
+
+	if bGetFileSize(strFileName, dblSize) then dblGetFileSize=dblSize Exit Function end if
+End Function
+
+' TAB file must not be open in MIPro.  A Float value is returned via reference,
+'  since the combined size of the .MAP, .DAT, and .ID files may exceed 2 GB.
+'  Pass in a filespec like "C:\Test\Filename.TAB".  This function is intended
+'  to be used only with native, non-raster, non-seamless .TAB files.
+Function bGetTabFileSize(ByVal strFilespec as String, dblTotalSize as Float) as Logical
+	Dim bResult as Logical, dblSize as Float, strFileName as String
+
+	if ucase$(right$(strFilespec,4))<>".TAB" then
+		bGetTabFileSize=0
+		Exit Function
+	end if
+	strFileName=left$(strFilespec, len(strFilespec)-3)
+
+	dblTotalSize=0
+	if  bGetFileSize(strFilespec, dblSize) then		' size of .TAB
+		dblTotalSize=dblTotalSize+dblSize
+	else
+		bGetTabFileSize=0	' function fails if there is no .TAB file
+		Exit Function
+	end if
+	if bGetFileSize(strFileName & "DAT", dblSize) then	' size of .DAT
+		dblTotalSize=dblTotalSize+dblSize
+	end if
+	if bGetFileSize(strFileName & "MAP", dblSize) then	' size of .MAP
+		dblTotalSize=dblTotalSize+dblSize
+	end if
+	if bGetFileSize(strFileName & "ID", dblSize) then	' size of .ID
+		dblTotalSize=dblTotalSize+dblSize
+	end if
+	if bGetFileSize(strFileName & "IND", dblSize) then	' size of .IND
+		dblTotalSize=dblTotalSize+dblSize
+	end if
+	bGetTabFileSize=1
+End Function
+
+Function bGetFileSize(ByVal strFileName as String, dblSize as Float) as Logical
+	Dim siFileHandle as SmallInt
+
+	siFileHandle=120 ' choose a file handle at random
+	if Not FileExists(strFileName) then bGetFileSize=0 Exit Function end if
+	OnError Goto TryAnotherFileHandle
+OpenFile:
+	Open File strFileName for binary as siFileHandle
+	dblSize=FileAttr(siFileHandle, 2) ' 2=FILE_ATTR_FILESIZE
+	Close File siFileHandle
+	bGetFileSize=1
+	Exit Function
+
+TryAnotherFileHandle:
+	if err()=672 then ' file handle already in use
+		if siFileHandle>1 then
+			siFileHandle=siFileHandle-1 ' try up to 120 file handles!
+			Resume OpenFile
+		end if
+	end if
+	bGetFileSize=0 ' failed to open the file in question
+End Function

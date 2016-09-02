@@ -1,0 +1,8 @@
+[Link] 
+Application=HTMLImageMap.mbx 
+Module=HTMLImageMap.mbo
+Module=HTMLImageMapUserInterface.mbo
+Module=HTMLImageMapChooseColumns.mbo
+Module=HTMLImageMapWrite.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\Lib\resstrng.mbo

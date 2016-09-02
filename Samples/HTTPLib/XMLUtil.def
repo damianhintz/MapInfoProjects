@@ -1,0 +1,19 @@
+'*****************************************************************************
+'       Copyright © 2009 Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 66276 $
+'
+' Module Description:
+'
+' MapBasic sample to demonstate how to wrap MapInfo HTTP/XML
+' library XML APIs to to MapBasic functions/subs.
+'
+'*****************************************************************************
+Declare Function GetNodeValue(ByVal hNode As MIXmlNode) As String
+Declare Function GetSingleNodeValue(ByVal hRoot As MIXmlNode,ByVal strPattern As String) As String
+Declare Function GetNamespaces(ByVal hXMLDocument As MIXmlDocument, strNamespaces() As String) As Integer
+Declare Function SetNamespaces(ByVal hXMLDocument As MIXmlDocument) As Logical
+Declare Sub DumpNode(ByVal hRoot As MIXmlNode, ByVal nLevel As Integer)
+Declare Sub DumpAttribute(ByVal hRoot As MIXmlNode, ByVal nLevel As Integer)
+Declare Function CheckFault(ByVal hRoot As MIXmlNode, ErrorMsg As String) As Logical

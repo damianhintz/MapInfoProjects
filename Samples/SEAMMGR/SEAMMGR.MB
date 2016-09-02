@@ -1,0 +1,614 @@
+'*****************************************************************************
+'       Copyright © 2010, Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 67995 $
+'
+' Module Description:
+'   SEAMMGR
+'
+'   Create or append a seamless table.  Add all tables from the current map to
+'   to the selected seamless table.
+'
+'*****************************************************************************
+
+'****************************************************************************
+'
+' Include files and Define statements.
+'
+'****************************************************************************
+Include "..\Inc\auto_lib.def"
+Include "..\Inc\Str_lib.Def"
+Include "..\Inc\mapbasic.def"
+Include "SEAMMGR.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+Type tabStruct
+	fieldCount as Integer
+	ColType(5) as SmallInt
+	Type(5) as String
+	Len(5) as SmallInt
+End Type
+
+Dim initTabStruct as tabStruct
+Dim gCurSeamLessTableNum as SmallInt
+Dim gTableList as String
+Dim lFullPath as Logical
+Define AppVersion 1.2
+
+'****************************************************************************
+'
+' Declare sub procedures
+'
+'****************************************************************************
+
+Declare Sub Main
+Declare Sub About
+Declare Sub NewSeam
+Declare Sub AlterSeam
+Declare Function Build_seamless(ByVal table As string, ByVal new As Logical) as SmallInt
+Declare Sub EndSeamMgr
+Declare Sub get_table(byval bSeamlessIsOn as Logical)
+Declare Sub seamless_on()
+Declare Sub seamless_off()
+Declare Sub seamless_options()
+Declare Function compare_tables(sheetName as String, byVal firstTab as Logical) as Logical
+Declare Function find_compare_sheet(tableName as String) as Logical
+
+'****************************************************************************
+'
+' Declare Global variables
+'
+'****************************************************************************
+
+'****************************************************************************
+'
+' Sub procedure: Main
+'
+'****************************************************************************
+Sub Main
+OnError Goto HandleError
+
+ If LoadStrings((ApplicationDirectory$() + STR_RES_STR_FILE)) = FALSE   Then
+		Note STR_FILE_NOT_ACCESSIBLE + ApplicationDirectory$() + STR_RES_STR_FILE
+		Exit Sub
+	End If
+
+	gsAppDescription = GetResString(IDS_APP_NAME)
+	gsAppFilename = STR_SEAM_MGR_MBX
+	lFullPath = FALSE
+
+	Create Menu GetResString(IDS_SEAM_MGR) As
+		GetResString(IDS_NEW_SEAM_TABLE) Calling NewSeam,
+		GetResString(IDS_APPEND_SEAM_TABLE) Calling AlterSeam,
+		STR_MENU_ITEM_SEPARATOR,
+		GetResString(IDS_TURN_SEAM_ON) Calling seamless_on,
+		GetResString(IDS_TURN_SEAM_OFF) Calling seamless_off,
+		GetResString(IDS_SEAM_OPTIONS) Calling seamless_options,
+		STR_MENU_ITEM_SEPARATOR,
+		GetResString(IDS_ABOUT_SEAM_MGR) Calling About,
+		GetResString(IDS_EXIT_SEAM_MGR) Calling EndSeamMgr
+
+		Call set_tools_menu(GetResString(IDS_SEAM_MGR))
+		goto exit_sub
+
+HandleError:
+	Note STR_SUB_MAIN+ Error$()
+	Resume Next
+
+exit_sub:
+End Sub
+
+'------------------------------------------------------------------------------------------
+' create a new seamless table
+'------------------------------------------------------------------------------------------
+Sub NewSeam
+OnError Goto HandleError
+Dim winid As Integer
+Dim wintype As SmallInt
+Dim new_name_chosen As String
+Dim tablename As String
+Dim num_sheets As SmallInt
+Dim sCommand As string
+
+	If NumWindows() > 0 Then
+		winid = FrontWindow()
+		wintype = WindowInfo(winid,WIN_INFO_TYPE)
+
+		If (wintype = WIN_MAPPER) Then
+			new_name_chosen = FileSaveAsDlg(STR_EMPTY, STR_EMPTY, STR_TAB, STR_SAVE_MAP_SHEET)
+
+			If new_name_chosen = STR_EMPTY Then
+				Exit Sub
+			Else
+				tablename = PathToTableName$(new_name_chosen)
+				Create Table tablename
+					(Table Char(100),
+					 Description Char(25) )
+					File new_name_chosen
+					TYPE NATIVE
+				sCommand = STR_CREATE_MAP_FOR + tablename + STR_EMPTY2 + Tableinfo(LayerInfo(winid, 1, LAYER_INFO_NAME),TAB_INFO_COORDSYS_CLAUSE)
+				Run Command sCommand
+				num_sheets = Build_seamless(tablename, TRUE)
+				Commit Table tablename
+				OnError Goto failed_seamless
+				Set Table tablename Seamless On Preserve
+				if num_sheets > 0 Then
+					Close Table tablename
+					Open Table new_name_chosen
+				Else
+					Note GetResString(IDS_NO_SHEETS_CREATED)+tablename+GetResString(IDS_TABLE_REMOVED)+GetResString(IDS_DOT)
+					Drop Table tablename
+				End If
+			End if
+		Else
+			Note GetResString(IDS_SELECT_MAP_WINDOW)
+		End if
+	Else
+		Note GetResString(IDS_OPEN_MAP_WINDOW)
+	End If
+	Goto exit_sub
+
+failed_seamless:
+	Note GetResString(IDS_SEAM_TABLE_NOT_OPENED)
+	goto exit_sub
+
+HandleError:
+	Note STR_SUB_NEW_SEAM+ Error$()
+
+exit_sub:
+End Sub
+
+'------------------------------------------------------------------------------------------
+' create a new seamless table
+'------------------------------------------------------------------------------------------
+Sub AlterSeam
+OnError Goto HandleError
+Dim winid As Integer
+
+Dim wintype As SmallInt
+Dim new_name_chosen As String
+Dim tablename As String
+Dim num_sheets as SmallInt
+
+	If NOT NumWindows() Then
+		Note GetResString(IDS_OPEN_TABLE_FOR_OPTION)
+		Exit Sub
+	End If
+
+	winid = FrontWindow()
+	wintype = WindowInfo(winid,WIN_INFO_TYPE)
+
+	If (wintype = WIN_MAPPER) Then
+		new_name_chosen = FileOpenDlg(STR_EMPTY, STR_EMPTY, STR_TAB, GetResString(IDS_SELECT_SEAM_TABLE))
+
+		If new_name_chosen = STR_EMPTY Then
+			Exit Sub
+		Else
+			Open Table new_name_chosen
+			tablename = TableInfo(0, TAB_INFO_NAME)
+			If TableInfo(tablename, TAB_INFO_SEAMLESS) Then
+				Set Table tablename Seamless Off
+				num_sheets = Build_seamless(tablename, FALSE)
+				Commit Table tablename
+				OnError Goto failed_seamless
+				Set Table tablename Seamless On
+			Else
+				Note GetResString(IDS_TABLE) +tablename+GetResString(IDS_NOT_DEFINED_SEAMLESS)
+			End If
+		End if
+	Else
+		Note GetResString(IDS_SELECT_MAP_WINDOW)
+	End if
+	Goto exit_sub
+
+failed_seamless:
+		Note GetResString(IDS_TABLE_APPENDED_NOT_OPENED)
+		Goto  exit_sub
+
+HandleError:
+	Note STR_SUB_ALTER_SEAM + Error$()
+
+exit_sub:
+End Sub
+
+'****************************************************************************
+'
+' Sub procedure: build_seamless
+'
+'****************************************************************************
+Function Build_seamless(ByVal tablename As string, ByVal new As Logical) as SmallInt
+OnError Goto HandleError
+	Dim winid As Integer
+	Dim num_layers, i As Integer
+	Dim num_layers_passed as Integer
+	Dim staticInit As String
+	Dim SeamName as String
+	Dim SheetName As String
+	Dim TableFullName As String
+	Dim MBRRect As Object
+	Dim x1,y1,x2,y2 As Float
+	Dim tabOK as Logical
+	Dim FoundSheet as Logical
+	Dim IsSheetSeamless as Logical
+	Dim bSeamConsistentCSB as Logical
+	Dim bAddToSeam as Logical
+	Dim sSeamCoordSys  as String
+	Dim sSheetCoordSys As String
+
+	winid = FrontWindow()
+	num_layers = MapperInfo(winid, MAPPER_INFO_LAYERS)
+	num_layers_passed = 0
+	bSeamConsistentCSB = TRUE
+	bAddToSeam = FALSE
+
+	If num_layers <> 0 Then
+		For i = 1 To num_layers
+			SheetName = LayerInfo(winid, i, LAYER_INFO_NAME)
+			IsSheetSeamless = TableInfo(SheetName, TAB_INFO_SEAMLESS)
+
+			If IsSheetSeamless Then
+				note GetResString(IDS_TABLE) + SheetName+GetResString(IDS_DEFINED_SEAMLESS)  + GetResString(IDS_SEAMLESS_TABLE) +
+					tablename + GetResString(IDS_CANT_CONTAIN_OTHER_SEAM)
+
+			Elseif LayerInfo(winid, i, LAYER_INFO_TYPE) = LAYER_INFO_TYPE_GRID Then
+				note GetResString(IDS_TABLE)+SheetName+GetResString(IDS_IS_GRID_TABLE) + GetResString(IDS_SEAMLESS_TABLE) +
+					tablename + GetResString(IDS_CANT_CONTAIN_GRID_TABLE)
+
+			Elseif LayerInfo(winid, i, LAYER_INFO_TYPE) = LAYER_INFO_TYPE_TILESERVER Then
+				note GetResString(IDS_TABLE) + SheetName+GetResString(IDS_IS_TILESERVER_TABLE) + GetResString(IDS_SEAMLESS_TABLE) +
+					tablename + GetResString(IDS_CANT_CONTAIN_TILESERVER_TABLE)
+
+			Else
+
+				If new Then
+					If num_layers_passed = 0 Then
+						tabOK = compare_tables(sheetName, TRUE)
+					Else
+						tabOK = compare_tables(sheetName, FALSE)
+					End if
+				Else
+					if i = 1 Then
+						FoundSheet = find_compare_sheet(tablename)
+					End if
+					If FoundSheet Then
+						tabOK = compare_tables(sheetName, FALSE)
+					Else
+						tabOK = FALSE
+					End If
+				End if
+
+				If tabOK Then
+					TableFullName = LayerInfo(winid, i, LAYER_INFO_PATH)
+					if NOT lFullPath then
+						TableFullName = PathToFileName$(TableFullName)
+					End if
+
+					if bSeamConsistentCSB then
+						If TableInfo(sheetName, TAB_INFO_TYPE) = TAB_TYPE_IMAGE Or TableInfo(sheetName, TAB_INFO_TYPE) = TAB_TYPE_WMS Then
+							sSeamCoordSys = Tableinfo(tablename,TAB_INFO_COORDSYS_CLAUSE_WITHOUT_BOUNDS)
+							sSheetCoordSys = Tableinfo(sheetName,TAB_INFO_COORDSYS_CLAUSE_WITHOUT_BOUNDS)
+						Else
+							sSeamCoordSys = Tableinfo(tablename,TAB_INFO_COORDSYS_CLAUSE)
+							sSheetCoordSys = Tableinfo(sheetName,TAB_INFO_COORDSYS_CLAUSE)
+						End If
+						if(sSeamCoordSys = sSheetCoordSys) then
+							bAddToSeam = TRUE
+						Else
+							if( Ask(GetResString(IDS_COORDSYS_DIFFERS1)+ tablename+GetResString(IDS_COORDSYS_DIFFERS2) + sheetName + GetResString(IDS_COORDSYS_DIFFERS3), GetResString(IDS_CONTINUE), GetResString(IDS_SKIP)) )Then
+								bSeamConsistentCSB = FALSE
+							End If
+						End if
+					End if
+
+					if Not bSeamConsistentCSB then   'If the user ignores the warning we will continue with addition.
+						bAddToSeam = TRUE
+					End if
+
+					if bAddToSeam Then
+						x1 = TableInfo( SheetName, TAB_INFO_MINX )
+						y1 = TableInfo( SheetName, TAB_INFO_MINY )
+						x2 = TableInfo( SheetName, TAB_INFO_MAXX )
+						y2 = TableInfo( SheetName, TAB_INFO_MAXY )
+						Create Rect Into Variable MBRRect (x1,y1)(x2,y2)
+						Insert Into tablename (Table, Description, Obj) Values (TableFullName, sheetname, MBRRect)
+						num_layers_passed = num_layers_passed + 1
+						bAddToSeam = FALSE
+					End If
+
+				Else
+					Note GetResString(IDS_TABLE) + sheetName + GetResString(IDS_TABLE_STRUCT_DIFFERENT)
+				End If
+			End If
+		Next
+		if new Then
+			Note GetResString(IDS_SEAM_MAP_SHEET) + Chr$(34) + tableName + Chr$(34) + GetResString(IDS_CREATED_CONTAINING)  + num_layers_passed + GetResString(IDS_TABLES)
+		Else
+			Note GetResString(IDS_SEAM_MAP_SHEET) + Chr$(34) + tableName + Chr$(34) + GetResString(IDS_APPENDED_WITH) + num_layers_passed + GetResString(IDS_TABLES)
+		End If
+	Else
+		Note GetResString(IDS_NO_LAYERS)
+	End If
+
+	Build_seamless = num_layers_passed
+	goto exit_sub
+
+HandleError:
+	Note STR_FCN_BUILD_SEAMLESS+ Error$()
+
+exit_sub:
+End Function
+
+'****************************************************************************
+'
+' Sub procedure: About
+'
+'****************************************************************************
+Sub About
+OnError Goto HandleError
+Dim x, y as SmallInt
+
+  x = 10
+  y = -10
+
+  Dialog
+  Title GetResString(IDS_ABOUT_APP)
+
+  Control StaticText Title GetResString(IDS_APP_DESC_1) + Chr$(13) + Chr$(13) +
+                           GetResString(IDS_APP_DESC_2) + 'Chr$(13) +
+                           GetResString(IDS_APP_DESC_3) + Chr$(13) + Chr$(13) +
+                           GetResString(IDS_APP_DESC_4)
+          Height 130
+          Width  260
+  Control OkButton 'Position 106, 180
+  goto exit_sub
+
+HandleError:
+  Note STR_SUB_ABOUT+ Error$()
+
+exit_sub:
+End Sub
+
+'****************************************************************************
+'
+' Sub procedure: EndSeamMgr
+'
+'****************************************************************************
+Sub EndSeamMgr
+OnError Goto HandleError
+  End Program
+  goto exit_sub
+
+HandleError:
+  Note STR_SUB_END_SEAM_MGR+ Error$()
+
+exit_sub:
+End Sub
+
+'****************************************************************************
+Sub get_table(byval bSeamlessIsOn as Logical)
+OnError Goto HandleError
+Dim num_tbls, i as SmallInt
+Dim tableName as String
+Dim SeamlessMetadata as string
+
+	gTableList = STR_EMPTY
+	num_tbls = NumTables()
+	If num_tbls <> 0 Then
+	  For i = 1 To num_tbls
+	    tableName = TableInfo( i, TAB_INFO_NAME )
+	    If bSeamlessIsOn Then
+		  ' if seamless has been turned off already, then
+		  '  table will not look like a seamless table to MIPro.
+		  If TableInfo( i, TAB_INFO_SEAMLESS ) Then
+			gTableList = gTableList + tableName + STR_SEMI_COLON
+	  	  End If
+		Else
+		  ' if the tag exists and seamless behavior has been turned off,
+		  '   then add to the list to turn on.
+		  SeamlessMetadata = GetMetaData$(tableName, STR_IS_SEAM)
+		  If SeamlessMetadata <> STR_EMPTY AND not TableInfo( i, TAB_INFO_SEAMLESS ) then
+			gTableList = gTableList + tableName + STR_SEMI_COLON
+		  End If
+		End If
+	  Next
+	Else
+    	  Note GetResString(IDS_NO_TABLE_OPEN)
+    	  Exit Sub
+	End If
+
+	Dialog Title GetResString(IDS_CHOOSE_SEAMLESS_TABLE)
+	Control listBox Title gTableList
+	Into gCurSeamLessTableNum
+	Width 150
+
+	Control OKButton
+
+	If NOT CommandInfo(CMD_INFO_DLG_OK) Then
+        gCurSeamLessTableNum = 0
+	End If
+  goto exit_sub
+
+HandleError:
+  Note STR_SUB_GET_TABLE+ Error$()
+
+exit_sub:
+End Sub
+
+'Sub select_table_handler
+
+'End Sub
+
+'****************************************************************************
+' If after turning seamless off, the user browses a seamless table, we should
+' close the seamless table before turning seamless back on.  Future fix.
+'****************************************************************************
+Sub seamless_on()
+OnError Goto HandleError
+Dim curSeamLessTableStr as String
+
+	Call get_table(false)
+	If gCurSeamLessTableNum <> 0 Then
+		Call Extract(gCurSeamLessTableNum, gTableList, curSeamLessTableStr)
+		Set Table curSeamLessTableStr Seamless On
+	End If
+	goto exit_sub
+
+HandleError:
+  Note STR_SUB_SEAMLESS_ON+ Error$()
+
+exit_sub:
+End Sub
+
+'****************************************************************************
+' If there are map windows open that contain seamless tables, we should close
+' when we turn seamless off.  We'll have to do that in a future release.
+'****************************************************************************
+Sub seamless_off()
+OnError Goto HandleError
+Dim curSeamLessTableStr as String
+
+	Call get_table(true)
+	If gCurSeamLessTableNum <> 0 Then
+		Call Extract(gCurSeamLessTableNum, gTableList, curSeamLessTableStr)
+		Set Table curSeamLessTableStr Seamless Off
+	End If
+    goto exit_sub
+
+HandleError:
+  Note STR_SUB_SEAMLESS_OFF+ Error$()
+
+exit_sub:
+End Sub
+
+Sub seamless_options()
+OnError Goto HandleError
+Dim ipath as SmallInt
+
+  if lFullPath then
+    ipath = 1
+  Else
+    ipath = 2
+  End if
+
+  Dialog
+    Title GetResString(IDS_SEAM_MGR_OPTIONS)
+    Control GroupBox
+      Title GetResString(IDS_TABLE_PATH)
+    Control RadioGroup
+      Title GetResString(IDS_PATH_OPTIONS)
+      Value ipath
+      Into ipath
+      ID 1
+   Control OKButton
+   Control CancelButton
+
+   If CommandInfo(CMD_INFO_DLG_OK) Then
+    if ipath = 1 then
+      lFullPath = TRUE
+
+    Else
+      lFullPath = FALSE
+    End if
+  End if
+  goto exit_sub
+
+HandleError:
+  Note STR_SUB_SEAMLESS_OPTIONS+ Error$()
+
+exit_sub:
+End Sub
+
+'****************************************************************************
+' This routine does a crude comparison of two tables.  The criteria are:
+' The tables have the same number of fields
+' The first five columns in each table have the same name and length
+'
+' When combining tables into a seamless sheet, the tables should be
+' identical, do this works OK in most cases.
+'****************************************************************************
+Function compare_tables(sheetName as String, ByVal firstTab as LOGICAL) As Logical
+OnError Goto HandleError
+Dim i as SmallInt
+Dim col as String
+Dim numcols as SmallInt
+
+	compare_tables = TRUE
+
+	If firstTab Then
+		initTabStruct.fieldCount = TableInfo(sheetname, TAB_INFO_NCOLS)
+		numcols = minimum(initTabStruct.fieldCount, 5)
+		For i = 1 To numcols
+			col = STR_COL_NUM+i
+                  initTabStruct.ColType(i) = ColumnInfo(sheetname, col, COL_INFO_TYPE)
+			initTabStruct.Type(i) = ColumnInfo(sheetname, col, COL_INFO_NAME)
+			initTabStruct.Len(i) = ColumnInfo(sheetname, col, COL_INFO_WIDTH)
+		Next
+	Else
+		If initTabStruct.fieldCount = TableInfo(sheetname, TAB_INFO_NCOLS) then
+			numcols = minimum(initTabStruct.fieldCount, 5)
+			i = 1
+			do while i <= numcols
+				col = STR_COL_NUM+i
+                  If (initTabStruct.ColType(i) = 3 or initTabStruct.ColType(i) = 4) and
+				(ColumnInfo(sheetname, col, COL_INFO_TYPE) = 3 or
+					ColumnInfo(sheetname, col, COL_INFO_TYPE) = 4) then
+                  ElseIf initTabStruct.Type(i) <> ColumnInfo(sheetname, col, COL_INFO_NAME) or
+					initTabStruct.Len(i) <> ColumnInfo(sheetname, col, COL_INFO_WIDTH) Then
+					compare_tables = FALSE
+			End If
+				i = i+1
+			Loop
+		Else
+			compare_tables = FALSE
+	    End If
+	End if
+    goto exit_sub
+
+HandleError:
+  Note STR_FCN_COMPPARE_TABLES+ Error$()
+
+exit_sub:
+End Function
+
+'****************************************************************************
+Function find_compare_sheet(tableName as String) as Logical
+Dim FoundSheet as Logical
+Dim PathAlias As Alias
+Dim path as String
+Dim i as SmallInt
+Dim col as String
+Dim numcols as SmallInt
+Dim sheetname as String
+
+	FoundSheet = FALSE
+	Fetch First From tableName
+	PathAlias = tableName + STR_COL1
+	path = PathAlias
+	Open Table path
+	OnError Goto bad_open
+	sheetname = TableInfo(0, TAB_INFO_NAME)
+	initTabStruct.fieldCount = TableInfo(sheetname, TAB_INFO_NCOLS)
+	numcols = minimum(initTabStruct.fieldCount, 5)
+	For i = 1 To numcols
+		col = STR_COL_NUM+i
+		initTabStruct.ColType(i) = ColumnInfo(sheetname, col, COL_INFO_TYPE)
+		initTabStruct.Type(i) = ColumnInfo(sheetname, col, COL_INFO_NAME)
+		initTabStruct.Len(i) = ColumnInfo(sheetname, col, COL_INFO_WIDTH)
+	Next
+	find_compare_sheet = TRUE
+
+	last_exit:
+		Exit Function
+	bad_open:
+		find_compare_sheet = FALSE
+		Note GetResString(IDS_TABLE)+sheetname+GetResString(IDS_IN_SEAM_TABLE)+tableName+GetResString(IDS_CANT_OPEN)
+		Resume Next
+    goto exit_sub
+
+HandleError:
+	Note STR_FCN_FIND_COMPARE_SHEET+ Error$()
+
+exit_sub:
+End Function

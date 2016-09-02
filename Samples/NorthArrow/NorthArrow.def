@@ -1,0 +1,56 @@
+' Resource String Ids
+Define IDS_STR_RES_RANGE_ERR             1
+Define IDS_APP_DESCRIPTION               2
+Define IDS_MENU_NAME                     3
+Define IDS_DRAW_MENU_ITEM_NAME           4
+Define IDS_SETUP_MENU_ITEM_NAME          5
+Define IDS_ABOUT_MENU_ITEM_NAME          6
+Define IDS_EXIT_MENU_ITEM_NAME           7
+Define IDS_TOOLS                         8
+Define IDS_TOOL_HELP_MSG                 9
+Define IDS_NO_OPEN_WINDOW                10
+Define IDS_NEED_MAP_OR_LAYOUT            11
+Define IDS_VERSION                       12
+Define IDS_SELECT_ARROW_STYLE            13
+Define IDS_FOREGROUND_BRUSH              14
+Define IDS_FOREGROUND_PEN                15
+Define IDS_BACKGROUND_BRUSH              16
+Define IDS_BACKGROUND_PEN                17
+Define IDS_RADIOGROUP_NORTH_ARROW        18
+Define IDS_RADIOGROUP_ASPECT_RATIO       19
+Define IDS_NORTH_ARROW_SIZE              20
+Define IDS_AUTO_PLACE_LOCATION           21
+Define IDS_MAGNETIC_DEC_BUTTON           22
+Define IDS_OK_BUTTON                     23
+Define IDS_CANCEL_BUTTON                 24
+Define IDS_SIZE_MUST_BE_NUMERIC          25
+Define IDS_SIZE_1_100                    26
+Define IDS_MAGNETIC_DECLINATION_TITLE    27
+Define IDS_DISPLAY_MAGNETIC_DECLINATION  28
+Define IDS_MAGNETIC_DECLINATION          29
+Define IDS_IN_DEGREES_FROM_NORTH         30
+Define IDS_MAGNETIC_DEC_NUMERIC          31
+Define IDS_CANT_WRITE_PREF_FILE          32
+Define IDS_SKIPPING                      33
+Define IDS_ABOUT_1                       34
+Define IDS_ABOUT_2                       35
+Define IDS_ABOUT_3                       36
+Define IDS_ABOUT_4                       37
+Define IDS_ABOUT_5                       38
+Define IDS_ABOUT_6                       39
+Define IDS_ABOUT_7                       40
+Define IDS_ABOUT_8                       41
+Define IDS_ABOUT_9                       42
+Define IDS_ABOUT_10                      43
+Define IDS_ABOUT_11                      44
+Define IDS_ABOUT_12                      45
+Define IDS_NO_NORTH_ARROWS               46
+Define IDS_CLICK_MAP_OR_LAYOUT           47
+Define IDS_UNSUPPORTED_OBJ_TYPE          48
+Define IDS_BAD_PREF_VERSION              49
+Define IDS_USING_DEFAULTS                50
+Define IDS_CANT_READ_PREF                51
+
+
+
+

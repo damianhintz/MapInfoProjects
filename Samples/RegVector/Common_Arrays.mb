@@ -1,0 +1,223 @@
+'*****************************************************************************
+'       Copyright © 2010, Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 67995 $
+'
+' Module Description:
+'
+'****************************************************************************/
+
+Include "MapBasic.def"
+Include "Register.def" '###the programs DEF file.
+
+'################################################################################################
+'###### This Sub will create the tables used to hold the control and reference points.
+
+Sub Table_Create
+
+Dim strDoc1CoordSys as string
+Dim strCreateCntr, strCreateRef as string
+Dim intGetBounds as integer
+
+strDoc1CoordSys = TableInfo(strTableList(1),TAB_INFO_COORDSYS_CLAUSE)
+strDoc2CoordSys = MapperInfo(intMapId(1),MAPPER_INFO_COORDSYS_CLAUSE)
+
+'note strDoc2CoordSys
+
+If mid$(strDoc2CoordSys,10,3) = "non" then
+	intGetBounds = GetBounds(intMapId(1))
+	l_NonEarth = true
+Else
+	l_NonEarth = False
+End If
+
+OnError goto whats_wrong
+
+Create table Cntr_Bannus(control_points char(20) , ID integer)
+File ApplicationDirectory$() & "cntr_bannus"
+
+strCreateCntr = "Create Map for cntr_bannus " & strDoc1CoordSys
+Run Command strCreateCntr
+
+Create table Ref_Bannus(Reference_points char(20) , ID integer)
+File ApplicationDirectory$()& "ref_bannus"
+
+OnError goto doc2Coord
+
+strCreateRef = "Create Map for ref_bannus " & strDoc2CoordSys
+Run Command strCreateRef
+
+Exit Sub
+
+doc2Coord:
+	'note " "
+Exit sub
+
+whats_wrong:
+
+'note "An error occured in Sub Table_Create/Common_Arrays.mbo"
+
+End Sub
+
+'################################################################################################
+'###### This module builds an array of open Mappable Tables called strTableList(). The array is a
+'###### Global.
+
+Sub MapTables_mod
+
+OnError goto whats_wrong
+
+	Dim intNumTables, intTableCounter, intUsable as integer
+	Dim l_Mappable as logical
+
+	intNumTables = numTables()
+	intUsable = 1
+	redim strTableList(intNumTables)
+
+	for intTableCounter = 1 to intNumTables
+		l_Mappable = Is_Mappable(intTableCounter)
+		If l_Mappable then
+			If lcase$(TableInfo(intTableCounter, TAB_INFO_NAME)) <> "cntr_bannus" and lcase$(TableInfo(intTableCounter, TAB_INFO_NAME)) <> "ref_bannus" then
+				strTableList(intUsable) = TableInfo(intTableCounter, TAB_INFO_NAME)
+				intUsable = intUsable + 1
+			End IF
+		End If
+	Next
+
+	redim strTableList(intUsable - 1)
+
+Exit Sub
+
+whats_wrong:
+
+'note "An error occured in MapTables_mod/Common_Arrays.mbo"
+
+End Sub
+
+'###############################################################################################
+'### This Module will build 2 arrays. strMappables() will hold the name of all Map Windows open
+'### and intMapID() will hold the WindowID's of each of the Map Windows. Both should be globals.
+'### Also both arrays will match, thus strMappables(1) and intMapID(1) will give information for
+'### the same window.
+
+Sub MapWindows_mod
+
+	OnError goto whats_wrong
+
+	Dim intMapCounter, intNumberWindows, intCounter as integer
+
+	intMapCounter = 1
+	intNumberWindows = numWindows()
+
+	redim strMappables(intNumberWindows)
+	redim intMapId(intnumberwindows)
+
+	for intCounter = 1 to intNumberWindows
+		If WindowInfo(intCounter,WIN_INFO_TYPE) = 1 then
+			strMappables(intMapCounter) = WindowInfo(intCounter,WIN_INFO_NAME)
+			intMapID(intMapCounter) = WindowInfo(intCounter,WIN_INFO_WindowID)
+
+			intMapCounter = intMapCounter + 1
+		End IF
+
+	Next
+
+	Redim strMappables(intMapCounter-1) '### Window Names for all open Map Windows
+	Redim intMapId(intMapCounter - 1) '###WinId's for all open map windows, syncs with Window names.
+
+Exit Sub
+
+whats_wrong:
+
+'note "An error occured in MapWindows/Common_Arrays.mbo"
+
+End Sub
+
+'#####################################################################################
+'####  This Function returns a logical. True if the table is mappable or meets other
+'####  criteria which can easily be changed such as raster,read only,query.....
+
+Function Is_Mappable(ByVal g_ig_TableId as integer) as logical
+
+	Is_mappable = True '** If table valid, allows program to continue otherwise will be false.
+
+	dim int_Type as SmallInt '** Holds value to query TAB_INFO_TYPE
+
+	If Not TableInfo(g_ig_TableId,TAB_INFO_MAPPABLE) Then
+		'** Warns user that Table is not mappable.
+		Is_Mappable = False
+		exit Function 'Not mappable
+	End If
+
+	If TableInfo(g_ig_TableId,TAB_INFO_TEMP) = True Then
+		'** Warns user that Table is a Query.
+		Is_Mappable = False
+		exit function '** User canceled program.
+	End If
+
+	If TableInfo(g_ig_TableId,TAB_INFO_SEAMLESS) = True Then
+		Is_Mappable = False
+		exit function '** User canceled program.
+	End If
+
+	int_Type = TableInfo(g_ig_TableId,TAB_INFO_TYPE)
+
+	If int_Type = TAB_TYPE_VIEW Then
+		Is_mappable = False
+		exit function '** raster
+	End If
+
+	If int_Type = TAB_TYPE_IMAGE Or int_Type = TAB_TYPE_WMS Or int_Type = TAB_TYPE_TILESERVER Then
+		Is_mappable = False
+		exit function '** view
+	End If
+
+	If int_Type = TAB_TYPE_LINKED Then
+		Is_mappable = False
+		exit function '** Linked
+	End If
+
+	' Removed read-only restriction.
+
+	If TableInfo(g_ig_TableId,TAB_INFO_EDITED) = true then
+		Is_Mappable = False
+		exit function  '*** Table has pending edits
+	end if
+
+End function
+
+'###################################################################################
+'###################################################################################
+'############  Get Bounds for Non Earth CoordSys   #################################
+
+Function GetBounds(MapId as integer) as integer
+
+	Dim x1, x2, y1, y2 as float
+	Dim flCurrentZoom as float
+	Dim strTempCoordSys as string
+
+	strTempCoordSys = "Set " & strDoc2CoordSys & " bounds (-1000000000,-1000000000) (1000000000,1000000000)"
+	Run Command strTempCoordSys
+
+	flCurrentZoom = MapperInfo(MapId,Mapper_INFO_ZOOM)
+
+	Set Map Window MapId Redraw Off
+	set map window mapId zoom entire
+
+	x1 = MapperInfo(MapId,Mapper_Info_MinX)
+	x2 = MapperInfo(MapId,Mapper_Info_MaxX)
+	y1 = MapperInfo(MapId,Mapper_Info_MinY)
+	y2 = MapperInfo(MapId,Mapper_Info_MaxY)
+
+	set map window mapId zoom flCurrentZoom
+	Set Map Window MapId Redraw On
+
+	strDoc2CoordSys = strDoc2CoordSys & " bounds (" & x1 & "," & y1 & ") (" & x2 & "," & y2 & ")"
+	'strTempCoordSys= "Set " & strDoc2CoordSys
+	'run command strTempCoordSys
+	g_strMapperCoord2 = strDoc2CoordSys
+
+'note strDoc2CoordSys & " Get Bounds"
+
+End Function

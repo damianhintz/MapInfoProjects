@@ -1,0 +1,465 @@
+'******************************************************************************
+'                             MAPINFO CORPORATION
+'
+' Date:         7/8/96          
+'
+' Module:       SQLUTIL.mb
+' For Version:  MapInfo 4.0
+' 
+' Overview:
+'
+'   This mb source file provides many utility functions for mapinfo access to
+' ODBC data
+'****************************************************************************
+
+include "mapbasic.def"
+include "..\inc\DLSAMP.DEF"
+include "ODBCPLUS.DEF"
+
+'Declare SUB RunSQLFile(BYVAL filespec AS STRING)
+'DECLARE Function GetSQLUserid2() AS STRING
+DECLARE FUNCTION ServerNameDialog() AS STRING
+DECLARE FUNCTION IsOCI(BYVAL hdbc AS INTEGER) AS LOGICAL
+
+'****************************************************************************
+'* Run all SQL Statements in the given file in a single transaction
+'* ON THE CURRENT CONNECTION
+'****************************************************************************
+SUB RunSQLFile(BYVAL filespec AS STRING)
+  Dim n AS INTEGER
+  DIM SQLstring AS STRING
+
+  IF dbg THEN
+      Print "Run SQL in file " + filespec
+  END IF
+  Open File filespec For Input As #6
+
+  n=0
+  SQLstring = ""
+   
+  Line Input #6, SQLstring
+
+  Server demohdbc BEGIN TRANSACTION
+  While not EOF(6) and SQLstring <> ""
+    n=n+1
+
+    If dbg Then
+      Print "REC " + n + " >" + SQLstring + "<"
+    End If
+ 
+    OnError goto ExecuteError
+    demohstmnt = Server_Execute(demohdbc, SQLstring)
+    SERVER demohstmnt CLOSE
+
+    Line Input #6, SQLstring
+  Wend
+
+  Server demohdbc COMMIT
+
+  Note "SQL file processing ended successfully!; " + n + " records processed" 
+
+  GOTO ALLDONE
+
+ExecuteError:
+  Note "Error processing record #" + n + ";" + Error$()
+  Close File #6
+  Server demohdbc ROLLBACK
+  resume ALLDONE
+
+OpenError:
+  Note "Error opening file: "+ filespec
+  resume ALLDONE
+
+ALLDONE:
+
+END SUB
+
+
+'****************************************************************************
+'* Show SERVER_COLUMNINFO values for all types except value
+'****************************************************************************
+SUB PrintResults (BYVAL demohstmnt AS INTEGER)
+  DIM i, numcols AS INTEGER
+
+  '* Print a title and some headings
+  '* Output is in a tabular form
+  Print " "
+  Print "    Definition for Table: " + TabFullName
+  Print " "
+  Print +
+        STRPAD$("NAME",              18) + " | " + 
+        STRPAD$("TYPE",               8) + " | " + 
+        STRPAD$("SCALE",              8) + " | " + 
+        STRPAD$("PRECISION",          9) + " | " + 
+        STRPAD$("WIDTH",              8) + " | " +  
+        STRPAD$("STATUS",             8) + " | " +  
+        STRPAD$("VALUE",              8) 
+
+  Print +
+        STRPAD$("__________________",18) + " | " + 
+        STRPAD$("_________________",  8) + " | " + 
+        STRPAD$("_________________",  8) + " | " + 
+        STRPAD$("_________________",  9) + " | " + 
+        STRPAD$("_________________",  8) + " | " +  
+        STRPAD$("_________________",  8) + " | " +  
+        STRING$(80, "_")
+
+  numcols = SERVER_NUMCOLS(demohstmnt)
+
+  '* For each column, print out the SERVER_COLUMNINFO results 
+  ONERROR GOTO WHOCARES 
+  FOR i = 1 TO numcols
+    PRINT +
+    STRPAD$(SERVER_COLUMNINFO(demohstmnt, i, SRV_COL_INFO_NAME),      18) + " | " + 
+    STRPAD$(SERVER_COLUMNINFO(demohstmnt, i, SRV_COL_INFO_TYPE),       8) + " | " + 
+    STRPAD$(SERVER_COLUMNINFO(demohstmnt, i, SRV_COL_INFO_SCALE),      8) + " | " + 
+    STRPAD$(SERVER_COLUMNINFO(demohstmnt, i, SRV_COL_INFO_PRECISION),  9) + " | " + 
+    STRPAD$(SERVER_COLUMNINFO(demohstmnt, i, SRV_COL_INFO_WIDTH),      8) + " | " +
+    STRPAD$(SERVER_COLUMNINFO(demohstmnt, i, SRV_COL_INFO_STATUS),      8) + " | " +
+            SERVER_COLUMNINFO(demohstmnt, i, SRV_COL_INFO_VALUE) 
+  NEXT 
+
+  EXIT SUB
+
+  WHOCARES:
+    RESUME NEXT 
+END SUB
+
+'*******************************************************
+Function GetSQLUserid(BYVAL hdbc AS INTEGER) AS STRING
+  DIM SQLUserId AS STRING
+  Dim odbchdbc AS INTEGER
+  DIM rc, outlen AS SMALLINT
+  
+  IF dbg THEN
+      Print "GetSQLUserid"
+  END IF
+
+  IF demohdbc <> 0 THEN
+    odbchdbc = Server_GetODBCHConn(hdbc)
+    
+    SQLUserId = Space$(40)
+	SQLUserId = Server_ConnectInfo(hdbc, SRV_CONNECT_INFO_SQL_USER_ID)
+
+  END IF
+  GOTO ALLDONE
+
+  GOERR:
+    ' Failed to get database userid
+    IF dbg THEN
+      Print "Error: " + Error$()
+    END IF
+    SQLUserId = ""
+    RESUME ALLDONE
+
+  ALLDONE:
+    IF dbg THEN
+      Print "SQLuserid = " + SQLUserId
+    END IF
+    GetSQLUserid = SQLUserId
+
+END FUNCTION
+
+'*******************************************************
+'uses dll functions to determine which database is connected 
+'*************************************************************
+Function WhichSQLDatabase(BYVAL hdbc AS INTEGER) AS INTEGER
+  DIM  odbchdbc As Integer
+  IF dbg THEN
+      Print "WhichSQLDataBase"
+  END IF
+
+  IF demohdbc <> 0 THEN
+    ' Get the database and datasource names
+    demodbname = GetDBName(hdbc)
+    demodsname = GetDSName(hdbc)
+
+    ' set a define for the onw you are connected to
+    Do Case UCASE$(demodbname)
+      Case "ORACLE", "ORACLE 8", "ORACLE8", "ORACLE_SPATIAL", "ORACLE SDO SERVER"
+        demodb = DATA_SOURCE_ORACLE
+      Case "ACCESS"
+        demodb = DATA_SOURCE_MSACCESS
+      Case "EXCEL SPREADSHEET"
+        demodb = DATA_SOURCE_EXCEL4
+      Case "EXCEL"
+        demodb = DATA_SOURCE_EXCEL5
+      Case "DBASE IV","DBASE4","DBASE V"
+        demodb = DATA_SOURCE_DBASE
+	    Case "TEXT"
+        demodb = DATA_SOURCE_TEXT
+	Case "AUTOMETRIC SQS SERVER"
+	  demodb = DATA_SOURCE_SQS
+      Case "SQL SERVER"
+    	  OnError Goto Failure
+    	  odbchdbc =  Server_Execute(demohdbc,"Set Spatial Format MI")
+    	  IF dbg THEN
+       	    Print "  Sybase odbchdbc = " + odbchdbc 
+    	  END IF
+    	  IF odbchdbc <> 0 THEN		  
+          demodbname = "Autometric SQS Server"
+          demodb = DATA_SOURCE_SQS 
+
+          IF dbg THEN
+            OPEN FILE "SQSSTMTS.TXT" For Output As #1
+          END IF
+        ELSE
+          demodb = DATA_SOURCE_SYBASE    
+        END IF
+    	  Server odbchdbc Close  
+        OnError GoTo 0
+      Case "GUPTA","SQLBASE"
+        demodb = DATA_SOURCE_SQLBASE 
+      Case "INFORMIX"
+        demodb = DATA_SOURCE_INFORMIX  
+      Case "INGRES"
+        demodb = DATA_SOURCE_INGRES    
+      Case "DB2/2", "DB2", "DB2/6000", "DB2_US"
+        demodb = DATA_SOURCE_DB2       
+      Case "MICROSOFT SQL SERVER"
+        demodb = DATA_SOURCE_SQLSERVER
+	Case "SQL SERVER SW"
+	  demodb = DATA_SOURCE_SQLSERVER_SW
+	Case	"SPATIALWARE/ORACLE"
+	    demodb = DATA_SOURCE_SPATIALWARE
+      Case "IUS"
+           demodb = DATA_SOURCE_IUS
+      Case ELSE
+        NOTE "We are unable to match your ODBC driver in the WhichSQLDatabase function."+
+             "Your driver is "+demodbname+". If you have MapBasic you may adjust the function"+ 
+             " to support your driver."
+	  demodb = 0
+    END CASE
+  ELSE
+     demodb = DATA_SOURCE_UNKNOWN
+  END IF  
+  WhichSQLDatabase = demodb
+  IF dbg THEN
+     Print "  demodb     = " + demodb
+     Print "  demodbname = " + demodbname
+  END IF
+  goto endr
+
+Failure:
+  Resume Next
+endr:
+
+END FUNCTION 
+
+
+'*******************************************************
+' Call the ODBC SQLGetInfo function to get the DBName
+'*******************************************************
+FUNCTION GetDBName(BYVAL hdbc AS INTEGER) AS STRING
+  DIM odbchdbc AS INTEGER
+  DIM rc, outlen AS SMALLINT
+  DIM DBName AS STRING
+
+	odbchdbc = Server_GetODBCHConn(hdbc)
+  	DBname= Space$(40)
+	DBName = Server_ConnectInfo(hdbc, SRV_CONNECT_INFO_DB_NAME)
+
+  	IF dbg THEN
+   	 PRINT "DBName=" + DBName
+    	  print "OutLen: " + outlen	
+  	END IF
+  	GetDBName= Ucase$(DBname)
+END FUNCTION
+
+
+'*******************************************************
+' Call the ODBC SQLGetInfo function to get the ServerName
+'*******************************************************
+FUNCTION GetServerName(BYVAL hdbc AS INTEGER) AS STRING
+  DIM odbchdbc AS INTEGER
+  DIM rc, outlen AS SMALLINT
+  DIM ServerName AS STRING
+
+  odbchdbc = Server_GetODBCHConn(hdbc)
+  ServerName = Space$(40)
+  IF dbg THEN
+    PRINT "odbchdbc: " +odbchdbc
+  END IF 
+
+  ServerName = Server_ConnectInfo(hdbc, SRV_CONNECT_INFO_DS_NAME)
+'  IF IsOCI(hdbc) THEN
+'	ServerName = ServerNameDialog()
+'  ELSE
+'    IF SystemInfo(SYS_INFO_MIPLATFORM) = MIPLATFORM_WIN16 THEN
+'      rc = SQLGetInfo(odbchdbc, 13 , ServerName, 40, outlen)
+'    ELSE
+'      rc = SQLGetInfo32(odbchdbc, 13 , ServerName, 40, outlen)
+'    END IF 
+'  END IF 
+
+  IF dbg THEN
+    PRINT "ServerName=" + ServerName
+  END IF 
+  GetServerName=ServerName
+END FUNCTION
+
+
+'*******************************************************
+' Call the ODBC SQLGetInfo function to get the Database
+'*******************************************************
+FUNCTION GetDB(BYVAL hdbc AS INTEGER) AS STRING
+  DIM odbchdbc AS INTEGER
+  DIM rc, outlen AS SMALLINT
+  DIM DB AS STRING
+
+  odbchdbc = Server_GetODBCHConn(hdbc)
+  DB= Space$(128)
+  IF SystemInfo(SYS_INFO_MIPLATFORM) = MIPLATFORM_WIN16 THEN
+    rc = SQLGetInfo(odbchdbc, 16 , DB, 128, outlen)
+  ELSE
+    rc = SQLGetInfo32(odbchdbc, 16 , DB, 128, outlen)
+  END IF 
+
+  IF dbg THEN
+    PRINT "DB=" + DB
+  END IF 
+  GetDB= DB
+END FUNCTION
+
+
+'*******************************************************
+' Call the ODBC SQLGetInfo function to get the DataSource Name
+'*******************************************************
+FUNCTION GetDSName(BYVAL hdbc AS INTEGER) AS STRING
+  Dim odbchdbc AS INTEGER
+  DIM rc, outlen AS SMALLINT
+  DIM DSName AS STRING
+
+  odbchdbc = Server_GetODBCHConn(hdbc)
+  DSname = Space$(80)
+  DSname = Server_ConnectInfo(hdbc, SRV_CONNECT_INFO_DS_NAME)
+
+  IF dbg THEN
+    PRINT "DSName=" + DSName
+    PRINT "odbchdbc: " +odbchdbc
+  END IF 
+ 
+  GetDSName= Ucase$(DSname)
+END FUNCTION
+
+
+'*******************************************************
+' Call the ODBC SQLGetInfo functionm to get the Identifier quote
+' character for the connected database.
+'  This character is used around table and column names.
+'  The Identifier quote character is required around table and column names 
+' that contain Mixed case, imbebded blanks, or DBCS characters.
+'*************************************************************
+FUNCTION GetQuoteChar(BYVAL hdbc AS INTEGER) AS STRING 
+  Dim odbchdbc AS INTEGER
+  DIM rc, outlen AS SMALLINT
+  DIM quotechar as STRING
+
+  IF dbg THEN
+    print "GetQuoteChar "
+  END IF
+
+  quotechar=""
+  IF demohdbc <> 0 THEN
+    odbchdbc = Server_GetODBCHConn(hdbc)
+    quotechar = Space$(3) 
+    quotechar = Server_ConnectInfo(hdbc, SRV_CONNECT_INFO_QUOTE_CHAR)
+    quotechar = RTRIM$(quotechar)
+  END IF
+
+  IF dbg THEN
+    PRINT "quotechar=" + quotechar
+  END IF 
+  GetQuoteChar=quotechar
+
+END FUNCTION
+
+'****************************************************************************
+define SERVER_NAME_ID          1
+define CLOSE_SERVER_DIALOG_ID  2
+
+'**  ServerNameDialog()  **********************************************
+'* Dialog for getting the server name
+'****************************************************************************
+FUNCTION ServerNameDialog() AS STRING
+  DIM ServerSelection AS STRING
+
+  DIALOG
+    Title "Specify Server Name"
+	Control StaticText 
+      Title "Server Name:" 
+
+    CONTROL EDITTEXT
+      Position 50,5
+      Width 120
+      Height 12
+      Into ServerSelection
+      Into ServerSelection
+      ID SERVER_NAME_ID
+    Control OKButton
+    Control CancelButton
+  
+    If CommandInfo(CMD_INFO_DLG_OK) Then 
+    ' ... then the user clicked OK. 
+      ' Set result value
+      ServerNameDialog = ServerSelection
+    End If 
+
+'TODO - what about hitting cancel. What is the value set to??
+    ' Set result value
+    ServerNameDialog = ServerSelection
+
+END FUNCTION
+
+'****************************************************************************
+FUNCTION IsOCI(BYVAL hdbc AS INTEGER) AS LOGICAL
+  DIM DriverName as String
+
+  DriverName = Ucase$(Server_ConnectInfo(hdbc, SRV_CONNECT_INFO_DRIVER_NAME))
+  IF DriverName = "ORAINET" THEN
+	IsOCI = TRUE
+  ELSE
+	IsOCI = FALSE
+  END IF
+
+END FUNCTION
+
+
+'****************************************************************************
+FUNCTION DoesTableExist(BYVAL SRVTableName As STRING) As LOGICAL
+  Dim SelectString As STRING
+  Dim hstmnt As INTEGER
+  
+  DoesTableExist = FALSE
+  ' create SelectString
+  SelectString = "SELECT 1 FROM " + demoquotechar + SRVTableName + demoquotechar + " WHERE 1 = 0"
+
+  ONERROR GOTO DISREGARD
+  hstmnt = Server_Execute(demohdbc, SelectString)
+ ' NOTE "The Handle = " + hstmnt
+  IF (hstmnt >= 1) THEN
+    Server hstmnt Close
+    DoesTableExist = TRUE
+  END IF
+  GOTO DONE
+
+  DISREGARD:
+    Resume Next
+
+  DONE:
+END FUNCTION
+
+
+'****************************************************************************
+FUNCTION IsDBMSInstalled(BYVAL bShowMsg as LOGICAL) as LOGICAL
+  if Server_NumDrivers() = 0 then
+    IsDBMSInstalled = FALSE
+    IF bShowMsg = TRUE THEN
+      Note "You must run the MapInfo DBMS installer before you can use this tool."
+    END IF
+  ELSE
+    IsDBMSInstalled = TRUE
+  END IF
+END FUNCTION
+
+

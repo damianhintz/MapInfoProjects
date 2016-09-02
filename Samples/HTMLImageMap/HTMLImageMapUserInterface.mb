@@ -1,0 +1,1212 @@
+'*****************************************************************************
+'       Copyright (c) 2000-2001, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: HTMLImageMapUserInterface.mb $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+' Handle user interface
+'
+'*****************************************************************************
+Include "mapbasic.def"
+Include "HTMLImageMap.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+Declare Sub DialogHandler
+Declare Sub LayerAdd
+Declare Sub LayerAddAll
+Declare Sub LayerRemoveAll
+Declare Sub LayerRemove
+Declare Sub LayerNamesTargetHandler
+Declare Sub ColumnNamesListBoxHandler
+Declare Sub LinkTypeHandler
+Declare Sub OkButtonHandler
+Declare Sub BrowseButtonHandler
+Declare Sub InsertCopyrightButtonHandler
+Declare Sub HeightOrWidthHandler
+Declare Sub CreateLandingPagesHandler
+Declare Sub PopulateLandingPagesHandler
+Declare Sub LaunchURL(URLFileName As String)
+Declare Function ShellExecute Lib "shell32.dll" Alias "ShellExecuteA" (
+ 	ByVal hwnd As integer, 
+	lpOperation As String, 
+	lpFile As String, 
+	byval lpParameters As integer, 
+	lpDirectory As String, 
+	ByVal nShowCmd As integer) As integer
+Declare Function GetHotLinkMetaDataKeyValue(sLayerName As String) As String
+Declare Function IsDelimeter(ByVal Candidate As String) As Logical
+
+Define IDLayerNamesSource  601
+Define IDColumnsListBox 602
+Define IDWebPageTitle 603
+Define IDImageCopyright 604
+Define IDHTMLFileName 605
+Define IDHeightOrWidth 606
+Define IDHeight 607
+Define IDWidth 608
+Define IDSelectLinkType 609
+Define IDCreateLandingPages 610
+Define IDPopulateLandingPages 611
+Define IDOnePage 612
+Define IDChooseAllColumns 613
+Define IDChooseColumns 614
+Define IDColumnNamesSource 615
+Define IDAdd 616
+Define IDAddAll 617
+Define IDRemoveAll 618
+Define IDRemove 619
+Define IDLayerNamesTarget 620
+Define IDLayerNameAliaseEdit 621
+Define IDOKButton 622
+
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub HTMLImageMapDialog()
+
+  OnError Goto HandleError
+
+'  ************************************************************************************************
+'  * Declare local variables...
+'  ************************************************************************************************
+
+  dim
+    iteration,          'Counter for record number in For-Loop
+    i
+      As SmallInt,
+    TempTableName,      'Temporary working table name
+    WorkTableName,      'Table to convert
+    sImageHeight,
+    sImageWidth,
+    CommandString,
+    sCopyRightSymbol
+      As String
+
+  Do Case giSelectedPaperUnits
+    Case 1
+      gsPaperUnits = "cm"
+    Case 2
+      gsPaperUnits = "in"
+    Case 3
+      gsPaperUnits = "mm"
+    Case 4
+      gsPaperUnits = "pt"
+    Case 5
+      gsPaperUnits = "pica"
+  End Case
+
+'  ************************************************************************************************
+'  * Check out map window...
+'  ************************************************************************************************
+
+  If NumTables() < 1  Then
+    Note GetResString(IDS_OPEN_TABLE)
+    Exit Sub
+  End If 
+
+  If giMapWindowID <> FrontWindow() Or FrontWindow() = 0 Then
+    giMapWindowID = FrontWindow()
+
+    If giMapWindowID = 0 Then
+      Note GetResString(IDS_SELECT_MAP_WINDOW)
+      Exit Sub
+    End If
+    If WindowInfo(giMapWindowID, WIN_INFO_TYPE) <> WIN_MAPPER Then
+      Note GetResString(IDS_SELECT_MAP_WINDOW)
+      Exit Sub
+    End If
+    If WindowInfo(giMapWindowID, WIN_INFO_STATE) <> WIN_STATE_NORMAL Then
+      Note GetResString(IDS_NORMALIZE_MAP_WINDOW)
+      Exit Sub
+    End If
+    giNumLayers = 0
+  End If
+
+'  ************************************************************************************************
+'  * Check out map window layers...
+'  ************************************************************************************************
+
+  If giNumLayers <> MapperInfo(giMapWindowID, MAPPER_INFO_LAYERS) Then
+    giNumLayers = MapperInfo(giMapWindowID, MAPPER_INFO_LAYERS)
+
+    giValidLayers = 0
+    ReDim gsLayerNamesSource(0)
+    For iteration = 1 to giNumLayers
+      If LayerInfo(giMapWindowID, iteration, LAYER_INFO_TYPE) = LAYER_INFO_TYPE_NORMAL Then
+        If TableInfo(LayerInfo(giMapWindowID, iteration, LAYER_INFO_NAME), TAB_INFO_TYPE) <> TAB_TYPE_IMAGE And
+           TableInfo(LayerInfo(giMapWindowID, iteration, LAYER_INFO_NAME), TAB_INFO_SEAMLESS) <> TRUE Then
+          giValidLayers = giValidLayers + 1
+          ReDim gsLayerNamesSource(giValidLayers)
+          gsLayerNamesSource(giValidLayers) = LayerInfo(giMapWindowID, iteration, LAYER_INFO_NAME)
+        End If
+      End If
+    Next
+
+    If giValidLayers = 0 Then
+      Note GetResString(IDS_SELECT_MAP_WINDOW_WITH_VECTOR)
+      Exit Sub
+    End If
+
+    ReDim gsLayerNamesTarget(0)
+    ReDim gtLayerNamesTarget(0)
+    gsWebPageTitle = ""
+    gsHTMLFileName = ""
+
+  End If
+
+  gfImageHeight = WindowInfo(giMapWindowID, WIN_INFO_HEIGHT)
+  gfImageWidth = WindowInfo(giMapWindowID, WIN_INFO_WIDTH)
+  gfImageAspect = gfImageHeight/gfImageWidth
+  sImageHeight = Format$(gfImageHeight, "#.##")
+  sImageWidth = Format$(gfImageWidth, "#.##")
+
+  sCopyRightSymbol = GetResString(IDS_COPYRIGHT_SYMBOL)
+  If sCopyRightSymbol = "c" Then
+    sCopyRightSymbol = Chr$(169)
+  End If
+
+  Dialog
+    Title GetResString(IDS_APP_DESCRIPTION) + " (" + GetResString(IDS_VERSION) + " " + Str$(AppVersion) + ")"
+    Calling DialogHandler
+
+    Control StaticText
+      Position 10, 10
+      Title GetResString(IDS_MAP_LAYER_TO_USE)
+    Control MultiListBox
+      Title from Variable gsLayerNamesSource
+      Position 10, 20
+      ID IDLayerNamesSource
+      Height 75
+
+    Control Button
+      Title GetResString(IDS_ADD_ALL)
+      Position 95, 20
+      Width 60
+      ID IDAddAll
+      Calling LayerAddAll
+    Control Button
+      Title GetResString(IDS_ADD)
+      Position 95, 40
+      Width 60
+      ID IDAdd
+      Calling LayerAdd
+    Control Button
+      Title GetResString(IDS_REMOVE)
+      Position 95, 60
+      Width 60
+      ID IDRemove
+      Calling LayerRemove
+    Control Button
+      Title GetResString(IDS_REMOVE_ALL)
+      Position 95, 80
+      Width 60
+      ID IDRemoveAll
+      Calling LayerRemoveAll
+
+    Control StaticText
+      Title GetResString(IDS_LAYER_NAME)
+      Position 160, 10
+    Control MultiListBox
+      Position 160, 20
+      Title from Variable gsLayerNamesTarget
+      ID IDLayerNamesTarget
+      Calling LayerNamesTargetHandler
+      Height 75
+
+    Control StaticText
+      Title GetResString(IDS_COLUMN_NAME)
+      Position 250, 10
+    Control ListBox
+      Position 250, 20
+      ID IDColumnsListBox
+      Calling ColumnNamesListBoxHandler
+      Height 75
+
+    Control GroupBox
+      Position 10, 100
+      Title GetResString(IDS_WEB_PAGE_TITLE)
+      Width 320
+      Height 30
+    Control EditText
+      Position 15, 112
+      Width 310
+      Value gsWebPageTitle
+      Into gsWebPageTitle
+      ID IDWebPageTitle
+
+    Control GroupBox
+      Position 10, 135
+      Title GetResString(IDS_IMAGE)
+      Width 320
+      Height 75
+    Control StaticText
+      Position 15, 148
+      Title GetResString(IDS_COPYRIGHT)
+    Control EditText
+      Position 50, 147
+      Width 250
+      Value gsImageCopyright
+      Into gsImageCopyright
+      ID IDImageCopyright
+    Control Button
+      Title sCopyRightSymbol 'Chr$(169)
+      Position 305, 147
+      Width 20
+      Height 12
+      Calling InsertCopyrightButtonHandler
+
+    Control GroupBox
+      Position 15, 165
+      Title GetResString(IDS_SIZE)
+      Height 40
+      Width 120
+    Control RadioGroup
+      Position 20, 177
+      Title GetResString(IDS_HEIGHT) + ";" + GetResString(IDS_WIDTH)
+      Value giHeightOrWidth
+      Into giHeightOrWidth
+      Calling HeightOrWidthHandler
+      ID IDHeightOrWidth
+    Control EditText
+      Position 60, 175
+      Width 30
+      Value sImageHeight
+      Into sImageHeight
+      ID IDHeight
+    Control EditText
+      Position 60, 190
+      Width 30
+      Value sImageWidth
+      Into sImageWidth
+      ID IDWidth
+
+    Control PopupMenu
+      Position 95, 183
+      Title "cm;in;mm;pt;pica"
+      Width 35
+      Value giSelectedPaperUnits
+      Into giSelectedPaperUnits
+
+    Control GroupBox
+      Position 145, 165
+      Title GetResString(IDS_FORMAT)
+      Height 40
+      Width 50
+    Control RadioGroup
+      Position 150, 175
+      Title "&JPEG;&PNG"
+      Value giSelectedFormat
+      Into giSelectedFormat
+
+    Control GroupBox
+      Position 205, 165
+      Title GetResString(IDS_CLIP_RESOLUTION)
+      Height 40
+      Width 120
+    Control StaticText
+      Position 210, 175
+      Title GetResString(IDS_INSERT)
+    Control EditText
+      Position 232, 173
+      Width 20
+      Value giClipResolution
+      Into giClipResolution
+    Control StaticText
+      Position 255, 175
+      Title GetResString(IDS_NEW_NODES)
+    Control StaticText
+      Position 210, 183
+      Title GetResString(IDS_ALONG_EDGES)
+    Control StaticText
+      Position 210, 191
+      Title GetResString(IDS_RECTANGLE)
+
+    Control GroupBox
+      Position 10, 215
+      Title GetResString(IDS_HTML_FILE_NAME)
+      Width 320
+      Height 30
+    Control EditText
+      Position 15, 225
+      Width 260
+      Value gsHTMLFileName
+      Into gsHTMLFileName
+      ID IDHTMLFileName
+    Control Button
+      Title GetResString(IDS_BROWSE)
+      Position 280, 225
+      Calling BrowseButtonHandler
+
+    Control GroupBox
+      Title GetResString(IDS_SET_UP_LINK)
+      Position 10, 250
+      Height 73
+      Width 320
+
+    Control RadioGroup
+      Title GetResString(IDS_HOTLINK_OR_HTML)
+      Position 20, 260
+      Value giSelectedLinkType
+      Into giSelectedLinkType
+      ID IDSelectLinkType
+      Calling LinkTypeHandler
+
+    Control CheckBox
+      Title GetResString(IDS_CREATE_HTML_LANDING_PAGES)
+      Position 110, 275
+      Value glCreateLandingPages
+      Into glCreateLandingPages
+      ID IDCreateLandingPages
+      Calling CreateLandingPagesHandler
+    Control CheckBox
+      Title GetResString(IDS_POPULATE_HTML_LANDING_PAGES)
+      Position 110, 290
+      Value glPopulateLandingPages
+      Into glPopulateLandingPages
+      ID IDPopulateLandingPages
+      Calling PopulateLandingPagesHandler
+    Control CheckBox
+      Title GetResString(IDS_ONE_HTML_FILE)
+      Position 110, 305
+      Value glOnePage
+      Into glOnePage
+      ID IDOnePage
+
+    Control Button
+      Title GetResString(IDS_ALL_COLUMNS)
+      Position 273, 270
+      Calling ChooseAllColumns
+      ID IDChooseAllColumns
+      Width 50
+    Control Button
+      Title GetResString(IDS_COLUMNS)
+      Position 273, 288
+      Calling ChooseColumns
+      ID IDChooseColumns
+      Width 50
+
+    Control StaticText
+      Position 10, 331
+      Title GetResString(IDS_SIZE_OF_REGIONS)
+    Control EditText
+      Position 215, 330
+      Width 20
+      Value giDelta
+      Into giDelta
+
+    Control OKButton
+      Title GetResString(IDS_OK)
+      Position  245, 330
+      Calling OkButtonHandler
+      ID IDOKButton
+
+    Control CancelButton
+      Title GetResString(IDS_CANCEL)
+      Position  290, 330
+
+  If CommandInfo(CMD_INFO_DLG_OK) Then 
+
+'  ************************************************************************************************
+'  * Adjust image size...
+'  ************************************************************************************************
+    Do Case giSelectedPaperUnits
+      Case 1
+        gsPaperUnits = "cm"
+      Case 2
+        gsPaperUnits = "in"
+      Case 3
+        gsPaperUnits = "mm"
+      Case 4
+        gsPaperUnits = "pt"
+      Case 5
+        gsPaperUnits = "pica"
+    End Case
+
+    If giHeightOrWidth = 1 Then
+      gfImageHeight = Val(sImageHeight)
+      If gfImageHeight <= 0.0 Then
+        gfImageHeight = 1.0
+      End If
+      gfImageWidth = gfImageHeight/gfImageAspect
+    Else
+      gfImageWidth = Val(sImageWidth)
+      If gfImageWidth <= 0.0 Then
+        gfImageWidth = 1.0
+      End If
+      gfImageHeight = gfImageWidth*gfImageAspect
+    End If
+
+    For i = 1 To UBound(gsLayerNamesTarget)
+
+      gtLayerNamesTarget(i).sHotLinkMetaDataKeyValue = GetHotLinkMetaDataKeyValue(gtLayerNamesTarget(i).sLayerName)
+    Next
+
+    Do Case HTMLImageMapWrite300(
+            gsWebPageTitle,
+            gsImageCopyright,
+            gsHTMLFileName,
+            gsPaperUnits,
+            gtLayerNamesTarget,
+            giSelectedFormat,
+            giMapWindowID,
+            giClipResolution,
+            giDelta,
+            gfImageHeight,
+            gfImageWidth,
+            giSelectedLinkType,
+            glCreateLandingPages,
+            glPopulateLandingPages,
+            glIncludeHotLink,
+            glOnePage,
+            GetResString(IDS_SELECTING_OBJECTS),
+            GetResString(IDS_CLIPPING_OBJECTS),
+            GetResString(IDS_CREATING_IMAGE_FILE),
+            GetResString(IDS_CREATING_IMAGE_MAP),
+            GetResString(IDS_RETURN_TO_MAP),
+            GetResString(IDS_EMPTY),
+            GetResString(IDS_YES)) 
+
+      Case HTMLImageMapWriteOK 
+        Dialog
+          Height 40
+          Width 400
+          Title GetResString(IDS_HTML_IMAGE_MAP_CREATED)
+          Control StaticText
+            Title gsHTMLFileName
+          Control OKButton
+            Title GetResString(IDS_LAUNCH)
+            Position 150, 20
+          Control CancelButton
+            Title GetResString(IDS_CANCEL)
+            Position 200, 20
+        If CommandInfo(CMD_INFO_DLG_OK) Then 
+          Call LaunchURL(gsHTMLFileName)
+        End If
+
+      Case HTMLImageMapWriteOperationCanceled
+        Note GetResString(IDS_OPERATION_CANCELED)
+
+      Case HTMLImageMapWriteSelectLayerWithRegion
+        Note GetResString(IDS_SELECT_LAYER_WITH_REGION)
+
+      Case HTMLImageMapWriteBadProjectionOrZoom
+        Note GetResString(IDS_BAD_PROJECTION_ZOOM)
+
+      Case HTMLImageMapWriteImageDimensionsNotFound
+        Note GetResString(IDS_IMAGE_DIMENSIONS_NOT_FOUND)
+
+    End Case
+  End If 'CommandInfo(CMD_INFO_DLG_OK) Then 
+
+  Exit Sub
+
+HandleError:
+  Note "HTMLImageMapDialog: " + Error$()
+  Resume Next
+SupressError:
+  Resume Next
+End Sub 'HTMLImageMapDialog
+
+'***************************************************************************************************
+'***************************************************************************************************
+'***************************************************************************************************
+Sub DialogHandler
+
+  OnError Goto HandleError
+
+  Call HeightOrWidthHandler
+  Call LinkTypeHandler
+  If UBound(gsLayerNamesTarget) > 0 Then
+    Alter Control IDOKButton Enable
+    giSelectedTargetLayer = 1
+    Alter Control IDLayerNamesTarget Value giSelectedTargetLayer
+    Alter Control IDColumnsListBox Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNames
+    Alter Control IDColumnsListBox Value gtLayerNamesTarget(giSelectedTargetLayer).iSelectedColumn
+  Else
+    Alter Control IDOKButton Disable
+    Alter Control IDLayerNamesSource Value 1
+    Alter Control IDLayerNamesSource Active
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "DialogHandler: " + Error$()
+  Resume Next
+End Sub 'DialogHandler
+
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub LayerAdd
+  OnError Goto HandleError
+
+  Dim i, j, iItem, iItems, iFirst As Integer
+  Dim s As String
+
+  iItems = 0
+
+  iFirst = ReadControlValue(IDLayerNamesSource)
+  iItem = iFirst
+  Do
+    If iItem <> 0 Then
+      ReDim gtLayerNamesTarget(UBound(gtLayerNamesTarget) + 1)
+      ReDim gsLayerNamesTarget(UBound(gsLayerNamesTarget) + 1)
+      s = gsLayerNamesSource(iItem-iItems) 
+      j = UBound(gsLayerNamesTarget)
+      gtLayerNamesTarget(j).sLayerName = s
+      gtLayerNamesTarget(j).sRealLayerName = PathToTableName$(TableInfo(s, TAB_INFO_TABFILE))
+      gsLayerNamesTarget(j) = s
+
+
+
+
+      gtLayerNamesTarget(j).iSelectedColumn = 1
+      ReDim gtLayerNamesTarget(j).sColumnNames(TableInfo(gtLayerNamesTarget(j).sLayerName, TAB_INFO_NCOLS))
+      ReDim gtLayerNamesTarget(j).sColumnNamesSource(TableInfo(gtLayerNamesTarget(j).sLayerName, TAB_INFO_NCOLS))
+      For i = 1 To TableInfo(gtLayerNamesTarget(j).sLayerName, TAB_INFO_NCOLS)
+        gtLayerNamesTarget(j).sColumnNames(i) = ColumnInfo(gtLayerNamesTarget(j).sLayerName, "COL"+i, COL_INFO_NAME)
+        gtLayerNamesTarget(j).sColumnNamesSource(i) = ColumnInfo(gtLayerNamesTarget(j).sLayerName, "COL"+i, COL_INFO_NAME)
+      Next
+      For i = iItem-iItems + 1 To UBound(gsLayerNamesSource)
+        gsLayerNamesSource(i - 1) = gsLayerNamesSource(i)
+      Next
+      ReDim gsLayerNamesSource(UBound(gsLayerNamesSource) - 1)
+      iItems = iItems + 1
+    End If
+    iItem = ReadControlValue(IDLayerNamesSource)
+  Loop Until iItem = 0
+
+
+  If iFirst <> 0 Then
+    Alter Control IDLayerNamesSource Title From Variable gsLayerNamesSource
+    Alter Control IDLayerNamesTarget Title From Variable gsLayerNamesTarget
+    Alter Control IDOKButton Enable
+    giSelectedTargetLayer = UBound(gtLayerNamesTarget)
+    Alter Control IDLayerNamesTarget Value giSelectedTargetLayer
+    Alter Control IDColumnsListBox Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNames
+    Alter Control IDColumnsListBox Value gtLayerNamesTarget(giSelectedTargetLayer).iSelectedColumn
+    If UBound(gsLayerNamesSource) <> 0 Then
+      If iFirst > UBound(gsLayerNamesSource) Then
+        iFirst = UBound(gsLayerNamesSource)
+      End If
+      Alter Control IDLayerNamesSource Value iFirst
+      Alter Control IDLayerNamesSource Active
+    End If
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "LayerAdd: " + Error$()
+  Resume Next
+End Sub 'LayerAdd
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub LayerAddAll
+  OnError Goto HandleError
+
+  Dim i, j, k As Integer
+  Dim s As String
+
+  j = UBound(gsLayerNamesTarget)
+  ReDim gtLayerNamesTarget(UBound(gtLayerNamesTarget) + UBound(gsLayerNamesSource))
+  ReDim gsLayerNamesTarget(UBound(gsLayerNamesTarget) + UBound(gsLayerNamesSource))
+  For i = 1 To UBound(gsLayerNamesSource)
+    s = gsLayerNamesSource(i)
+    j = j + 1
+    gtLayerNamesTarget(j).sLayerName = s
+    gtLayerNamesTarget(j).sRealLayerName = PathToTableName$(TableInfo(s, TAB_INFO_TABFILE))
+    gtLayerNamesTarget(j).iSelectedColumn = 1
+    ReDim gtLayerNamesTarget(j).sColumnNames(TableInfo(gtLayerNamesTarget(j).sLayerName, TAB_INFO_NCOLS))
+    ReDim gtLayerNamesTarget(j).sColumnNamesSource(TableInfo(gtLayerNamesTarget(j).sLayerName, TAB_INFO_NCOLS))
+    For k = 1 To TableInfo(gtLayerNamesTarget(j).sLayerName, TAB_INFO_NCOLS)
+      gtLayerNamesTarget(j).sColumnNames(k) = ColumnInfo(gtLayerNamesTarget(j).sLayerName, "COL"+k, COL_INFO_NAME)
+      gtLayerNamesTarget(j).sColumnNamesSource(k) = ColumnInfo(gtLayerNamesTarget(j).sLayerName, "COL"+k, COL_INFO_NAME)
+    Next
+    gsLayerNamesTarget(j) = s
+  Next
+  ReDim gsLayerNamesSource(0)
+
+  giSelectedTargetLayer = 1
+  Alter Control IDLayerNamesSource Title From Variable gsLayerNamesSource
+  Alter Control IDLayerNamesTarget Title From Variable gsLayerNamesTarget
+  Alter Control IDLayerNamesTarget Value giSelectedTargetLayer
+  Alter Control IDColumnsListBox Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNames
+  Alter Control IDColumnsListBox Value gtLayerNamesTarget(giSelectedTargetLayer).iSelectedColumn
+  Alter Control IDOKButton Enable
+
+  Exit Sub
+
+HandleError:
+  Note "LayerAddAll: " + Error$()
+  Resume Next
+End Sub 'LayerAddAll
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub LayerRemoveAll
+  OnError Goto HandleError
+
+  Dim i, j As Integer
+  Dim s As String
+
+  j = UBound(gsLayerNamesSource)
+  ReDim gsLayerNamesSource(UBound(gsLayerNamesSource) + UBound(gsLayerNamesTarget))
+  For i = 1 To UBound(gsLayerNamesTarget)
+    s = gsLayerNamesTarget(i)
+    j = j + 1
+    gsLayerNamesSource(j) = s
+  Next
+  ReDim gtLayerNamesTarget(0)
+  ReDim gsLayerNamesTarget(0)
+
+  Alter Control IDLayerNamesSource Title From Variable gsLayerNamesSource
+  Alter Control IDLayerNamesTarget Title From Variable gsLayerNamesTarget
+  Alter Control IDOKButton Disable
+  Alter Control IDColumnsListBox Title From Variable gsLayerNamesTarget
+
+  Exit Sub
+
+HandleError:
+  Note "LayerRemoveAll: " + Error$()
+  Resume Next
+End Sub 'LayerRemoveAll
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub LayerRemove
+  OnError Goto HandleError
+
+  Dim i, j, k, iItem, iItems, iFirst As Integer
+  Dim s As String
+
+  iItems = 0
+
+  'For some reason I haven't figured out, the first time this loop gets run,
+  'only the first item comes up. The second time, below, works fine. Without
+  'the first time, the second time only gets one item. Weird.
+
+  iItem = ReadControlValue(IDLayerNamesTarget)
+  Do
+    iItem = ReadControlValue(IDLayerNamesTarget)
+  Loop Until iItem = 0
+
+  iFirst = ReadControlValue(IDLayerNamesTarget)
+  iItem = iFirst
+  Do
+    If iItem <> 0 Then
+      ReDim gsLayerNamesSource(UBound(gsLayerNamesSource) + 1)
+      s = gsLayerNamesTarget(iItem-iItems) 
+      j = UBound(gsLayerNamesSource)
+      gsLayerNamesSource(j) = s
+      For i = iItem-iItems + 1 To UBound(gsLayerNamesTarget)
+        gtLayerNamesTarget(i - 1).sLayerName = gtLayerNamesTarget(i).sLayerName
+        gtLayerNamesTarget(i - 1).sRealLayerName = gtLayerNamesTarget(i).sRealLayerName
+        gtLayerNamesTarget(i - 1).iSelectedColumn = gtLayerNamesTarget(i).iSelectedColumn
+        gtLayerNamesTarget(i - 1).sHotLinkMetaDataKeyValue = gtLayerNamesTarget(i).sHotLinkMetaDataKeyValue
+        ReDim gtLayerNamesTarget(i-1).sColumnNames(Ubound(gtLayerNamesTarget(i).sColumnNames))
+        For k = 1 To Ubound(gtLayerNamesTarget(i).sColumnNames)
+          gtLayerNamesTarget(i-1).sColumnNames(k) = gtLayerNamesTarget(i).sColumnNames(k)
+        Next
+        ReDim gtLayerNamesTarget(i-1).sColumnNamesSource(Ubound(gtLayerNamesTarget(i).sColumnNamesSource))
+        For k = 1 To Ubound(gtLayerNamesTarget(i).sColumnNamesSource)
+          gtLayerNamesTarget(i-1).sColumnNamesSource(k) = gtLayerNamesTarget(i).sColumnNamesSource(k)
+        Next
+        ReDim gtLayerNamesTarget(i-1).sColumnNamesTarget(Ubound(gtLayerNamesTarget(i).sColumnNamesTarget))
+        ReDim gtLayerNamesTarget(i-1).sColumnNameAliases(Ubound(gtLayerNamesTarget(i).sColumnNameAliases))
+        ReDim gtLayerNamesTarget(i-1).sTreatAsLinks(Ubound(gtLayerNamesTarget(i).sTreatAsLinks))
+        For k = 1 To Ubound(gtLayerNamesTarget(i).sColumnNamesTarget)
+          gtLayerNamesTarget(i-1).sColumnNamesTarget(k) = gtLayerNamesTarget(i).sColumnNamesTarget(k)
+          gtLayerNamesTarget(i-1).sColumnNameAliases(k) = gtLayerNamesTarget(i).sColumnNameAliases(k)
+          gtLayerNamesTarget(i-1).sTreatAsLinks(k) = gtLayerNamesTarget(i).sTreatAsLinks(k)
+        Next
+        gsLayerNamesTarget(i - 1) = gsLayerNamesTarget(i)
+      Next
+      ReDim gtLayerNamesTarget(UBound(gtLayerNamesTarget) - 1)
+      ReDim gsLayerNamesTarget(UBound(gsLayerNamesTarget) - 1)
+      iItems = iItems + 1
+    End If
+    iItem = ReadControlValue(IDLayerNamesTarget)
+  Loop Until iItem = 0
+
+  If iFirst <> 0 Then
+    Alter Control IDLayerNamesSource Title From Variable gsLayerNamesSource
+    Alter Control IDLayerNamesTarget Title From Variable gsLayerNamesTarget
+    If UBound(gsLayerNamesTarget) = 0 Then
+      Alter Control IDOKButton Disable
+      Alter Control IDColumnsListBox Title From Variable gsLayerNamesTarget
+    Else
+      If giSelectedTargetLayer > UBound(gtLayerNamesTarget) Then
+        giSelectedTargetLayer = UBound(gtLayerNamesTarget)
+      End If    
+      Alter Control IDColumnsListBox Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNames
+      Alter Control IDColumnsListBox Value gtLayerNamesTarget(giSelectedTargetLayer).iSelectedColumn
+      Alter Control IDLayerNamesTarget Value giSelectedTargetLayer
+      Alter Control IDLayerNamesTarget Active
+    End If
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "LayerRemove: " + Error$()
+  Resume Next
+End Sub 'LayerRemove
+
+'***************************************************************************************************
+'***************************************************************************************************
+'***************************************************************************************************
+Sub LayerNamesTargetHandler
+
+  OnError Goto HandleError
+
+  giSelectedTargetLayer = ReadControlValue(IDLayerNamesTarget)
+
+  Alter Control IDColumnsListBox Title From Variable gtLayerNamesTarget(giSelectedTargetLayer).sColumnNames
+  Alter Control IDColumnsListBox Value gtLayerNamesTarget(giSelectedTargetLayer).iSelectedColumn
+
+  gsWebPageTitle = ReadControlValue(IDWebPageTitle)
+  If gsWebPageTitle = "" Then
+    If TableInfo(gtLayerNamesTarget(giSelectedTargetLayer).sLayerName, TAB_INFO_TABFILE) <> "" Then
+      gsWebPageTitle = gtLayerNamesTarget(giSelectedTargetLayer).sLayerName
+    ElseIf gtLayerNamesTarget(giSelectedTargetLayer).sRealLayerName <> "" And gtLayerNamesTarget(giSelectedTargetLayer).sRealLayerName <> "_" Then
+      gsWebPageTitle = gtLayerNamesTarget(giSelectedTargetLayer).sRealLayerName
+    Else
+      gsWebPageTitle = gtLayerNamesTarget(giSelectedTargetLayer).sLayerName
+    End If
+    If Len(rtrim$(gsWebPageTitle)) > 0 Then
+      Alter Control IDWebPageTitle Value gsWebPageTitle
+    End If
+  End If
+  gsHTMLFileName = ReadControlValue(IDHTMLFileName)
+  If gsHTMLFileName = "" Then
+    If TableInfo(gtLayerNamesTarget(giSelectedTargetLayer).sLayerName, TAB_INFO_TABFILE) <> "" Then
+      gsHTMLFileName = PathToDirectory$(TableInfo(gtLayerNamesTarget(giSelectedTargetLayer).sLayerName, TAB_INFO_TABFILE)) +
+                     PathToTableName$(TableInfo(gtLayerNamesTarget(giSelectedTargetLayer).sLayerName, TAB_INFO_TABFILE)) + ".HTM"
+    ElseIf gtLayerNamesTarget(giSelectedTargetLayer).sRealLayerName <> "" And gtLayerNamesTarget(giSelectedTargetLayer).sRealLayerName <> "_" Then
+      gsHTMLFileName = PathToDirectory$(TableInfo(TableInfo(gtLayerNamesTarget(giSelectedTargetLayer).sRealLayerName, TAB_INFO_MAPPABLE_TABLE), TAB_INFO_TABFILE)) +
+                     PathToTableName$(TableInfo(TableInfo(gtLayerNamesTarget(giSelectedTargetLayer).sRealLayerName, TAB_INFO_MAPPABLE_TABLE), TAB_INFO_TABFILE)) + ".HTM"
+    Else
+      gsHTMLFileName = PathToDirectory$(TempFileName$("")) + gtLayerNamesTarget(giSelectedTargetLayer).sLayerName + ".HTM"
+    End If
+
+    If Len(rtrim$(gsHTMLFileName)) > 0 Then
+      Alter Control IDHTMLFileName Value gsHTMLFileName
+    End If
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "LayerNamesTargetHandler: " + Error$()
+  Resume Next
+End Sub 'LayerNamesTargetHandler
+
+'***************************************************************************************************
+'***************************************************************************************************
+'***************************************************************************************************
+Sub ColumnNamesListBoxHandler
+
+  OnError Goto HandleError
+
+  Dim iSelectedColumn As SmallInt
+
+  iSelectedColumn = ReadControlValue(IDColumnsListBox)
+  gtLayerNamesTarget(giSelectedTargetLayer).iSelectedColumn = iSelectedColumn
+
+  Exit Sub
+
+HandleError:
+  Note "ColumnNamesListBoxHandler: " + Error$()
+  Resume Next
+End Sub ColumnNamesListBoxHandler
+
+'***************************************************************************************************
+'***************************************************************************************************
+'***************************************************************************************************
+Sub OkButtonHandler
+
+  OnError Goto HandleError
+
+  giSelectedTargetLayer = ReadControlValue(IDLayerNamesTarget)
+  gsHTMLFileName = ReadControlValue(IDHTMLFileName)
+
+  If Len(rtrim$(gsHTMLFileName)) < 1 Then
+    Note GetResString(IDS_SPECIFY_VALID_FILE_NAME)
+    Dialog Preserve
+  Else
+    If FileExists(gsHTMLFileName) Then
+      Dialog
+        Title GetResString(IDS_WARNING)
+        Control StaticText 
+          Title gsHTMLFileName + " " + GetResString(IDS_ALREADY_EXISTS) 
+          Width 300 Height 40
+        Control OKButton
+          Title GetResString(IDS_OVERWRITE)
+        Control CancelButton
+          Title GetResString(IDS_CANCEL)
+      If CommandInfo(CMD_INFO_DLG_OK) Then 
+        OnError Goto HandleSilent
+        Open File gsHTMLFileName for output access write as #1 CharSet SystemInfo(SYS_INFO_CHARSET)'"WindowsLatin1"
+        OnError Goto HandleError
+        Close File #1
+      Else
+        Dialog Preserve
+      End If
+    Else
+      OnError Goto HandleSilent
+      Open File gsHTMLFileName for output access write as #1 CharSet SystemInfo(SYS_INFO_CHARSET)'"WindowsLatin1"
+      OnError Goto HandleError
+      Close File #1
+    End If
+  End If
+  Exit Sub
+HandleSilent:
+  Note GetResString(IDS_CANNOT_WRITE_TO) + " " + gsHTMLFileName + Chr$(13) + GetResString(IDS_SPECIFY_VALID_FILE_NAME)
+  Dialog Preserve
+  Exit Sub
+
+HandleError:
+  Note "OkButtonHandler: " + Error$()
+  Resume Next
+End Sub 'OkButtonHandler
+'***************************************************************************************************
+'***************************************************************************************************
+'***************************************************************************************************
+Sub BrowseButtonHandler
+
+  Dim sPath, sName As String
+
+  OnError Goto HandleError
+'  ************************************************************************************************
+'  * Get desired name and location of output...
+'  ************************************************************************************************
+
+  gsHTMLFileName = ReadControlValue(IDHTMLFileName)
+  If gsHTMLFileName = "" Then
+    If UBound(gtLayerNamesTarget) > 0 Then
+      If TableInfo(gtLayerNamesTarget(giSelectedTargetLayer).sLayerName, TAB_INFO_TABFILE) <> "" Then
+        gsHTMLFileName = PathToDirectory$(TableInfo(gtLayerNamesTarget(giSelectedTargetLayer).sLayerName, TAB_INFO_TABFILE)) +
+                         PathToTableName$(TableInfo(gtLayerNamesTarget(giSelectedTargetLayer).sLayerName, TAB_INFO_TABFILE)) + ".HTM"
+      ElseIf gtLayerNamesTarget(giSelectedTargetLayer).sRealLayerName <> "" And gtLayerNamesTarget(giSelectedTargetLayer).sRealLayerName <> "_" Then
+        gsHTMLFileName = PathToDirectory$(TableInfo(TableInfo(gtLayerNamesTarget(giSelectedTargetLayer).sRealLayerName, TAB_INFO_MAPPABLE_TABLE), TAB_INFO_TABFILE)) +
+                         PathToTableName$(TableInfo(TableInfo(gtLayerNamesTarget(giSelectedTargetLayer).sRealLayerName, TAB_INFO_MAPPABLE_TABLE), TAB_INFO_TABFILE)) + ".HTM"
+      Else
+        gsHTMLFileName = PathToDirectory$(TempFileName$("")) + gtLayerNamesTarget(giSelectedTargetLayer).sLayerName + ".HTM"
+      End If
+    End If
+    If Len(rtrim$(gsHTMLFileName)) > 0 Then
+      Alter Control IDHTMLFileName Value gsHTMLFileName
+    End If
+  End If
+
+  If gsHTMLFileName <> "" Then
+    sPath = PathToDirectory$(gsHTMLFileName)
+    sName = PathToTableName$(gsHTMLFileName)
+  Else
+    sPath = PathToDirectory$(TempFileName$(""))
+    sName = ""
+  End If
+
+  gsHTMLFileName = FileSaveAsDlg(sPath,
+                               sName,
+                               "HTM", GetResString(IDS_HTML_FILE_NAME))
+  If Len(rtrim$(gsHTMLFileName)) > 0 Then
+    Alter Control IDHTMLFileName Value gsHTMLFileName
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "BrowseButtonHandler: " + Error$()
+  Resume Next
+End Sub BrowseButtonHandler
+'***************************************************************************************************
+'***************************************************************************************************
+'***************************************************************************************************
+Sub InsertCopyrightButtonHandler
+
+  OnError Goto HandleError
+  gsImageCopyright = ReadControlValue(IDImageCopyright)
+  gsImageCopyright = gsImageCopyright + Chr$(169)
+  Alter Control IDImageCopyright Value gsImageCopyright
+'  Alter Control IDImageCopyright Active
+  Exit Sub
+
+HandleError:
+  Note "InsertCopyrightButtonHandler: " + Error$()
+  Resume Next
+End Sub 'InsertCopyrightButtonHandler
+
+'***************************************************************************************************
+'***************************************************************************************************
+'***************************************************************************************************
+Sub HeightOrWidthHandler
+
+  OnError Goto HandleError
+
+  Dim sImageHeight, sImageWidth As String
+  giHeightOrWidth = ReadControlValue(IDHeightOrWidth)
+  If giHeightOrWidth = 1 Then
+    Alter Control IDHeight Enable 
+    Alter Control IDWidth Disable 
+    sImageWidth = ReadControlValue(IDWidth)
+    gfImageWidth = Val(sImageWidth)
+    gfImageHeight = gfImageWidth * gfImageAspect 
+    sImageHeight = Format$(gfImageHeight, "#.##")
+    Alter Control IDHeight Value sImageHeight
+  Else
+    Alter Control IDWidth Enable 
+    Alter Control IDHeight Disable
+    sImageHeight = ReadControlValue(IDHeight)
+    gfImageHeight = Val(sImageHeight)
+    gfImageWidth = gfImageHeight / gfImageAspect 
+    sImageWidth = Format$(gfImageWidth, "#.##")
+    Alter Control IDWidth Value sImageWidth
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "HeightOrWidthHandler: " + Error$()
+  Resume Next
+
+End Sub 'HeightOrWidthHandler
+
+'***************************************************************************************************
+'***************************************************************************************************
+'***************************************************************************************************
+Sub LinkTypeHandler
+
+  OnError Goto HandleError
+
+  giSelectedLinkType = ReadControlValue(IDSelectLinkType)
+  If giSelectedLinkType = 1 Then
+    Alter Control IDCreateLandingPages Disable
+    glCreateLandingPages = FALSE
+    Alter Control IDCreateLandingPages Value glCreateLandingPages
+  Else
+    Alter Control IDCreateLandingPages Enable
+  End If
+  Call CreateLandingPagesHandler
+
+  Exit Sub
+
+HandleError:
+  Note "LinkTypeHandler: " + Error$()
+  Resume Next
+End Sub 'LinkTypeHandler
+
+'***************************************************************************************************
+'***************************************************************************************************
+'***************************************************************************************************
+Sub CreateLandingPagesHandler
+
+  OnError Goto HandleError
+
+  glCreateLandingPages = ReadControlValue(IDCreateLandingPages)
+  If glCreateLandingPages = TRUE Then
+    Alter Control IDPopulateLandingPages Enable
+  Else
+    glPopulateLandingPages = FALSE
+    Alter Control IDPopulateLandingPages Value glPopulateLandingPages
+    Alter Control IDPopulateLandingPages Disable
+  End If
+  Call PopulateLandingPagesHandler
+
+  Exit Sub
+
+HandleError:
+  Note "CreateLandingPagesHandler: " + Error$()
+  Resume Next
+End Sub 'CreateLandingPagesHandler
+'***************************************************************************************************
+'***************************************************************************************************
+'***************************************************************************************************
+Sub PopulateLandingPagesHandler
+
+  OnError Goto HandleError
+
+  glPopulateLandingPages = ReadControlValue(IDPopulateLandingPages)
+  If glPopulateLandingPages = TRUE Then
+    Alter Control IDOnePage Enable
+    Alter Control IDChooseAllColumns Enable
+    Alter Control IDChooseColumns Enable
+  Else
+    glOnePage = FALSE
+    Alter Control IDOnePage Value glOnePage
+    Alter Control IDOnePage Disable
+    Alter Control IDChooseAllColumns Disable
+    Alter Control IDChooseColumns Disable
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "PopulateLandingPagesHandler: " + Error$()
+  Resume Next
+End Sub 'PopulateLandingPagesHandler
+
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub About                                                                  
+
+  OnError Goto HandleError
+
+  Dialog                                                                   
+    Title GetResString(IDS_APP_DESCRIPTION) + " (" + GetResString(IDS_VERSION) + " " + Str$(AppVersion) + ")"
+
+    Control StaticText Title GetResString(IDS_ABOUT_1) Position 10, 10
+    Control StaticText Title GetResString(IDS_ABOUT_2) Position 10, 18
+    Control StaticText Title GetResString(IDS_ABOUT_3) Position 10, 26
+    Control StaticText Title GetResString(IDS_ABOUT_4) Position 10, 34
+    Control StaticText Title GetResString(IDS_ABOUT_5) Position 10, 42
+    Control StaticText Title GetResString(IDS_ABOUT_6) Position 10, 50
+    Control StaticText Title GetResString(IDS_ABOUT_7) Position 10, 58
+    Control StaticText Title GetResString(IDS_ABOUT_8) Position 10, 66
+    Control StaticText Title GetResString(IDS_ABOUT_9) Position 10, 74
+    Control StaticText Title GetResString(IDS_ABOUT_10) Position 10, 82
+    Control StaticText Title GetResString(IDS_ABOUT_11) Position 10, 90
+    Control StaticText Title GetResString(IDS_ABOUT_12) Position 10, 98
+    Control OKButton Title GetResString(IDS_OK) Width 45                
+
+  Exit Sub
+
+HandleError:
+  Note "About: " + Error$()
+  Resume Next
+
+End Sub                                                                    
+'*****************************************************************************
+'
+'*****************************************************************************
+Sub GoodBye                                                                
+
+  OnError Goto HandleError
+
+  End Program                                                              
+
+  Exit Sub
+
+HandleError:
+  Note "GoodBye: " + Error$()
+  Resume Next
+
+End Sub                                                                    
+
+Sub LaunchURL(URLFileName As String)
+
+  OnError Goto ErrHandler
+
+  Dim rc As Integer
+  Dim ihwnd As Integer
+  Dim sOp As String
+  Dim sFile As String
+  Dim sParams As Integer
+  Dim sDir As String
+  Dim iShowCmd As Integer
+  Dim Null As Integer
+
+  ihwnd = WindowInfo(WIN_MAPINFO, WIN_INFO_WND)
+  sOp = "open"
+  sFile = URLFileName
+  sParams = "" + Chr$(0)
+  sDir = ApplicationDirectory$()
+
+  iShowCmd = 0
+  Null = 0
+
+  rc = ShellExecute(ihwnd, sOp, sFile, Null, sDir, iShowCmd)
+  If rc <= 32 And rc <> 2 Then
+    Note GetResString(IDS_UNABLE_TO_LAUNCH) + rc
+  End If               
+
+  Exit Sub
+
+ErrHandler:
+  Resume Next
+
+End Sub
+
+Function GetHotLinkMetaDataKeyValue(sLayerName As String) As String
+  Dim sKeyName, sKeyValue As String
+  Dim iTraversal As String
+  Dim sHotLink As String
+  Dim p1, p2, iQuotes, i As Integer
+ 
+  OnError Goto HandleError
+
+  If TableInfo(sLayerName, TAB_INFO_TABFILE) <> "" Then
+  Metadata Table sLayerName SetTraverse "\ActiveObject\Expr" Hierarchical Into ID iTraversal 
+  Metadata Traverse iTraversal Next Into Key sKeyName Into Value sKeyValue
+  MetaData Traverse iTraversal Destroy
+
+  sHotLink = sKeyValue
+
+  For i = 1 To TableInfo(sLayerName, TAB_INFO_NCOLS)
+    p1 = InStr(1, uCase$(sHotLink), uCase$(ColumnInfo(sLayerName, "COL"+i, COL_INFO_NAME)))
+    Do While p1 <> 0
+      iQuotes = 0
+      p2 = InStr(1, sHotLink, """")
+      Do While p2 < p1 and p2 <> 0
+        iQuotes = iQuotes + 1
+        p2 = InStr(p2+1, sHotLink, """")
+
+      Loop
+      If iQuotes Mod 2 = 0 Then
+       If IsDelimeter(Mid$(sHotLink, p1-1, 1)) And
+           IsDelimeter(Mid$(sHotLink, p1+Len(ColumnInfo(sLayerName, "COL"+i, COL_INFO_NAME)), 1)) Then
+          sHotLink = Left$(sHotLink, p1-1) + "ImageMapWorkTable." + Mid$(sHotLink, p1, Len(sHotLink)-p1+1)
+          p1 = p1 + Len("ImageMapWorkTable.")
+        End If
+      End If
+      p1 = InStr(p1+1, uCase$(sHotLink), uCase$(ColumnInfo(sLayerName, "COL"+i, COL_INFO_NAME)))
+    Loop
+
+  Next
+  GetHotLinkMetaDataKeyValue = sHotLink
+  Else
+    GetHotLinkMetaDataKeyValue = ""
+  End If
+
+  Exit Function
+
+HandleError:
+  Note "GetHotLinkMetaDataKeyValue: " + Error$()
+  Resume Next
+
+End Function
+
+Function IsDelimeter(ByVal Candidate As String) As Logical
+
+  OnError Goto HandleError
+
+  Dim Result As Logical
+
+
+  Result = FALSE
+  Do Case Left$(Candidate, 1)
+    Case " ", ",", "(", ")", "+", ""
+      Result = TRUE
+  End Case
+
+  IsDelimeter = Result
+
+  Exit Function
+
+HandleError:
+  Note "IsDelimeter: " + Error$()
+  Resume Next
+
+End Function
+
+' End of File

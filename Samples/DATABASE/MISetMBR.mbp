@@ -1,0 +1,7 @@
+[Link]
+application=MISetMBR.MBX
+module=MISetMBR.MBO
+module=DLSUTIL.MBO
+module=SQLUTIL.MBO
+module=CONNECT.MBO
+module=..\LIB\AUTO_LIB.MBO

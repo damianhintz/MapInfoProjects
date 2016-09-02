@@ -1,0 +1,4 @@
+[Link] 
+Application=cogoline.mbx
+Module=cogoline.mbo
+Module=..\lib\resstrng.mbo

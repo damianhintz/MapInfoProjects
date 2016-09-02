@@ -1,0 +1,702 @@
+'******************************************************************************
+'                             MAPINFO CORPORATION
+'
+' Date:         7/11/96          
+'
+' Module:       Picktab.mb
+' For Version:  MapInfo 4.0
+' 
+' Overview:
+'
+'   This mb source file provides functions to get a list of 
+' server database tables, table owners (schemas), and contains a 
+' generic function that provides a table selection dialog.
+'****************************************************************************
+INCLUDE "MAPBASIC.DEF"
+INCLUDE "..\INC\DLSAMP.DEF"
+INCLUDE "ODBCPLUS.DEF"  ' Include useful QE and ODBC function declarations
+
+' Main external function declare in DLSAMP.DEF
+'DECLARE SUB TablePickerDialog (BYVAL inhdbc AS INTEGER, owner AS STRING, name AS STRING, BYVAL prompt AS STRING)  
+
+'* Internal utility functions
+DECLARE Function GetDefaultOwner() AS INTEGER
+DECLARE SUB GetTableOwners(BYVAL TableOwnersFilter AS STRING)
+DECLARE SUB GetTableNames(BYVAL TableOwner AS STRING, BYVAL TableNamesFilter AS STRING, BYVAL TableTypeFilter AS STRING)
+
+' Internal Dialog control handlers
+DECLARE SUB InitDialog()
+DECLARE SUB SelectTableOwner()
+DECLARE SUB SelectTableName()
+DECLARE SUB RefreshTableNames()
+DECLARE SUB DescTab()
+
+' Internal variables
+DIM hdbc, hstmnt AS INTEGER
+
+'* Internal Defines
+Define TableOwnerSelect_ID   101 
+Define TableNameSelect_ID    102
+Define TableNameFilter_ID    103
+Define FullTableName_ID      104
+
+Define ListTablesCheckBox_ID   121  
+Define ListSynonymsCheckBox_ID 122  
+Define ListViewsCheckBox_ID    123 
+Define ListSystemCheckBox_ID   124 
+
+'* Made global so that their values remain across calls
+GLOBAL TableOwners(), TableNames() AS STRING
+GLOBAL LastTableOwnerSel, TableOwnerSel, TableNameSel, LastHdbc as Integer
+GLOBAL TableOwner, TableName, FullTableName AS STRING
+GLOBAL ListTables, ListSynonyms, ListViews, ListSystem AS LOGICAL
+
+'****************************************************************************
+'* Main external function (Modeled after FileOpenDialog)
+'****************************************************************************
+SUB TablePickerDialog (BYVAL inhdbc AS INTEGER, owner AS STRING, name AS STRING, BYVAL prompt AS STRING)
+
+  IF dbg THEN
+    PRINT "ENTERING TablePickerDialog"
+  END IF
+  
+  '* Set connection
+  hdbc = inhdbc
+
+  IF prompt="" THEN
+    prompt="Pick Table"
+  END IF
+
+  ' Set output fields
+  owner = ""
+  name  = ""
+
+  DIALOG
+    TITLE prompt
+    Calling InitDialog
+    CONTROL STATICTEXT
+      TITLE "Full Table Name:"
+      Position 8, 8
+      Width 60
+    CONTROL EDITTEXT
+      Width 185
+      Position 8, 20
+      VALUE FullTableName
+      ID FullTableName_ID
+	  DISABLE		
+
+    CONTROL STATICTEXT
+      TITLE "Table Owner:"
+      Position 8, 40
+      Width 80
+  
+    CONTROL POPUPMENU
+      Position 8, 52
+      Width 80
+      TITLE FROM VARIABLE TableOwners
+      ID TableOwnerSelect_ID   
+      CALLING SelectTableOwner
+
+    CONTROL STATICTEXT
+      TITLE "Table Name:" 
+      Position 93, 40
+      Width 45  
+    ' The Refresh button is a cludge because changing the 
+    ' table name filter alone does not trigger anything (MB limitation) 
+    '(You need to press refresh to apply the filter) 
+    CONTROL BUTTON
+      TITLE "Refresh" 
+      Position 143, 36
+      WIDTH 45
+      Calling RefreshTableNames
+    CONTROL EDITTEXT
+      Position 93, 52
+      Width 100
+      ID TableNameFilter_ID   
+      Value "%"
+      CALLING RefreshTableNames  ' Doesn't work - Add to MB wishes  
+    CONTROL LISTBOX
+      Position 93, 70
+      Width 100
+      Height 78
+      TITLE FROM VARIABLE TableNames
+      ID TableNameSelect_ID   
+      CALLING SelectTableName
+
+    CONTROL CHECKBOX
+      TITLE "List Tables"
+      Position 13,88
+      ID ListTablesCheckBox_ID
+      Calling RefreshTableNames  
+      VALUE TRUE
+    CONTROL CHECKBOX
+      TITLE "List Synonymns"
+      Position 13,100
+      ID ListSynonymsCheckBox_ID
+      Calling RefreshTableNames     
+      VALUE TRUE
+    CONTROL CHECKBOX
+      TITLE "List Views"
+      Position 13,112
+      TITLE "List Views"
+      ID ListViewsCheckBox_ID
+      Calling RefreshTableNames   
+      VALUE TRUE
+    CONTROL CHECKBOX
+      TITLE "List System Tables"
+      Position 13,124
+      ID ListSystemCheckBox_ID
+      Calling RefreshTableNames   
+      VALUE FALSE
+
+    CONTROL OKBUTTON
+      Position 25, 162
+      WIDTH 45
+  
+    CONTROL BUTTON
+      TITLE "Describe" 
+      Position 78, 162
+      WIDTH 45
+      Calling DescTab
+    CONTROL CANCELBUTTON
+      Position 131, 162 
+      WIDTH 45
+
+  ' Set output fields ONLY of OK was pressed!
+  IF COMMANDINFO(CMD_INFO_DLG_OK) THEN
+    '* Public is not valid prefixed to a table name
+    IF TableOwner = "PUBLIC"  OR TableName="DUAL" or TableOwner = "DEMO" THEN
+      owner = ""
+    ELSE
+      owner = TableOwner
+    END IF
+    name  = TableName
+  END IF
+
+  IF dbg THEN
+    PRINT "owner = """+owner+""""
+    PRINT "name  = """+name+""""
+  END IF
+END SUB
+
+
+'****************************************************************************
+' Dialog control handlers
+'****************************************************************************
+Sub InitDialog 
+  IF dbg THEN
+    Print "IN InitDLG"
+  END IF   
+
+  ' restore preserved TableTypeFilters
+  'Alter Control ListTablesCheckBox_ID Value  ListTables
+  'Alter Control ListSynonymsCheckBox_ID Value ListSynonyms 
+  'Alter Control ListViewsCheckBox_ID Value ListViews
+  'Alter Control ListSystemCheckBox_ID Value ListSystem
+
+  'Set trigger to reload table owners and names if no previous connection,
+  ' of if the connection changed
+  IF hdbc <> LastHdbc THEN
+    CALL GetTableOwners("%")
+
+   ' Pick first table owner for the user - use last if set
+    IF UBOUND(TableOwners) <> 0 THEN
+      Alter Control TableOwnerSelect_ID TITLE FROM VARIABLE TableOwners
+
+      TableOwnerSel = GetDefaultOwner()
+      Alter Control TableOwnerSelect_ID VALUE TableOwnerSel
+      Call SelectTableOwner() ' Will refresh table names
+    ELSE
+      Call RefreshTableNames
+    END IF
+    LastHdbc = hdbc   
+  ELSE
+    ' retain previous owners, tables, and selection
+    IF UBOUND(TableOwners) <> 0 THEN
+      Alter Control TableOwnerSelect_ID VALUE TableOwnerSel
+    END IF
+    IF UBOUND(TableNames) <> 0 THEN
+      Alter Control TableNameSelect_ID VALUE TableNameSel
+    END IF
+  END IF
+ 
+  IF dbg THEN
+    PRINT "TableOwnerSel = " + TableOwnerSel
+    PRINT "TableOwner    = " + TableOwner
+    PRINT "TableNameSel  = " + TableNameSel
+    PRINT "TableName     = " + TableName
+  END IF
+
+End Sub
+
+
+'****************************************************************************
+' Should pick the login id as the default owner
+' if not found, just grab the first one in the owners list
+'****************************************************************************
+Function  GetDefaultOwner() AS INTEGER
+  DIM i, DefaultOwner AS INTEGER
+  DIM MyUserId AS STRING
+
+  DefaultOwner = 0
+  MyUserId = GetSQLUserid(demohdbc)
+
+  IF dbg THEN
+    PRINT "Looking for user: " + MyUserId
+  END IF 
+
+  IF UBOUND(TableOwners) <> 0 THEN
+    ' Search trhough table owners list liking for my connect ID      
+    FOR i=1 TO UBOUND(TableOwners)
+      IF TableOwners(i) = MyUserId THEN
+        IF dbg THEN
+          PRINT "FOUND USER IN LIST: " + MyUserId + "    Index " + i
+        END IF 
+        DefaultOwner = i
+      END IF
+    NEXT
+
+    ' If not found, pick the first owner in the list
+    IF DefaultOwner = 0 THEN
+       GetDefaultOwner = 1
+    ELSE
+      ' Found my connect ID in the list, return the list index
+       GetDefaultOwner = DefaultOwner
+    END IF
+  ELSE
+    GetDefaultOwner = 0 ' no owners in list
+  END IF
+
+END FUNCTION
+
+
+'*******************************************************************************
+'* Describe control handler
+'*******************************************************************************
+Sub DescTab()
+  IF TableOwner = "PUBLIC"  OR TableName="DUAL" or TableOwner = "DEMO" THEN
+    Call DescribeTable("", TableName)
+  ELSE
+    Call DescribeTable(TableOwner, TableName)
+  END IF
+END SUB
+
+
+'****************************************************************************
+'* Rebuilds table names based on current filter
+'* This is a patch to make up for the fact that an EditText control data change
+'* Does NOT trigger a handler.  Therefore we can't handle filter changes
+'* unless the user pressed REFRESH (or some other triggerable control)
+'****************************************************************************
+SUB RefreshTableNames
+  DIM TableNameFilter, TableTypeFilter, Sep AS STRING
+
+  IF dbg THEN
+    PRINT "IN RefreshTableNames"
+  END IF
+
+  ' Get Selected Table Owner
+  TableOwner = ""
+  IF UBOUND(TableOwners) <> 0 THEN
+    TableOwnerSel=ReadControlValue(TableOwnerSelect_ID)
+    IF  TableOwnerSel<> 0 THEN
+      TableOwner = TableOwners(TableOwnerSel)
+      IF TableOwner=" " THEN
+        TableOwner = ""
+      END IF 
+    END IF
+  END IF
+
+  ' Get the Table Name filter
+  TableNameFilter=ReadControlValue(TableNameFilter_ID)
+  
+  ' Get the table type filter (also capture values to preserver for reentry)
+  ListTables = READCONTROLVALUE(ListTablesCheckBox_ID)
+  ListSynonyms = READCONTROLVALUE(ListSynonymsCheckBox_ID)
+  ListViews  = READCONTROLVALUE(ListViewsCheckBox_ID)
+  ListSystem  = READCONTROLVALUE(ListSystemCheckBox_ID)
+
+  TableTypeFilter=""
+  Sep=""
+  IF READCONTROLVALUE(ListTablesCheckBox_ID) THEN
+    TableTypeFilter = "TABLE"
+    Sep = ","
+  END IF
+  IF READCONTROLVALUE(ListSynonymsCheckBox_ID) THEN
+    TableTypeFilter = TableTypeFilter + Sep + "ALIAS,SYNONYM"
+    Sep = ","
+  END IF
+  IF READCONTROLVALUE(ListSystemCheckBox_ID) THEN
+   TableTypeFilter = TableTypeFilter + Sep + "SYSTEM TABLE"
+   Sep = ","
+  END IF
+  IF READCONTROLVALUE(ListViewsCheckBox_ID) THEN
+   TableTypeFilter = TableTypeFilter + Sep + "VIEW"
+   Sep = ","
+  END IF
+
+  IF dbg THEN
+    PRINT "TableOwnerSel   = " + TableOwnerSel
+
+    PRINT "TableOwner      = """ + TableOwner + """"
+    PRINT "TableNameFilter = """ + TableNameFilter + """" 
+    PRINT "TableTypeFilter = """ + TableTypeFilter + """"
+  END IF
+
+  ' Get a new list of table names and reset the table name list 
+  Call GetTableNames(TableOwner, TableNameFilter, TableTypeFilter)
+  Alter Control TableNameSelect_ID TITLE FROM VARIABLE TableNames
+
+  ' now reset the selected table to the first in the list
+  IF UBOUND(TableNames) <> 0 THEN
+    TableNameSel = 1
+    Alter Control TableNameSelect_ID VALUE TableNameSel
+    Call SelectTableName()
+  END IF
+
+  IF dbg THEN
+    PRINT "TableNameSel  = " + TableNameSel
+    PRINT "TableName     = " + TableName
+  END IF
+END SUB
+
+
+'****************************************************************************
+SUB SelectTableOwner
+  IF dbg THEN
+    PRINT "In SelectTableOwner"
+  END IF
+
+  TableOwnerSel=ReadControlValue(TableOwnerSelect_ID)
+  IF dbg THEN
+    PRINT "TableOwnerSel     = " + TableOwnerSel
+    PRINT "LastTableOwnerSel = " + LastTableOwnerSel
+  END IF
+
+  If TableOwnerSel <> LastTableOwnerSel THEN
+    Call RefreshTableNames
+    LastTableOwnerSel = TableOwnerSel
+  END IF
+END SUB
+
+
+
+'****************************************************************************
+SUB SelectTableName
+  DIM Pos AS INTEGER
+
+  IF dbg THEN
+    PRINT "IN SelectTableName"
+  END IF
+  
+  TableName = ""
+  FullTableName = ""
+
+  IF UBOUND(TableNames) <> 0 THEN
+    TableNameSel=ReadControlValue(TableNameSelect_ID)
+    IF dbg THEN
+      PRINT "TableNameSel = " + TableNameSel
+    END IF
+
+    IF TableNameSel <> 0 THEN
+      TableName = TableNames(TableNameSel)
+
+   '   IF TableOwner=" " or TableOwner="" Then
+        ' Table owner might be contained in the name, parse it out
+        ' Parse tableowner.name
+        Pos = INSTR(1, TableName, ".")
+        IF Pos <> 0 THEN
+          TableOwner  = MID$(TableName, 1, Pos-1)
+          TableName  = MID$(TableName, Pos+1, 1000)
+        END IF
+   '   END IF
+ 
+      IF TableOwner = ""  OR TableOwner = "PUBLIC" OR TableName="DUAL" or TableOwner = "DEMO" THEN
+        FullTableName = demoquotechar + TableName + demoquotechar 
+      ELSE
+        FullTableName = demoquotechar + TableOwner + demoquotechar + 
+        "." +  demoquotechar + TableName + demoquotechar
+      END IF 
+    END IF
+  END IF
+
+  Alter Control FullTableName_ID Value FullTableName
+  
+  IF dbg THEN
+    PRINT "TableName     = """ + TableName + """"
+    PRINT "TableOwner    = """ + TableOwner + """"
+    PRINT "FullTableName = """ + FullTableName + """"
+  END IF
+
+END SUB
+
+
+'****************************************************************************
+'* GetTableNames
+'* Geta a list of table names given an Owner, a table name filter,  and a list of ODBC 
+'* SQLTables tabletypes.
+'* If No Owner filter is desired, pass an empty string ("").
+'****************************************************************************
+SUB GetTableNames(BYVAL TableOwner AS STRING, BYVAL TableNamesFilter AS STRING, BYVAL TableTypeFilter AS STRING)
+ ' Output = GLOBAL TableNames AS STRING
+
+  DIM NumTableNames, SizeTableNamesIncrement AS INTEGER
+  DIM  odbchdbc, odbchstmt AS INTEGER
+  DIM rc AS SMALLINT
+  Dim OutTab, OutOwner AS STRING
+  dim NullStr as INTEGER
+  DIM TableOwnerLen, TableNameLen, TableTypeLen AS SMALLINT
+  DIM OutLen AS INTEGER
+
+  NullStr=0
+
+  IF dbg THEN
+    PRINT "In GetTableNames"
+    PRINT " TableOwner       = " + TableOwner
+    PRINT " TableNamesFilter = " + TableNamesFilter
+    PRINT " TableTypeFilter  = " + TableTypeFilter
+  END IF
+
+' ALlocate output bufs (yeh I know it seems silly but it works)
+  OutTab   = STRING$(66, "0")
+  OutOwner = STRING$(66, "0")
+
+  REDIM TableNames(0)   ' clear out
+  SizeTableNamesIncrement=20
+  NumTableNames=0
+
+  odbchdbc = Server_GetODBCHConn(hdbc)
+  IF SystemInfo(SYS_INFO_MIPLATFORM) = MIPLATFORM_WIN16 THEN
+    rc = SQLAllocStmt16(odbchdbc, odbchstmt)
+  ELSE
+    rc = SQLAllocStmt32(odbchdbc, odbchstmt)
+  END IF
+ 
+  if dbg THEN
+    PRINT "After SQLAllocStmt"
+  END IF
+
+  TableOwnerLen = LEN(TableOwner)
+  TableNameLen  = LEN(TableNamesFilter)
+  TableTypeLen  = LEN(TableTypeFilter)
+
+  IF TableOwner="" THEN
+    IF SystemInfo(SYS_INFO_MIPLATFORM) = MIPLATFORM_WIN16 THEN
+      rc = SQLTablesNoOwner16(odbchstmt, 
+       	NullStr, 0,        ' qual  
+      	NullStr, 0,        ' owner  
+      	TableNamesFilter, TableNameLen,  ' name   
+      	TableTypeFilter,   TableTypeLen) ' type   
+    ELSE
+      rc = SQLTablesNoOwner32(odbchstmt, 
+    		NullStr, 0,        ' qual  
+    		NullStr, 0,        ' owner  
+    		TableNamesFilter, TableNameLen,  ' name   
+    		TableTypeFilter,   TableTypeLen)  ' type   
+    END IF 
+  ELSE
+    IF SystemInfo(SYS_INFO_MIPLATFORM) = MIPLATFORM_WIN16 THEN
+      rc = SQLTables16(odbchstmt, 
+    		NullStr,     0,        ' qual  
+    		TableOwner,   TableOwnerLen,        ' owner  
+    		TableNamesFilter,    TableNameLen,  ' name   
+    		TableTypeFilter,   TableTypeLen)    ' type   
+    ELSE
+      rc = SQLTables32(odbchstmt, 
+    		NullStr,     0,        ' qual  
+    		TableOwner,   TableOwnerLen,        ' owner  
+    		TableNamesFilter,    TableNameLen,  ' name   
+    		TableTypeFilter,   TableTypeLen)    ' type   
+    END IF 
+
+  END IF
+    
+  if dbg THEN
+    PRINT "After SQLTables rc=" + rc
+  END IF
+
+  IF SystemInfo(SYS_INFO_MIPLATFORM) = MIPLATFORM_WIN16 THEN
+      rc = SQLFetch16(odbchstmt)
+  ELSE
+      rc = SQLFetch32(odbchstmt)
+  END IF 
+
+  While rc = 0					  ' SQL_C_CHAR
+    IF SystemInfo(SYS_INFO_MIPLATFORM) = MIPLATFORM_WIN16 THEN
+      rc = SQLGetData16(odbchstmt, 3, 1, OutTab,  66, OutLen)
+    ELSE
+      rc = SQLGetData32(odbchstmt, 3, 1, OutTab,  66, OutLen)
+    END IF
+
+    ' Handle no table owner filter results
+    ' which are tables accross schemas
+    IF TableOwner="" THEN
+      IF SystemInfo(SYS_INFO_MIPLATFORM) = MIPLATFORM_WIN16 THEN
+        rc = SQLGetData16(odbchstmt, 2, 1, OutOwner,  66, OutLen)
+      ELSE
+        rc = SQLGetData32(odbchstmt, 2, 1, OutOwner,  66, OutLen)
+      END IF
+      IF OutOwner <> "" THEN
+        OutTab = OutOwner + "." + OutTab
+      END IF
+    END IF 
+
+    NumTableNames=NumTableNames+1
+    IF NumTableNames > UBOUND(TableNames) THEN
+      REDIM TableNames(UBOUND(TableNames) + SizeTableNamesIncrement)
+    END IF
+    TableNames(NumTableNames) = RTRIM$(OutTab)
+
+    IF dbg THEN
+      PRINT "Next Table Name = " + TableNames(NumTableNames)
+    END IF
+
+    IF SystemInfo(SYS_INFO_MIPLATFORM) = MIPLATFORM_WIN16 THEN
+      rc = SQLFetch16(odbchstmt)
+    ELSE
+      rc = SQLFetch32(odbchstmt)
+    END IF 
+  WEND
+
+  IF SystemInfo(SYS_INFO_MIPLATFORM) = MIPLATFORM_WIN16 THEN
+    rc = SQLFreeStmt16(odbchdbc, 1)
+  ELSE
+    rc = SQLFreeStmt32(odbchdbc, 1)
+  END IF
+
+  REDIM TableNames(NumTableNames)
+
+  IF dbg THEN
+    PRINT "Num Table Names = " + NumTableNames
+  END IF
+
+  GOTO ALLDONE
+
+  FETCHERR:
+    IF SystemInfo(SYS_INFO_MIPLATFORM) = MIPLATFORM_WIN16 THEN
+      rc = SQLFreeStmt16(odbchdbc, 1)
+    ELSE
+      rc = SQLFreeStmt32(odbchdbc, 1)
+    END IF
+    NOTE Error$()
+    RESUME ALLDONE     
+
+  EXEERR:
+    NOTE Error$()
+    RESUME ALLDONE
+
+  ALLDONE:
+
+END SUB
+
+
+'****************************************************************************
+SUB GetTableOwners(BYVAL TableOwnersFilter AS STRING)
+' Output = GLOBAL TableOwners AS STRING
+  DIM NumTableOwners, SizeTableOwnersIncrement AS INTEGER
+  Dim  odbchdbc, odbchstmt AS INTEGER
+  DIM rc, InLen AS SMALLINT
+  DIM OutLen AS INTEGER
+  Dim OutOwner, Blank AS STRING
+
+  if dbg THEN
+    PRINT "In GetOwners, filter="""+TableOwnersFilter+"""" 
+  END IF
+
+  REDIM TableOwners(0)   ' clear out
+  SizeTableOwnersIncrement=20
+  NumTableOwners=0
+
+  ' ALlocate output bufs (yeh I know it seems silly but it works)
+
+  OutOwner = STRING$(66, "0")
+
+  odbchdbc = Server_GetODBCHConn(hdbc)
+  IF SystemInfo(SYS_INFO_MIPLATFORM) = MIPLATFORM_WIN16 THEN
+    rc = SQLAllocStmt16(odbchdbc, odbchstmt)
+  ELSE
+    rc = SQLAllocStmt32(odbchdbc, odbchstmt)
+  END IF
+  if dbg THEN
+    PRINT "After SQLAllocStmt rc="+rc
+  END IF
+
+  InLen = LEN(TableOwnersFilter)
+  Blank = ""
+  IF SystemInfo(SYS_INFO_MIPLATFORM) = MIPLATFORM_WIN16 THEN
+    rc = SQLOwners16(odbchstmt, Blank,     0,  ' qual  
+							TableOwnersFilter,   InLen,  ' owner  
+							Blank,     0,  ' name   
+							Blank,     0) ' type   
+  ELSE
+      rc = SQLOwners32(odbchstmt, Blank,     0,  ' qual  
+							TableOwnersFilter,   InLen,  ' owner  
+							Blank,     0,  ' name   
+							Blank,     0) ' type   
+  END IF
+  if dbg THEN
+    PRINT "After SQLTables, rc="+rc
+  END IF
+
+  IF SystemInfo(SYS_INFO_MIPLATFORM) = MIPLATFORM_WIN16 THEN
+    rc = SQLFetch16(odbchstmt)
+  ELSE
+    rc = SQLFetch32(odbchstmt)
+  END IF 
+  if dbg THEN
+    PRINT "After SQLFetch, rc="+rc
+  END IF
+
+  While rc = 0					 
+    IF SystemInfo(SYS_INFO_MIPLATFORM) = MIPLATFORM_WIN16 THEN
+      rc = SQLGetData16(odbchstmt, 2, 1, OutOwner,  66, OutLen)
+    ELSE
+      rc = SQLGetData32(odbchstmt, 2, 1, OutOwner,  66, OutLen)
+    END IF
+    if dbg THEN
+      PRINT "After SQLGetData, rc="+rc
+    END IF
+    if (rc = 0) THEN
+      ' Increment number of table owers
+      NumTableOwners=NumTableOwners+1
+
+      ' Make sure there is room to add it to the TableOwners array
+      IF NumTableOwners > UBOUND(TableOwners) THEN
+        REDIM TableOwners(UBOUND(TableOwners) + SizeTableOwnersIncrement)
+      END IF
+ 
+      TableOwners(NumTableOwners) = RTRIM$(OutOwner)
+
+      IF dbg THEN
+        PRINT "Next Table Owner = " + TableOwners(NumTableOwners)
+      END IF 
+    END IF
+    
+    IF SystemInfo(SYS_INFO_MIPLATFORM) = MIPLATFORM_WIN16 THEN
+      rc = SQLFetch16(odbchstmt)
+    ELSE
+      rc = SQLFetch32(odbchstmt)
+    END IF 
+  WEND  
+
+  IF UBOUND(TableOwners) <> 0 THEN	
+    ' Add a blank table owner providing a NO-Owner filter
+    ' Increment number of table owers
+     NumTableOwners=NumTableOwners+1
+
+    ' Make sure there is room to add it to the TableOwners array
+    IF NumTableOwners > UBOUND(TableOwners) THEN
+       REDIM TableOwners(UBOUND(TableOwners) + 1)
+    END IF
+ 
+    TableOwners(NumTableOwners) = " "
+  END IF				
+  REDIM TableNames(NumTableOwners)	
+
+  IF SystemInfo(SYS_INFO_MIPLATFORM) = MIPLATFORM_WIN16 THEN
+    rc = SQLFreeStmt16(odbchdbc, 1)
+  ELSE
+    rc = SQLFreeStmt32(odbchdbc, 1)
+  END IF
+
+End SUB

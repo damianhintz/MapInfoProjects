@@ -1,0 +1,112 @@
+Define miUnitMile             0
+Define miUnitKilometer        1
+Define miUnitInch             2
+Define miUnitFoot             3
+Define miUnitYard             4
+Define miUnitMillimeter       5
+Define miUnitCentimeter       6
+Define miUnitMeter            7
+Define miUnitSurveyFoot       8
+Define miUnitNauticalMile     9
+Define miUnitTwip            10
+Define miUnitPoint           11
+Define miUnitPica            12
+Define miUnitDegree          13
+Define miUnitLink            30
+Define miUnitChain           31
+Define miUnitRod             32
+
+
+' Reg Key Security Options...
+Define READ_CONTROL        &H20000
+Define KEY_QUERY_VALUE         &H1
+Define KEY_SET_VALUE           &H2
+Define KEY_CREATE_SUB_KEY      &H4
+Define KEY_ENUMERATE_SUB_KEYS  &H8
+Define KEY_NOTIFY             &H10
+Define KEY_CREATE_LINK        &H20
+Define KEY_ALL_ACCESS  KEY_QUERY_VALUE + KEY_SET_VALUE + KEY_CREATE_SUB_KEY + KEY_ENUMERATE_SUB_KEYS + KEY_NOTIFY + KEY_CREATE_LINK + READ_CONTROL
+                     
+' Reg Create Type Values...
+Define REG_OPTION_NON_VOLATILE  0       ' Key is preserved when system is rebooted
+
+Define ERROR_SUCCESS   0
+
+Define REG_NONE  0                       ' No value type
+Define REG_SZ  1                         ' Unicode nul terminated string
+Define REG_EXPAND_SZ  2                  ' Unicode nul terminated string
+Define REG_BINARY  3                     ' Free form binary
+Define REG_DWORD  4                      ' 32-bit number
+Define REG_DWORD_LITTLE_ENDIAN  4        ' 32-bit number (same as REG_DWORD)
+Define REG_DWORD_BIG_ENDIAN  5           ' 32-bit number
+Define REG_LINK  6                       ' Symbolic Link (unicode)
+Define REG_MULTI_SZ  7                   ' Multiple Unicode strings
+
+' Reg Key ROOT Types...
+Define HKEY_LOCAL_MACHINE  &H80000002
+
+Type SECURITY_ATTRIBUTES
+        nLength As Integer
+        lpSecurityDescriptor As Integer
+        bInheritHandle As Integer
+End Type
+
+
+Declare Function RegCreateKeyEx Lib "advapi32.dll" 
+                 Alias "RegCreateKeyExA" ( ByVal hKey As Integer, 
+                                           ByVal lpSubKey As String, 
+                                           ByVal Reserved As Integer, 
+                                           ByVal lpClass As String, 
+                                           ByVal dwOptions As Integer, 
+                                           ByVal samDesired As Integer, 
+                                                 lpSecurityAttributes As SECURITY_ATTRIBUTES, 
+                                                 phkResult As Integer, 
+                                                 lpdwDisposition As Integer) As Integer
+
+Declare Function RegOpenKeyEx Lib "advapi32" 
+                 Alias "RegOpenKeyExA" ( ByVal hKey As Integer, 
+                                         ByVal lpSubKey As String, 
+                                         ByVal ulOptions As Integer, 
+                                         ByVal samDesired As Integer, 
+                                               phkResult As Integer) As Integer
+
+Declare Function RegQueryValueEx Lib "advapi32" 
+                 Alias "RegQueryValueExA" ( ByVal hKey As Integer, 
+                                            ByVal lpValueName As String, 
+                                            ByVal lpReserved As Integer, 
+                                                  lpType As Integer, 
+                                                  lpData As String, 
+                                                  lpcbData As Integer) As Integer
+
+Declare Function RegSetStringValue Lib "advapi32.dll" 
+                 Alias "RegSetValueExA" ( ByVal hKey As Integer, 
+                                          ByVal lpValueName As String, 
+                                          ByVal Reserved As Integer, 
+                                          ByVal dwType As Integer, 
+                                          ByVal lpData As String, 
+                                          ByVal cbData As Integer) As Integer
+
+Declare Function RegCloseKey Lib "advapi32" (ByVal hKey As Integer) As Integer
+
+
+
+Define PARENT_DIR               ".."
+Define CURRENT_DIR              "."
+
+Declare Function OpenFile( lFileNumber As Integer, ByVal sPathName As String ) As Logical
+Declare Sub CloseFile( ByVal lFileNumber As Integer )
+Declare Function IsRelativePath( sPath As String ) As Logical
+Declare Function DirSeparatorChar() As String
+Declare Function MakeFullPath( ByVal sPrefix As String, ByVal sSuffix  As String ) As String
+Declare Function RemoveLastDirName( ByVal sPath As String, ByVal sDirSep  As String ) As String
+Declare Function GetSubDirName( sPath As String, ByVal sDirSep  As String ) As String
+Declare Function ConcatenatePath( sInitPath As String, sSuffix As String, ByVal sDirSep As String ) As String 
+
+Declare Function GetRegKeyValue(ByVal lKeyRoot As Integer, 
+                                ByVal sKeyName As String, 
+                                ByVal sValueName As String, 
+                                      sKeyValue As String) As Logical
+
+Declare Function UnitNumberToUnitAbbr( ByVal lUnitNumber As Integer ) As String
+Declare Function MakeRelativePath( sDirName As String, sPath As String ) As String
+Declare Function GeoSetNameToFileName( ByVal sGeosetName As String ) As String

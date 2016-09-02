@@ -1,0 +1,6 @@
+[link]
+Application = SpiderGraph.mbx
+module = SpiderGraph.mbo
+module = spiderhelp.mbo
+Module = ..\Lib\auto_lib.mbo
+module = ..\Lib\resstrng.mbo

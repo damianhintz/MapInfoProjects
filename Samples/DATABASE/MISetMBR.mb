@@ -1,0 +1,473 @@
+'****************************************************************************
+'                             MAPINFO CORPORATION
+'
+' Date:         8/13/98
+'
+' Module:       MIsETmbr.mb
+' For Version:  MapInfo 5.0
+'
+' Overview:
+'    
+' Allows DBA to change the bounds of a table in the MapInfo_MAPCATALOG table.
+'****************************************************************************
+include "..\INC\MAPBASIC.DEF"
+include "..\INC\DLSAMP.DEF"
+include "ODBCPLUS.DEF"
+include "..\INC\AUTO_LIB.DEF"
+
+Type Rect
+	x1 as Float
+	x2 as Float
+	y1 as Float
+	y2 as Float
+End Type
+
+' Function declarations
+DECLARE SUB Main
+DECLARE SUB Go_Dialog
+DECLARE SUB Create_user
+DECLARE SUB Update_Dialog
+DECLARE SUB All_Stop
+DECLARE SUB Cat_About
+DECLARE SUB Cat_Auto
+DECLARE SUB Load_Table
+DECLARE SUB SQLConnect()
+DECLARE SUB SET_MBR
+DECLARE FUNCTION BuildSelect_str() AS STRING
+DECLARE Function BuildSetMBR_str(DefaultMBR As Rect) AS STRING
+DECLARE Function GetMBR(TableName as String, MBR as Rect, strCoordSys as String) AS Logical
+
+DECLARE Function GetTempPath LIB "KERNEL32.DLL" Alias "GetTempPathA" (BYVAL numChars As Integer, strTempPath As String) As Integer
+
+'Global variables
+Dim  demohdbc, demohstmt AS Integer
+Dim TableName, TableOwner AS String
+Dim ListTable(), ListOwners(), List_Table_Owner(), ListCoordSys() AS STRING
+
+
+'*********************************************************************
+'Sets up the tools menu for the catalog utility
+'*********************************************************************
+SUB Main
+  gsAppDescription = "MapInfo Set MBR"
+  gsAppFilename = "MISetMBR.mbx"
+
+  Create menu "&DBMS Set MBR" As
+    "&DBMS Set MBR ..." Calling  Go_dialog,
+    "(-",
+    "&About DBMS Set MBR..." Calling Cat_About,
+    "E&xit DBMS Set MBR" Calling All_Stop
+
+  Call set_tools_menu("&DBMS Set MBR")
+
+  IF demohdbc <> 0 THEN
+    Server demohdbc Disconnect
+    demohdbc = 0
+  END IF
+END SUB
+
+
+'*********************************************************************
+'Main dialog
+'*********************************************************************
+SUB Go_Dialog
+  if not IsDBMSInstalled(TRUE) then
+    ' IsDBMSInstalled displayed a message.
+    exit sub
+  end if
+    
+  CALL DebugInit("MISetMBR")
+
+  Dialog
+    Title "Update MBR"
+    Width 135
+  Control Button
+    Title "Update MBR"
+    Position 5,5
+    Width 60
+    Calling Update_Dialog
+  Control Button
+    Title "New Connection"
+    Position 5,25
+    Width 60
+    Calling SQLConnect
+  Control CancelButton
+    Title "Cancel"
+    Position 70,25
+    Width 60
+END SUB
+
+
+'*********************************************************************
+'Gives a multilistbox dialog of the tables in the MapInfo catalog
+'*********************************************************************
+SUB Update_Dialog
+  IF dbg THEN
+    Print "Entering the Update dialog"
+  END IF
+
+  If demohdbc = 0 THEN
+    Call SQLConnect()
+    if demohdbc=0 THEN
+      GOTO ALL_DONE
+    end if
+  END IF
+
+  ' get the list of cataloged tables
+  CALL Load_Table()
+  IF UBOUND(List_Table_Owner)=0 THEN
+    NOTE "No entries in the Map Catalog"
+    GOTO ALL_DONE
+  END IF
+
+  Dialog
+    Title "MapInfo DBMS Set MBR"
+    Control StaticText
+          Title "Update Tables: "
+    Position 5,5
+    Control MultiListBox
+    Title from Variable List_Table_Owner
+          ID 1
+        Position 5,20
+    Width 150
+    Into TableName
+    Control CancelButton
+          Title "Cancel"
+          Position 77,95
+    Control OKButton
+  Title "OK"
+    Position 30,95
+    CALLING SET_MBR
+    GOTO ALL_DONE
+
+ALL_DONE:
+
+END SUB
+
+
+
+
+'*********************************************************************
+'Loads an array of the records in the map catalog table
+'*********************************************************************
+SUB Load_Table
+  Dim Table,Owner,CoordSys AS String
+  Dim i,TableStat, OwnerStat, CoordSysStat AS Integer
+  Dim Count, MaxCount, Current_Count AS Integer
+  Dim Select_str As String
+
+  IF dbg THEN
+    PRINT "Entering the Load Table funtion"
+  END IF
+
+  REDIM ListTable(1)
+  REDIM ListOwners(1)
+  REDIM List_Table_Owner(1)
+  REDIM ListCoordSys(1)
+
+  ONERROR GOTO BAD_LOAD
+  Select_str = BuildSelect_str()
+  demohstmt = Server_Execute(demohdbc, Select_str)
+  Server demohstmt Bind Column 1 to Table, TableStat
+  Server demohstmt Bind Column 2 to Owner, OwnerStat
+  Server demohstmt Bind Column 3 to CoordSys, CoordSysStat
+  Count = 0
+  Server demohstmt Fetch Next
+  While Not Server_Eot(demohstmt)
+    Count = Count + 1
+
+    IF Count > UBOUND(List_Table_Owner) THEN    ' double array sizes
+            REDIM ListTable(UBOUND(List_Table_Owner)*2)
+      REDIM ListOwners(UBOUND(List_Table_Owner)*2)
+      REDIM List_Table_Owner(UBOUND(List_Table_Owner)*2)
+	REDIM ListCoordSys(UBOUND(List_Table_Owner)*2)
+    END IF
+
+    ListTable(Count)  = Table
+    ListOwners(Count) =  Owner
+    List_Table_Owner(Count) = Owner +"."+Table
+    ListCoordSys(Count) =  CoordSys
+
+    Server demohstmt Fetch Next
+  Wend
+
+  Server demohstmt Close
+
+  REDIM ListTable(Count)
+  REDIM ListOwners(Count)
+  REDIM List_Table_Owner(Count)
+  REDIM ListCoordSys(Count)
+
+  GOTO ALL_DONE
+
+  BAD_LOAD:
+    NOTE ERROR$()
+    Resume ALL_DONE
+
+  ALL_DONE:
+END SUB
+
+
+'*********************************************************************
+'Rewite the MBR in the MAPCATALOG table
+'*********************************************************************
+SUB SET_MBR
+  Dim Table_Number AS Integer
+  Dim Owner_number AS Integer
+  Dim SetMBRstr As String
+  Dim DefaultMBR As Rect
+  Dim ElapsedTime As Integer
+  Dim StartTime As Integer
+  Dim strRegister As String
+  Dim strConnection As String
+  Dim QC As String 'Quote Character
+  Dim strPath As String
+  Dim strFullPath As String
+  Dim IdentQC As String ' Identifying Quote Character RDBMS dependent
+  Dim OutLen As Integer
+  Dim CoordSys As String
+  Dim SqlQuery As String
+  Dim cmdServerLink As String
+
+  Print chr$(12) 'Clear the message window
+
+  QC = Chr$(34)
+  IdentQC = GetQuoteChar(demohdbc)
+
+  ONERROR GOTO SET_ERROR
+  Table_Number = Readcontrolvalue(1)
+
+  While Table_Number <> 0
+    TableName  = ListTable(Table_Number)
+    TableOwner = ListOwners(Table_Number)
+    CoordSys = ListCoordSys(Table_Number)
+
+    strPath = Space$(256)
+
+    OutLen = GetTempPath(256,strPath)
+    If(OutLen = 0) Then
+	strPath = ApplicationDirectory$()
+    End If
+    strFullPath = strPath + TableName + ".TAB"
+
+	
+    'Code for using Live Access, taken out because Drop Table does not work in FCC build of Staten
+    'strRegister = "Register Table " + QC + TableName + QC + " TYPE ODBC TABLE " + QC + "Select Object From " +
+	'TableOwner + "." + TableName + QC + " CONNECTION HANDLE " + demohdbc + 
+      '" Into " + QC + strPath + TableName + ".TAB" + QC
+    'Run Command strRegister
+    'Open Table strPath + TableName + ".TAB" As TableName
+
+    if(QC = IdentQC) Then IdentQC = QC + QC End If
+      if(Len(TableOwner) = 0 or TableOwner = "OWNER") Then
+    	  SqlQuery = "Select OBJECT from " + IdentQC + TableName + IdentQC
+      Else
+     	  SqlQuery = "Select OBJECT from " + IdentQC + TableOwner + IdentQC + "." + IdentQC + TableName + IdentQC
+    End If
+
+    DIM DriverName as String
+    DriverName = Ucase$(Server_ConnectInfo(demohdbc, SRV_CONNECT_INFO_DRIVER_NAME))
+
+    cmdServerLink = "Server " + demohdbc + " Link Table " + QC + SqlQuery + QC + " Toolkit " + QC + DriverName + QC + " Into " + QC + TableName + QC + " File " + QC + strFullPath + QC
+    'Print cmdServerLink
+    Run Command cmdServerLink
+
+    Print "Calculating Default MBR for table " + TableName
+    StartTime = Timer()
+    If(Not GetMBR(TableName, DefaultMBR, CoordSys)) Then
+	Print "GetMBR FAILED, posibly no objects in table " + TableName
+    Else
+      ElapsedTime = Timer() - StartTime
+
+      SetMBRstr = BuildSetMBR_str(DefaultMBR)
+      IF dbg THEN
+        print "Updateing catalog where owner="+ TableOwner + " table=" + TableName
+      END IF
+
+      demohstmt  = Server_execute(demohdbc,
+           SetMBRstr + "'" + TableName + "'" +
+      " AND OWNERNAME = '" + TableOwner + "'")
+      Server demohstmt Close
+    End If
+    Table_number = ReadControlValue(1)
+
+    Drop Table TableName
+    Print "Finished processing table " + TableName
+
+  Wend
+
+  Print "Processing Complete"
+  GOTO ALL_DONE
+
+  SET_ERROR:
+    NOTE ERROR$()
+    Resume ALL_DONE
+
+  ALL_DONE:
+
+END SUB
+
+
+'*********************************************************************
+'clears the tools menu and terminates the catalog utility
+'*********************************************************************
+SUB All_Stop
+  End Program
+END SUB
+
+
+'**  Cat_About  *************************************************************
+' The About procedure displays an About dialog box.
+'****************************************************************************
+Sub Cat_About
+  Dialog
+     Title "About the Set MBR Utility Program..."
+
+     Control StaticText
+        Title "MISetMBR.mbx is now running."
+        Position 10, 10
+
+     Control StaticText
+        Title "This MapBasic application allows a DBA to change "
+        Position 10, 25
+     Control StaticText
+        Title "the bounds of a  table in the MapInfo Map Catalog, " 
+        Position 10, 35
+     Control StaticText
+        Title "in a remote database. "
+        Position 10, 45
+
+     Control OKButton
+        Title "OK"  Position 84, 100
+
+  ' If the user chooses "Auto-Load"  we call a procedure
+  ' from the Auto_Lib library  (HandleInstallation).
+End Sub
+
+
+
+'***************************************************************************
+'* Get a new connection (replace the old one)
+'* Use QELIB DLG=1 option for Windows
+'* Use MB connect dialog for MAC and UNIX
+'***************************************************************************
+SUB SQLConnect()
+  ' get a new connection
+  demohdbc = SQLConnectDialog()
+END SUB
+
+
+'*********************************************************************
+'Build the correct select string for the different databases
+'*********************************************************************
+FUNCTION BuildSelect_str() AS STRING
+  IF demodb= DATA_SOURCE_MSACCESS THEN
+    BuildSelect_Str = "SELECT TABLENAME,OWNERNAME,COORDINATESYSTEM FROM MAPINFO_MAPCATALOG ORDER BY OWNERNAME, TABLENAME"
+  ELSE
+    BuildSelect_Str = "SELECT TABLENAME,OWNERNAME,COORDINATESYSTEM FROM MAPINFO.MAPINFO_MAPCATALOG ORDER BY OWNERNAME, TABLENAME"
+  END IF
+
+END FUNCTION
+
+
+'*********************************************************************
+'Build the correct Update string for the different databases
+'*********************************************************************
+Function BuildSetMBR_str(DefaultMBR As Rect) AS STRING
+  Dim strTemp  As String
+
+  IF demodb = DATA_SOURCE_MSACCESS THEN
+    strTemp = "UPDATE MAPINFO_MAPCATALOG SET "
+  ELSE
+    strTemp = "UPDATE MAPINFO.MAPINFO_MAPCATALOG SET "
+  END IF
+
+  BuildSetMBR_str = strTemp + 
+	" db_x_ll=" + DefaultMBR.x1 + 
+	", db_y_ll=" + DefaultMBR.y1 + 
+	", db_x_ur=" + DefaultMBR.x2 + 
+	", db_y_ur=" + DefaultMBR.y2 + 
+	" WHERE TABLENAME=" 
+
+END FUNCTION
+
+'*********************************************************************
+'GetMBR()
+'*********************************************************************
+Function GetMBR(TableName as String, MBR as Rect, strCoordSys as String) AS Logical
+
+Dim MinX as Float
+Dim MinY as Float
+Dim MaxX as Float
+Dim MaxY as Float
+Dim tempMinX as Float
+Dim tempMinY as Float
+Dim tempMaxX as Float
+Dim tempMaxY as Float
+Dim iCounter as Integer
+Dim CurrentObjectStr as Alias
+Dim CurrentObject as Object
+Dim EmptyObject as Object
+Dim cmdCoordsys as String
+Dim iTotalRecords as Integer
+Dim iNumRecords as Integer
+Dim iNumObjects as Integer
+
+CurrentObjectStr = TableName + ".obj"
+
+if(TableInfo(TableName,TAB_INFO_MAPPABLE)) then
+  iTotalRecords = TableInfo(TableName,TAB_INFO_NROWS)
+
+  If(iTotalRecords > 0) Then
+	cmdCoordsys = "Set Coordsys " + strCoordSys
+	Run Command cmdCoordsys
+	Fetch First from TableName
+	  iNumRecords = 1
+        iNumObjects = 0
+
+      'Move to the first Object
+      Do While(Not CurrentObjectStr)
+        Fetch Next From TableName
+        if EOT(TableName) Then
+          GetMBR = FALSE
+          Exit Sub
+        End If
+    	  iNumRecords = iNumRecords + 1
+      Loop
+
+	if Not EOT(TableName) Then
+        iNumObjects = iNumObjects + 1
+	  CurrentObject = CurrentObjectStr
+        MBR.x1 = ObjectGeography(CurrentObject, OBJ_GEO_MINX)
+        MBR.x2 = ObjectGeography(CurrentObject, OBJ_GEO_MAXX)
+        MBR.y1 = ObjectGeography(CurrentObject, OBJ_GEO_MINY)
+        MBR.y2 = ObjectGeography(CurrentObject, OBJ_GEO_MAXY)
+      End If
+
+	Fetch Next From TableName
+	Do While Not EOT(TableName)
+        iNumRecords = iNumRecords + 1			
+        if(CurrentObjectStr) Then
+          iNumObjects = iNumObjects + 1
+	    CurrentObject = CurrentObjectStr
+	    tempMinX = ObjectGeography(CurrentObject, OBJ_GEO_MINX)
+	    tempMinY = ObjectGeography(CurrentObject, OBJ_GEO_MINY)
+	    tempMaxX = ObjectGeography(CurrentObject, OBJ_GEO_MAXX)
+	    tempMaxY = ObjectGeography(CurrentObject, OBJ_GEO_MAXY)	
+	
+          If(tempMinX < MBR.x1) Then MBR.x1 = tempMinX End If
+          If(tempMinY < MBR.y1) Then MBR.y1 = tempMinY End If
+	    If(tempMaxX > MBR.x2) Then MBR.x2 = tempMaxX End If
+	    If(tempMaxY > MBR.y2) Then MBR.y2 = tempMaxY End If
+        End If
+
+        Fetch Next From TableName
+      Loop	
+	
+      Print "Number of Records processed " + iNumRecords
+      Print "Number of Objects processed " + iNumObjects
+  End If
+End If
+
+GetMBR = TRUE
+End Function

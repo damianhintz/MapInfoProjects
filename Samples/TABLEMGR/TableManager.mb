@@ -1,0 +1,1175 @@
+'/*****************************************************************************
+'*       Copyright © 2011 Pitney Bowes Software Inc.
+'*       All rights reserved.
+'*****************************************************************************/
+'
+' Module Description:
+' List all Open tables in a list box.  Provide more information about
+' a table as the user clicks on it.  Also allow the user to set some 
+' table properties and view table metadata.
+'
+'****************************************************************************
+Include "TableManager.def"
+'****************************************************************************
+' Sub procedure: Main. Set up menu, initialize global variables
+'****************************************************************************
+Sub Main
+
+  OnError Goto HandleError
+
+  If LoadStrings((ApplicationDirectory$() + STR_RES_STR_FILE)) = FALSE Then
+    Note STR_FILE_NOT_ACCESSIBLE + ApplicationDirectory$() + STR_RES_STR_FILE
+    Exit Sub
+  End If
+
+  gsAppDescription = GetResString(IDS_APP_DESCRIPTION)
+  gsAppFilename = STR_APP_FILE_NAME
+
+  Create Menu GetResString(IDS_MENU_NAME) as
+    GetResString(IDS_MENU_ITEM_NAME) Calling TableManager,
+    GetResString(IDS_TEMPLATE_MENU_ITEM_NAME) Calling TemplateManager,
+    STR_MENU_ITEM_SEPARATOR,
+    GetResString(IDS_ABOUT_MENU_ITEM_NAME) Calling AboutTableManager,
+    GetResString(IDS_EXIT_MENU_ITEM_NAME) Calling ExitTableManager
+
+  Call set_tools_menu(GetResString(IDS_MENU_NAME))
+
+  glModifyMetaData = FALSE
+  glMetaDataModified = FALSE
+  glMetaDataTemplateModified = FALSE
+
+  Call InitValidFunctions
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_MAIN + Error$()
+  Resume Next
+
+End Sub
+'****************************************************************************
+' Sub procedure: TableManager. Display main dialog
+'****************************************************************************
+Sub TableManager
+
+  OnError Goto HandleError
+
+  Dim i As Integer
+  Dim sStaticInit, sShortStaticInit As String
+
+  gsTableList = STR_EMPTY_STR
+  gsCurTable = STR_EMPTY_STR
+  sStaticInit = STR_STATIC_INT
+  sShortStaticInit = STR_STATIC_SHORT_INT
+
+  gsTableList = MakeOpenTabsList$(FALSE)
+  If gsTableList = STR_EMPTY_STR Then
+    Note GetResString(IDS_NO_TABLES_OPEN)
+    Exit Sub
+  End If
+
+  Dialog
+
+    Title GetResString(IDS_APP_DESCRIPTION) + STR_EMPTY_STR1 + STR_OPEN_BRAC + GetResString(IDS_VERSION) + STR_EMPTY_STR1 + Str$(AppVersion) + STR_CLOSE_BRAC
+    Calling InitializeDialog
+
+  Control StaticText
+    Title GetResString(IDS_PICK_A_TABLE)
+    Position 10, 5
+  Control ListBox 
+    Position 10, 15 Width 170 Height 65
+    Title gsTableList
+    Value 0
+    ID LB_TABLELIST
+    Calling TableListHandler
+
+  Control GroupBox Title GetResString(IDS_TABLE_INFORMATION) Position 190, 5 Height 78 Width 210      
+  Control GroupBox Title GetResString(IDS_TABLE_METADATA) Position 10, 85 Height 171 Width 390
+  Control GroupBox Title GetResString(IDS_ADDITIONAL_TABLE_INFO) Position 10, 258 Height 52 Width 390
+
+  Control StaticText
+    Position 195, 14
+    Title GetResString(IDS_TABLE_NAME)
+  Control StaticText
+    Position 255, 14
+    Title sStaticInit
+    ID ST_NAME
+
+  Control StaticText
+    Position 195, 23
+    Title GetResString(IDS_TABLE_TYPE)
+  Control StaticText
+    Position 255, 23
+    Title sStaticInit
+    ID ST_TYPE
+
+  Control StaticText
+    Position 195, 31
+    Title GetResString(IDS_DATA_TYPE)
+  Control StaticText
+    Position 255, 31
+    Title sStaticInit
+    ID ST_DATATYPE
+	Width 130 Height 8
+
+  Control StaticText
+    Position 195, 39
+    Title GetResString(IDS_TABLE_VERSION)
+  Control StaticText
+    Position 255, 39
+    Title sStaticInit
+    ID ST_VERSION
+
+  Control StaticText
+    Position 195, 47
+    Title GetResString(IDS_COLUMNS)
+  Control StaticText
+    Position 255, 47
+    Title sShortStaticInit
+    ID ST_NCOLS
+
+  Control StaticText
+    Position 195, 55
+    Title GetResString(IDS_ROWS)
+  Control StaticText
+    Position 255, 55
+    Title sShortStaticInit
+    ID ST_NROWS
+
+  Control StaticText
+    Position 195, 63
+    Title GetResString(IDS_MAPPABLE)
+  Control StaticText
+    Position 255, 63
+    Title sShortStaticInit
+    ID ST_MAPPABLE
+
+  Control StaticText
+    Position 195, 71      
+    Title GetResString(IDS_READ_ONLY)
+  Control StaticText
+    Position 255, 71
+    Title sShortStaticInit
+    ID ST_READONLY
+
+  Control CheckBox 
+    Position 20, 95
+    Title GetResString(IDS_MODIFY_METADATA)
+    Value glModifyMetaData
+    Into glModifyMetaData
+    Calling ModifyMetaDataCheckBoxHandler
+    ID CB_MODIFYMETADATA
+
+  
+  Control StaticText 
+    Position 20, 107
+    Title GetResString(IDS_KEY_NAME)
+
+  Control ListBox
+    Position 20, 120
+    Height 50
+    Width 290
+    ID LB_KEYLIST
+    Calling KeyListHandler
+      
+  Control StaticText 
+    Position 20, 173
+    Title GetResString(IDS_KEY_VALUE)
+
+  Control EditText
+    Position 20, 185
+    Height 35
+    Width 290
+    ID TB_VALUE
+
+  Control Button
+    Title GetResString(IDS_ADD)
+    Calling AddMetaDataKey
+    Position 320, 104
+    ID BT_ADD
+ 
+  Control Button
+    Title GetResString(IDS_DELETE)
+    Calling DeleteMetaDataKey
+    Position 320, 121
+    ID BT_DELETE
+
+  Control Button
+    Title GetResString(IDS_DELETE_ALL)
+    Calling ClearMetaData
+    Position 320, 138
+    ID BT_CLEAR
+
+  Control Button
+    Title GetResString(IDS_SAVE)
+    Calling SaveMetaData
+    Position 320, 155
+    ID BT_SAVE
+
+  Control StaticText
+    Position 20, 223
+    Title GetResString(IDS_APPEND)
+
+  Control PopUpMenu
+    Position 20, 235
+    Width 290
+    Title From Variable gaLocalisedAppendValue()
+    ID PUM_FUNCTIONS
+    Calling AppendFunction
+
+  Control GroupBox
+    Title GetResString(IDS_TEMPLATE)
+    Position 315, 176
+    Width 80
+    Height 44
+
+  Control Button
+    Title GetResString(IDS_LOAD)
+    Calling yApplyMetaDataTemplate
+    Position 320, 186
+    ID BT_LOAD
+
+  Control Button
+    Title GetResString(IDS_SAVE_AS)
+    Calling SaveMetadataTemplate
+    Position 320, 203
+    ID BT_SAVEAS
+
+  Control GroupBox
+    Title GetResString(IDS_FGDC)
+    Position 315, 227
+    Width 80
+    Height 26
+  Control Button
+    Title GetResString(IDS_EXPORT)
+    Calling ExportMetaData
+    Position 320, 236
+    ID BT_EXPORT
+
+  Control StaticText
+    Position 20, 271
+    Title GetResString(IDS_COORDSYS)
+  Control StaticText
+    Position 80, 271
+    ID ST_COORDSYS
+    Title STR_EMPTY_TITLE
+    Width 290
+    Height 16
+
+  Control StaticText
+    Position 20, 289
+    Title GetResString(IDS_LOCATION)
+  Control StaticText
+    Position 80, 289
+    ID ST_TABLELOCATION  
+    Title STR_EMPTY_TITLE
+    Width 290
+    Height 19
+
+  Control StaticText
+    Position 10, 312
+	Title GetResString(IDS_NOTE_COORDSYS_NOT_MATCH)
+    ID ST_COORDSYSWARNING
+    Hide
+
+  Control Button
+    'Position 400-150, 320
+    Title GetResString(IDS_HELP_BUTTON)
+    Calling TableManagerHelp
+
+  Control OKButton
+    'Position 400-75, 305
+    Title GetResString(IDS_DONE_BUTTON)
+    Calling DoneHandler
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_TABLE_MANAGER + Error$()
+  Resume Next
+
+
+End Sub 
+'****************************************************************************
+' Sub procedure: TableListHandler
+'****************************************************************************
+Sub TableListHandler
+
+  OnError Goto HandleError
+  Dim index, iTableType, p1, p2, i  As SmallInt
+  Dim sKeyList as String
+  Dim iVersion As Integer
+  Dim sFile, sType, sTable, sCoordSysClause, sMetaDataCoordSysClause As String
+
+  index = ReadControlValue(LB_TABLELIST)
+  Call Extract(index, gsTableList, sTable)
+  If sTable <> gsCurTable Then
+    If glMetaDataModified = TRUE Then
+      If Ask(GetResString(IDS_SAVE_CHANGES), GetResString(IDS_YES_BUTTON), GetResString(IDS_NO_BUTTON)) Then
+        Call WriteMetaDataToTable(gsCurTable)
+      End If
+      Else
+    End If
+
+    gsCurTable = sTable
+    glMetaDataModified = FALSE
+    glMetaDataTemplateModified = FALSE
+'	    Alter Control BT_SAVE Disable
+
+  Call ReadTableInfo(gsCurTable, iVersion, sType, sFile)
+
+  Alter Control ST_NAME
+    Title TableInfo(gsCurTable, TAB_INFO_NAME)
+
+  If iVersion > 0 Then
+    Alter Control ST_VERSION Title Str$(iVersion)
+  Else
+    Alter Control ST_VERSION Title GetResString(IDS_NOT_SPECIFIED)
+  End If
+
+  iTableType = TableInfo(gsCurTable, TAB_INFO_TYPE)
+
+  Do Case iTableType
+    Case TAB_TYPE_BASE 
+      If TableInfo(gsCurTable, TAB_INFO_SEAMLESS) Then
+        Alter Control ST_TYPE 
+          Title GetResString(IDS_SEAMLESS_TABLE)
+      ElseIf TableInfo(gsCurTable, TAB_INFO_EDITED) Then
+        Alter Control ST_TYPE 
+          Title GetResString(IDS_PERMANENT_TABLE_EDITED)
+      Else
+        Alter Control ST_TYPE 
+          Title GetResString(IDS_PERMANENT_TABLE_SAVED)
+      End If
+    Case TAB_TYPE_LINKED 
+      Alter Control ST_TYPE
+        Title GetResString(IDS_LINKED_TABLE)
+    Case TAB_TYPE_IMAGE 
+      Alter Control ST_TYPE
+        Title GetResString(IDS_RASTER_TABLE)
+    Case TAB_TYPE_VIEW
+      Alter Control ST_TYPE 
+        Title GetResString(IDS_VIEW_TABLE)
+    Case TAB_TYPE_RESULT
+      Alter Control ST_TYPE 
+        Title GetResString(IDS_QUERY_TABLE)
+  End Case
+
+  If sType <> STR_EMPTY_STR Then
+    If sFile <> STR_EMPTY_STR Then
+      Alter Control ST_DATATYPE Title sType + STR_COLON + STR_EMPTY_STR1 + sFile
+    Else
+      Alter Control ST_DATATYPE Title sType
+    End If
+  Else
+    Alter Control ST_DATATYPE Title GetResString(IDS_NOT_SPECIFIED)
+  End If
+
+  Alter Control ST_NCOLS    
+    Title str$(TableInfo(gsCurTable, TAB_INFO_NCOLS))
+
+  Alter Control ST_NROWS    
+    Title str$(TableInfo(gsCurTable, TAB_INFO_NROWS))
+    
+  If TableInfo(gsCurTable, TAB_INFO_MAPPABLE) Then
+    Alter Control ST_MAPPABLE 
+      Title GetResString(IDS_YES)
+  Else
+    Alter Control ST_MAPPABLE 
+      Title GetResString(IDS_NO)
+  End If
+
+  If TableInfo(gsCurTable, TAB_INFO_READONLY) Then
+    Alter Control ST_READONLY 
+      Title GetResString(IDS_YES)
+    Alter Control CB_MODIFYMETADATA
+      Value FALSE
+    Alter Control CB_MODIFYMETADATA Disable
+
+    Call ModifyMetaDataCheckBoxHandler
+  Else
+    Alter Control ST_READONLY
+      Title GetResString(IDS_NO)
+    Alter Control CB_MODIFYMETADATA Enable
+    Call ModifyMetaDataCheckBoxHandler
+  End If
+
+  Call TableLocationStaticTextHandler
+
+  Call ReadMetaDataFromTable(gsCurTable)
+
+  If iTableType <> TAB_TYPE_RESULT Then
+    sKeyList = BuildMetaDataKeyList()
+  Else  
+    sKeyList = GetResString(IDS_NO_METADATA)
+    Alter Control CB_MODIFYMETADATA
+      Value FALSE
+    Alter Control CB_MODIFYMETADATA Disable
+    Call ModifyMetaDataCheckBoxHandler
+  End If
+
+  Alter Control LB_KEYLIST Title sKeyList
+  giCurKeyIndex = 1
+
+  If Left$(sKeyList, 11) = GetResString(IDS_NO_METADATA) Then
+    Alter Control LB_KEYLIST Disable
+    Alter Control TB_VALUE Value STR_EMPTY_STR
+    Alter Control TB_VALUE Disable
+    Alter Control BT_SAVEAS Disable
+    Alter Control BT_EXPORT Disable
+  Else
+    Alter Control LB_KEYLIST Enable
+    If glModifyMetaData Then
+      Alter Control TB_VALUE Enable
+      Alter Control BT_DELETE Enable
+    End If
+    Alter Control BT_SAVEAS Enable
+    Alter Control BT_EXPORT Enable
+    Alter Control LB_KEYLIST Value 1
+    Call KeyListHandler
+  End If
+  End If
+
+  sCoordSysClause = TableInfo(gsCurTable, TAB_INFO_COORDSYS_CLAUSE)
+
+  i = 1
+  sMetaDataCoordSysClause = STR_EMPTY_STR
+  Do While i <= giMetaDataCount
+    If InStr(1, gaMetaData(i).sKeyValue, STR_COORD_SYS) <> 0 Then
+      sMetaDataCoordSysClause = gaMetaData(i).sKeyValue
+      Exit Do
+    Else
+      i = i + 1
+    End If
+  Loop
+
+  If sCoordSysClause <> STR_EMPTY_STR And
+     sMetaDataCoordSysClause <> STR_EMPTY_STR And
+     sCoordSysClause <> sMetaDataCoordSysClause Then
+    Alter Control ST_COORDSYSWARNING Show
+    Beep
+  Else
+    Alter Control ST_COORDSYSWARNING Hide
+  End If
+
+  If sCoordSysClause = STR_EMPTY_STR Then
+    sCoordSysClause = GetResString(IDS_TABLE_NOT_MAPPABLE)
+  ElseIf Left$(sCoordSysClause, 9) = STR_COORD_SYS + STR_EMPTY_STR1 Then
+    sCoordSysClause = Mid$(sCoordSysClause, 10, 255)
+  End If
+  Alter Control ST_COORDSYS Title sCoordSysClause
+
+  Call ModifyMetaDataCheckBoxHandler
+
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_TABLE_LIST_HANDLER+ Error$()
+  Resume Next
+
+End Sub 
+
+'*****************************************************************************
+' KeyListHandler
+'*****************************************************************************
+
+Sub KeyListHandler
+
+  OnError Goto HandleError
+
+  Dim iKeyIndex, iKeyFunction As Integer
+  Dim sKeyValue As String
+
+    If giMetaDataCount > 0 Then  
+    iKeyIndex = ReadControlValue(LB_KEYLIST)
+        If iKeyIndex <> giCurKeyIndex Then
+      sKeyValue = ReadControlValue(TB_VALUE)
+      
+      If gaMetaData(giCurKeyIndex).sKeyName <> STR_BACK_SLASH + STR_IS_READ_ONLY Then
+        If gaMetaData(giCurKeyIndex).sKeyValue <> sKeyValue Then
+          gaMetaData(giCurKeyIndex).sKeyValue = sKeyValue
+          iKeyFunction = ReadControlValue(PUM_FUNCTIONS)
+          If iKeyFunction <> 1 Then
+            gaMetaData(giCurKeyIndex).sKeyFunction = Str$(iKeyFunction-1)
+          End If
+          glMetaDataModified = TRUE
+          glMetaDataTemplateModified = TRUE
+'          Alter Control BT_SAVE Enable
+      End If
+    End If  
+  End If
+
+  sKeyValue = gaMetaData(iKeyIndex).sKeyValue
+  iKeyFunction = Val(gaMetaData(iKeyIndex).sKeyFunction)+1
+
+  Else
+
+    sKeyValue = GetResString(IDS_NO_METADATA)
+    Alter Control LB_KEYLIST Disable
+    iKeyFunction = 1
+
+  End If
+
+  Alter Control TB_VALUE Value sKeyValue
+  Alter Control PUM_FUNCTIONS Value iKeyFunction
+  giCurKeyIndex = iKeyIndex
+
+  '*** The following checks to see if the "Modify Metadata" checkbox is ticked and if 
+  '*** the key is "IsReadOnly".  This is to appropriately change the textbox and 
+  '*** functions controls to enable or disable them.  They should not be enabled if 
+  '*** the IsReadOnly key is selected.
+
+  If glModifyMetadata then 	
+
+    If giMetaDataCount > 0 Then  '*** Ensure there is at least one metadata key.
+
+      If giCurKeyIndex = 0 then giCurKeyIndex = 1  'Prevents accessing the array at zero
+      End If
+
+      
+      If gaMetaData(giCurKeyIndex).sKeyName = STR_BACK_SLASH + STR_IS_READ_ONLY Then
+        Alter Control TB_VALUE Disable
+        Alter Control PUM_FUNCTIONS Disable
+      Else
+        Alter Control TB_VALUE Enable
+        Alter Control PUM_FUNCTIONS Enable
+      End If
+    End If 
+  End If
+
+Exit Sub
+
+HandleError:
+  Note STR_SUB_KEY_LIST_HANDLER + Error$()
+  Resume Next
+
+End Sub
+'*****************************************************************************
+' Alter the static text control for the location of the file
+'*****************************************************************************
+Sub TableLocationStaticTextHandler
+
+  OnError Goto HandleError
+
+  Dim sTableLocation as String
+
+  sTableLocation = TableInfo(gsCurTable, TAB_INFO_TABFILE)
+  If sTableLocation = STR_EMPTY_STR Then
+    sTableLocation = GetResString(IDS_TEMPORARY_TABLE)
+  End If
+  Alter Control ST_TABLELOCATION Title sTableLocation
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_TABLE_LOCATION_STATIC_TEXT + Error$()
+  Resume Next
+
+End Sub
+'*****************************************************************************
+' AddMetaDataKey
+'
+' This procedure is called from the Table Manager dialog box.  In v2.4 a second
+' version has been created to be called from the Template Manager dialog box.
+' This version appends the actual value into the table.  The template version 
+' only stores the reference and does not actually append the value.
+'*****************************************************************************
+Sub AddMetaDataKey
+
+  OnError Goto HandleError
+
+  Dim sNewValue, sNewKey, sKeyList As String
+  Dim iNewFunction As Integer
+
+  sNewKey = STR_BACK_SLASH
+  sNewValue = GetResString(IDS_EMPTY)
+  iNewFunction = 1
+
+  Dialog
+    Title GetResString(IDS_ADD_NEW_KEY)
+    Control StaticText
+      Title GetResString(IDS_NEW_KEY_NAME)
+      Position 10, 3
+    Control EditText
+      Value sNewKey
+      Into sNewKey
+      Width 345
+      Position 10, 15
+      ID ET_NEWKEY
+    Control StaticText
+      Title GetResString(IDS_USE_SLASHES)
+      Position 20, 30
+    Control StaticText
+      Title GetResString(IDS_NEW_KEY_VALUE)
+      Position 10, 48
+    Control EditText
+      Value sNewValue
+      Into sNewValue
+      Width 345
+      Height 50
+      Position 10, 60
+      ID TB_VALUE
+ 
+    Control StaticText
+      Position 10, 113
+      Title GetResString(IDS_APPEND)
+    Control PopUpMenu
+      Position 10, 125
+      Width 345
+      Title From Variable gaLocalisedAppendValue()
+      Value iNewFunction
+      Into iNewFunction
+      ID PUM_FUNCTIONS
+      Calling AppendFunction
+
+    Control OKButton
+      Title GetResString(IDS_OK)
+      Calling AddNewKeyOKButtonHandler
+    Control CancelButton
+      Title GetResString(IDS_CANCEL)
+
+  If CommandInfo(CMD_INFO_DLG_OK) Then 
+    giMetaDataCount = giMetaDataCount + 1
+    Redim gaMetaData(giMetaDataCount)
+    gaMetaData(giMetaDataCount).sKeyName = sNewKey
+    gaMetaData(giMetaDataCount).sKeyValue = sNewValue
+    gaMetaData(giMetaDataCount).sKeyFunction = Str$(iNewFunction-1)
+    giCurKeyIndex = giMetaDataCount 'v2.4: Ensure that this key is not zero
+
+    sKeyList = BuildMetaDataKeyList()
+    Alter Control LB_KEYLIST Title sKeyList Enable
+    Alter Control LB_KEYLIST Value giMetaDataCount Enable
+    Alter Control TB_VALUE Value sNewValue Enable
+    Alter Control PUM_FUNCTIONS Value iNewFunction Enable
+
+    glMetaDataModified = TRUE
+    glMetaDataTemplateModified = TRUE
+    Alter Control BT_DELETE Enable  '*** Added in v2.4 to ensure Delete and Clear buttons 
+    Alter Control BT_CLEAR Enable   '***    are enabled after a new key is added
+
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_ADD_METADATA_KEY + Error$()
+  Resume Next
+
+End Sub
+
+'*****************************************************************************
+' AddNewKeyOKButtonHandler
+'*****************************************************************************
+
+Sub AddNewKeyOKButtonHandler
+
+  OnError Goto HandleError
+
+  Dim sNewKey, sNewValue As String
+
+  sNewKey = ReadControlValue(ET_NEWKEY)
+
+  If Left$(sNewKey, 1) <> STR_BACK_SLASH Then
+    Note GetResString(IDS_KEYS_MUST_BEGIN)
+    Dialog Preserve
+  End If
+  If Right$(sNewKey, 1) = STR_BACK_SLASH Then
+    Note GetResString(IDS_KEYS_MUST_NOT_END)
+    Dialog Preserve
+  End If
+  If UCase$(Left$(sNewKey, 11)) = STR_BACK_SLASH + STR_IS_READ_ONLY_IN_UPPER_CASE Then
+    Note GetResString(IDS_READONLY_RESERVED)
+    Dialog Preserve
+  End If
+
+  sNewValue = ReadControlValue(TB_VALUE)
+  If sNewKey = STR_EMPTY_STR Then
+    Note GetResString(IDS_VALUES_CANNOT_BE)
+    Dialog Preserve
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_ADD_NEW_KEY_OK_BUTTON + Error$()
+  Resume Next
+
+End Sub
+
+'*****************************************************************************
+' UpdateMetaDataKey
+'*****************************************************************************
+
+
+Sub UpdateMetaDataKey
+
+  OnError Goto HandleError
+
+  Dim iKeyIndex As Integer
+  Dim sKeyValue, sKeyName, sKeyList As String
+
+  iKeyIndex = ReadControlValue(LB_KEYLIST)
+  sKeyName = gaMetaData(iKeyIndex).sKeyName
+  sKeyValue = ReadControlValue(TB_VALUE)
+
+  If sKeyName <> STR_BACK_SLASH + STR_IS_READ_ONLY Then
+
+    gaMetaData(iKeyIndex).sKeyValue = sKeyValue
+
+    sKeyList = BuildMetaDataKeyList()
+    Alter Control LB_KEYLIST Title sKeyList
+    Alter Control LB_KEYLIST Value iKeyIndex
+    Alter Control TB_VALUE Value sKeyValue
+    glMetaDataModified = TRUE
+    glMetaDataTemplateModified = TRUE
+'    Alter Control BT_SAVE Enable
+
+  Else
+    Note GetResString(IDS_READONLY_RESERVED)
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_UPDATE_METADATA_KEY + Error$()
+  Resume Next
+
+End Sub
+
+'*****************************************************************************
+' DeleteMetaDataKey
+' Called from BT_DELETE in Main Dialog box and Metadata Template Manager dialog
+'*****************************************************************************
+
+Sub DeleteMetaDataKey
+
+  OnError Goto HandleError
+
+  Dim i, iKeyIndex As Integer
+  Dim sKeyList, sKeyName, sKeyValue As String
+
+
+
+  iKeyIndex = ReadControlValue(LB_KEYLIST)
+
+  If iKeyIndex > 0 Then '*** Check to ensure delete key is not pressed when template is empty.
+    sKeyName = gaMetaData(iKeyIndex).sKeyName
+  
+    If sKeyName <> STR_BACK_SLASH + STR_IS_READ_ONLY Then
+
+      For i = iKeyIndex+1 To giMetaDataCount  '*** Shifts all metadata keys up one in the list.
+        gaMetaData(i-1).sKeyName = gaMetaData(i).sKeyName 
+        gaMetaData(i-1).sKeyValue = gaMetaData(i).sKeyValue
+      Next
+    
+      giMetaDataCount = giMetaDataCount - 1
+      Redim gaMetaData(giMetaDataCount)
+
+      If iKeyIndex > giMetaDataCount Then
+        iKeyIndex = iKeyIndex - 1
+        giCurKeyIndex = iKeyIndex '*** Added to ensure that the giCurKeyIndex is always in array range
+      End If
+
+      sKeyList = BuildMetaDataKeyList()
+      Alter Control LB_KEYLIST Title sKeyList
+      Alter Control LB_KEYLIST Value iKeyIndex
+
+      If giMetaDataCount > 0 Then  '*** Check to ensure metadata array is not accessed with value of zero.
+        sKeyValue = gaMetaData(iKeyIndex).sKeyValue
+   
+        Alter Control TB_VALUE Value sKeyValue
+        glMetaDataModified = TRUE
+        glMetaDataTemplateModified = TRUE
+'        Alter Control BT_SAVE Enable
+      End If
+
+      If giMetaDataCount = 0 Then  '*** Check to ensure that the key value control is cleared after the 
+                                   '***  the last key has been deleted.
+        Alter Control TB_VALUE Value STR_EMPTY_STR
+      End If
+
+      Alter Control TB_VALUE Enable
+      Alter Control PUM_FUNCTIONS Enable 
+
+    Else
+ 
+      
+
+      Note GetResString(IDS_READONLY_RESERVED)
+      Alter Control TB_VALUE Disable                 '***   if current key is "IsReadOnly"
+      Alter Control PUM_FUNCTIONS Disable 
+     
+    End If
+  
+  End If
+  
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_DELETE_METADATA_KEY + Error$()
+  Resume Next
+
+End Sub
+
+'*****************************************************************************
+' InitializeDialog
+'*****************************************************************************
+Sub InitializeDialog
+
+  OnError Goto HandleError
+
+  Alter Control LB_TABLELIST Value 1
+  Call TableListHandler
+  Alter Control LB_KEYLIST Value 1
+  Call KeyListHandler
+
+  Call ModifyMetaDataCheckBoxHandler
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_INITIALIZE_DIALOG + Error$()
+  Resume Next
+
+End Sub
+
+'*****************************************************************************
+' ModifyMetaDataCheckBoxHandler
+'*****************************************************************************
+Sub ModifyMetaDataCheckBoxHandler
+
+  OnError Goto HandleError
+
+  glModifyMetaData = ReadControlValue(CB_MODIFYMETADATA)
+  If glModifyMetaData Then
+    Alter Control BT_ADD Enable
+    Alter Control TB_VALUE Enable
+    Alter Control BT_SAVE Enable
+    Alter Control PUM_FUNCTIONS Enable
+    Alter Control BT_LOAD Enable
+
+'    If ReadControlValue(LB_KEYLIST) <> 0 Then  '#### REMOVED because probably not needed #########
+'       Alter Control BT_DELETE Enable
+'       Alter Control BT_CLEAR Enable
+'    End If
+  
+    If giMetaDataCount = 0 Then         '***Added in v2.4 to ensure that the Delete and Clear buttons 
+       Alter Control BT_DELETE Disable  '***  are disabled when there are zero metadata keys.
+       Alter Control BT_CLEAR Disable
+    Else 
+       Alter Control BT_DELETE Enable   '***Delete and clear buttons are enabled if table has metadata.
+       Alter Control BT_CLEAR Enable
+       If giCurKeyIndex = 0 then giCurKeyIndex = 1
+       End If
+       If gaMetaData(giCurKeyIndex).sKeyName = STR_BACK_SLASH + STR_IS_READ_ONLY Then '*** v2.4: Enable/disable key value box
+         Alter Control TB_VALUE Disable                           '***   if key is "IsReadOnly"
+         Alter Control PUM_FUNCTIONS Disable
+       Else
+         Alter Control TB_VALUE Enable
+         Alter Control PUM_FUNCTIONS Enable
+       End If 
+    End If
+
+
+  Else
+    Alter Control BT_ADD Disable
+    Alter Control BT_SAVE Disable
+    Alter Control BT_DELETE Disable
+    Alter Control TB_VALUE Disable
+    Alter Control PUM_FUNCTIONS Disable
+    Alter Control BT_CLEAR Disable
+    Alter Control BT_LOAD Disable
+  End If
+  
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_MODIFY_METADATA_CHECKBOX + Error$()
+  Resume Next
+
+End Sub
+'****************************************************************************
+' Sub procedure: DoneHandler
+'****************************************************************************
+Sub DoneHandler
+
+  OnError Goto HandleError
+
+  Dim iKeyIndex, iKeyFunction as Integer
+  Dim sKeyValue as String
+
+  iKeyIndex = ReadControlValue(LB_KEYLIST)  '*** v2.4: This section checks to make sure the last selected key was
+  sKeyValue = ReadControlValue(TB_VALUE)    '***       not edited before closing the dialog box.
+  If giMetaDataCount > 0  And  iKeyIndex > 0  Then
+    If gaMetaData(iKeyIndex).sKeyName <> STR_BACK_SLASH + STR_IS_READ_ONLY Then
+      If gaMetaData(iKeyIndex).sKeyValue <> sKeyValue Then
+        gaMetaData(iKeyIndex).sKeyValue = sKeyValue
+        iKeyFunction = ReadControlValue(PUM_FUNCTIONS)
+        If iKeyFunction <> 1 Then
+          gaMetaData(iKeyIndex).sKeyFunction = Str$(iKeyFunction-1)
+        End If
+        glMetaDataModified = TRUE
+      End If
+    End If  
+  End If
+
+  If glMetaDataModified = TRUE Then
+    If Ask(GetResString(IDS_SAVE_CHANGES), GetResString(IDS_YES_BUTTON), GetResString(IDS_NO_BUTTON)) Then
+      Call WriteMetaDataToTable(gsCurTable)
+    End If
+    glMetaDataModified = FALSE
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_DONE_HANDLER + Error$()
+  Resume Next
+End Sub
+
+'****************************************************************************
+' Sub procedure: BuildMetaDataKeyList
+'****************************************************************************
+Function BuildMetaDataKeyList() As String
+
+  OnError Goto HandleError
+
+  Dim sKeyList As String
+  Dim i As Integer
+
+  sKeyList = STR_EMPTY_STR
+  For i = 1 to giMetaDataCount 
+	sKeyList = sKeyList + gaMetaData(i).sKeyName + STR_SEMI_COLON
+
+  Next
+  
+  If sKeyList = STR_EMPTY_STR Then
+    sKeyList = GetResString(IDS_NO_METADATA)
+  End If
+
+  BuildMetaDataKeyList = sKeyList
+
+  Exit Function
+
+HandleError:
+  Note STR_SUB_BUILD_METADATA_KEY_LIST + Error$()
+  Resume Next
+End Function
+
+'****************************************************************************
+' Sub procedure: ClearMetaData
+'****************************************************************************
+
+Sub ClearMetaData
+
+  OnError Goto HandleError
+
+  Dim sKeyList, sKeyValue As String
+  Dim i, j As Integer
+
+  i = 1
+
+  If giMetaDataCount <> 0 Then  '***** 
+
+    If gaMetaData(1).sKeyName = STR_BACK_SLASH + STR_IS_READ_ONLY And giMetaDataCount = 1 Then  '*** Added in v2.4: Informs user that the
+      Note GetResString(IDS_READONLY_RESERVED)                              '*** IsReadOnly key cannot be deleted
+
+    Else                                                                   
+
+      While i <= giMetaDataCount
+        If gaMetaData(i).sKeyName <> STR_BACK_SLASH + STR_IS_READ_ONLY Then
+          j = i
+          While j < giMetaDataCount
+            gaMetaData(j).sKeyName = gaMetaData(j+1).sKeyName
+            gaMetaData(j).sKeyValue = gaMetaData(j+1).sKeyValue
+            j = j + 1
+          Wend
+          giMetaDataCount = giMetaDataCount - 1
+        Else 
+          i = i + 1
+        End If
+      Wend
+
+      Redim gaMetaData(giMetaDataCount)
+
+      If giMetaDataCount <> 0 Then        '*** There is an 'IsReadOnly" key.
+        sKeyList = BuildMetaDataKeyList()
+        sKeyValue = gaMetaData(1).sKeyValue
+      Else
+         sKeyList = GetResString(IDS_NO_METADATA) + STR_SEMI_COLON  
+'         Alter Control LB_KEYLIST Disable
+         Alter Control BT_DELETE Disable  '*** These will only be deleted if there is no metadata
+
+         Alter Control BT_CLEAR Disable   '***  but they will still be enabled if there is an "IsReadOnly" key.
+      End If
+
+      Alter Control LB_KEYLIST Title sKeyList
+      Alter Control LB_KEYLIST Value 1
+      Alter Control TB_VALUE Value sKeyValue
+      glMetaDataModified = TRUE
+      glMetaDataTemplateModified = TRUE
+
+      giCurKeyIndex = 1 
+
+    End If
+
+  End If
+
+  Alter Control LB_KEYLIST Disable 
+  Alter Control TB_VALUE Disable
+  Alter Control PUM_FUNCTIONS Disable
+  
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_CLEAR_METADATA + Error$()
+  Resume Next
+End Sub
+'****************************************************************************
+' Sub procedure: SaveMetaData
+'****************************************************************************
+Sub SaveMetaData
+
+  Dim iKeyIndex, iKeyFunction as Integer
+  Dim sKeyValue as String
+  
+  OnError Goto HandleError
+
+    iKeyIndex = ReadControlValue(LB_KEYLIST)
+    sKeyValue = ReadControlValue(TB_VALUE)
+    If gaMetaData(iKeyIndex).sKeyName <> STR_BACK_SLASH + STR_IS_READ_ONLY Then
+      If gaMetaData(iKeyIndex).sKeyValue <> sKeyValue Then
+         gaMetaData(iKeyIndex).sKeyValue = sKeyValue
+         iKeyFunction = ReadControlValue(PUM_FUNCTIONS)
+         If iKeyFunction <> 1 Then
+            gaMetaData(iKeyIndex).sKeyFunction = Str$(iKeyFunction-1)
+         End If
+         glMetaDataModified = TRUE
+      End If
+    End If  
+
+  If glMetaDataModified = TRUE Then
+
+    
+    Call WriteMetaDataToTable(gsCurTable)
+    glMetaDataModified = FALSE
+    'Alter Control BT_SAVE Disable
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_SAVE_META_DATA + Error$()
+  Resume Next
+End Sub
+'****************************************************************************
+' Sub procedure: ApplyMetaDataTemplate
+'****************************************************************************
+Sub ApplyMetaDataTemplate(ByVal lEvaluate As Logical)
+
+  OnError Goto HandleError
+
+  Dim i As Integer
+  Dim sKeyList As String
+
+  Call LoadMetaDataTemplate(lEvaluate)
+
+  If gsMetaDataTemplate <> STR_EMPTY_STR Then     '***Checking that user has chosen a template.  This is file name of template.
+
+    sKeyList = BuildMetaDataKeyList()
+    If sKeyList <> STR_EMPTY_STR then             
+      giCurKeyIndex = 1                '*** Ensures that giCurKeyIndex is not zero
+    End If
+
+    If sKeyList = GetResString(IDS_NO_METADATA) then 
+       Alter Control LB_KEYLIST Disable
+       Alter Control BT_DELETE Disable
+       Alter Control BT_CLEAR Disable
+    Else
+       Alter Control LB_KEYLIST Enable
+       Alter Control LB_KEYLIST Title sKeyList
+       Alter Control LB_KEYLIST Value 1 '*** Ensures that when the control is read it is not zero.
+       glMetaDataModified = TRUE
+       glMetaDataTemplateModified = TRUE
+'       Alter Control BT_SAVE Enable
+       Alter Control BT_DELETE Enable
+       Alter Control BT_CLEAR Enable
+    End If
+
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_APPLY_METADATA_TEMPLATE + Error$()
+  Resume Next
+End Sub
+'****************************************************************************
+' Sub procedure: yApplyMetaDataTemplate
+'****************************************************************************
+Sub yApplyMetaDataTemplate
+
+  OnError Goto HandleError
+
+  Call ApplyMetaDataTemplate(TRUE)
+
+
+  Alter Control LB_KEYLIST Value 1
+  Call KeyListHandler
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_Y_APPLY_METADATA_TEMPLATE + Error$()
+  Resume Next
+End Sub
+'****************************************************************************
+' Sub procedure: AboutTableManager
+'****************************************************************************
+Sub AboutTableManager
+
+  OnError Goto HandleError
+
+  Dialog
+    Title GetResString(IDS_ABOUT) + STR_EMPTY_STR1 + GetResString(IDS_APP_DESCRIPTION) + 
+          STR_EMPTY_STR1 + STR_OPEN_BRAC + GetResString(IDS_VERSION)+ STR_EMPTY_STR1 + AppVersion + STR_CLOSE_BRAC
+
+    Control StaticText 
+		Position 10, 10
+		Title GetResString(IDS_ABOUT_1) + Chr$(13) + Chr$(13) +
+			  GetResString(IDS_ABOUT_2) + 
+			  GetResString(IDS_ABOUT_3) + Chr$(13) + Chr$(13) +
+			  GetResString(IDS_ABOUT_4) + 
+			  GetResString(IDS_ABOUT_5) + 
+			  GetResString(IDS_ABOUT_6) + Chr$(13) + Chr$(13) +
+			  GetResString(IDS_ABOUT_7) 
+	   WIDTH 260
+	   HEIGHT 180
+
+    Control OKButton
+      Title GetResString(IDS_OK)
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_ABOUT_TABLE_MANAGER + Error$()
+  Resume Next
+
+End Sub
+'****************************************************************************
+' Sub procedure: ExitTableManager
+'****************************************************************************
+Sub ExitTableManager
+
+  OnError Goto HandleError
+
+  End Program
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_EXIT_TABLE_MANAGER + Error$()
+  Resume Next
+
+End Sub
+

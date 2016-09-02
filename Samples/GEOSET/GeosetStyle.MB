@@ -1,0 +1,218 @@
+Include "MapBasic.def"
+Include "Geoset.def"
+
+'---------------------------------------
+' writes brush keys
+'---------------------------------------
+Function WriteGeosetMetadataBrush(ByVal sKey As String, ByVal styleBrush As Brush) As Logical
+  Dim bOK As Logical
+
+  OnError Goto ErrorTrap
+
+  sKey = sKey + "\BRUSH\"
+  bOK = WriteGeosetMetadata(sKey + "PATTERN", StyleAttr(styleBrush, BRUSH_PATTERN))
+    And WriteGeosetMetadata(sKey + "FORECOLOR", StyleAttr(styleBrush, BRUSH_FORECOLOR))
+'    And WriteGeosetMetadata(sKey + "BACKCOLOR", StyleAttr(styleBrush, BRUSH_BACKCOLOR))
+
+  ' check for background being transparent										   
+  If StyleAttr(styleBrush, BRUSH_BACKCOLOR) = -1 Then
+    ' if transparent, set back color to white in case the transparent tag isn't honored
+    bOK = bOK And WriteGeosetMetadata(sKey + "BACKCOLOR", WHITE)
+    bOK = bOK And WriteGeosetMetadata(sKey + "TRANSPARENT", 1)
+  Else
+    bOK = bOK And WriteGeosetMetadata(sKey + "BACKCOLOR", StyleAttr(styleBrush, BRUSH_BACKCOLOR))
+  End If
+
+Done:
+  WriteGeosetMetadataBrush = bOK
+  Exit Function
+
+ErrorTrap:
+  Print "WriteGeosetMetadataBrush: " + Error$()
+  Resume Done
+End Function 'WriteGeosetMetadataBrush
+
+'---------------------------------------
+' writes pen keys
+'---------------------------------------
+Declare Function WriteGeosetMetadataPenStyle(ByVal sKey As String, ByVal sSubKey As String, ByVal stylePen As Pen) As Logical
+Function WriteGeosetMetadataPenStyle(ByVal sKey As String, ByVal sSubKey As String, ByVal stylePen As Pen) As Logical
+  Dim bOK As Logical
+  Dim lPenPattern   As Integer   ' BP 12.06.98
+
+  OnError Goto ErrorTrap
+
+' BP 12.06.98
+  lPenPattern = StyleAttr(stylePen, PEN_PATTERN)
+' BP 14.06.98
+  Do Case lPenPattern
+      Case 0, 1    ' Null style
+          lPenPattern = 0
+      Case 2       ' Solid style
+          lPenPattern = 1
+'      Case Else    ' Other styles
+'          lPenPattern = lPenPattern
+  End Case
+
+'  If lPenPattern > 0 Then
+'     lPenPattern = lPenPattern - 1 
+'  End If
+' BP 14.06.98
+' BP 12.06.98
+
+  sKey = sKey + "\" + sSubKey + "\"
+  bOK = WriteGeosetMetadata(sKey + "LINESTYLE", lPenPattern ) ' BP 12.06.98 StyleAttr(stylePen, PEN_PATTERN))
+    And WriteGeosetMetadata(sKey + "LINEWIDTH", StyleAttr(stylePen, PEN_WIDTH))
+    And WriteGeosetMetadata(sKey + "COLOR", StyleAttr(stylePen, PEN_COLOR))
+
+Done:
+  WriteGeosetMetadataPenStyle = bOK
+  Exit Function
+
+ErrorTrap:
+  Print "WriteGeosetMetadataPenStyle: " + Error$()
+  Resume Done
+End Function 'WriteGeosetMetadataPenStyle
+
+'---------------------------------------
+' writes pen keys
+'---------------------------------------
+Function WriteGeosetMetadataPen(ByVal sKey As String, ByVal stylePen As Pen) As Logical
+  WriteGeosetMetadataPen = WriteGeosetMetadataPenStyle(sKey, "PEN", stylePen)
+End Function 'WriteGeosetMetadataPen
+
+'---------------------------------------
+' writes line pen keys
+'---------------------------------------
+Function WriteGeosetMetadataLinePen(ByVal sKey As String, ByVal stylePen As Pen) As Logical
+  WriteGeosetMetadataLinePen = WriteGeosetMetadataPenStyle(sKey, "LINEPEN", stylePen)
+End Function 'WriteGeosetMetadataLinePen
+
+'---------------------------------------
+' writes font keys
+'---------------------------------------
+Function WriteGeosetMetadataFont(ByVal sKey As String, ByVal styleFont As Font) As Logical
+  Dim bOK As Logical
+
+  OnError Goto ErrorTrap
+
+  sKey = sKey + "\FONT\"
+  bOK = WriteGeosetMetadata(sKey + "STYLE", StyleAttr(styleFont, FONT_STYLE) Mod 256)
+    And WriteGeosetMetadata(sKey + "EXTSTYLE", StyleAttr(styleFont, FONT_STYLE) \ 256)
+    And WriteGeosetMetadata(sKey + "DESCRIPTION", StyleAttr(styleFont, FONT_NAME))
+    And WriteGeosetMetadata(sKey + "SIZE", StyleAttr(styleFont, FONT_POINTSIZE))
+    And WriteGeosetMetadata(sKey + "FORECOLOR", StyleAttr(styleFont, FONT_FORECOLOR))
+
+  If StyleAttr(styleFont, FONT_BACKCOLOR) <> -1 Then 'AED072298
+    bOK = bOK And WriteGeosetMetadata(sKey + "BACKCOLOR", StyleAttr(styleFont, FONT_BACKCOLOR)) 'AED072298
+    if (StyleAttr(styleFont, FONT_STYLE) MOD 512) \ 256 then ' if halo bit is set DMG111901
+    	bOK = bOK And WriteGeosetMetadata(sKey + "OPAQUE", "FALSE") ' DMG111901
+    else
+        bOK = bOK And WriteGeosetMetadata(sKey + "OPAQUE", "TRUE") 'AED072298
+    end if ' DMG111901
+  End If 'AED072298
+
+Done:
+  WriteGeosetMetadataFont = bOK
+  Exit Function
+
+ErrorTrap:
+  Print "WriteGeosetMetadataFont: " + Error$()
+  Resume Done
+End Function 'WriteGeosetMetadataFont
+
+'---------------------------------------
+' writes symbol keys
+'---------------------------------------
+Function WriteGeosetMetadataSymbol(ByVal sKey As String, ByVal styleSymbol As Symbol) As Logical
+  Dim bOK As Logical
+  Dim iKind As Integer
+  Dim sTransparent,
+    sOverrideColor As String
+
+  OnError Goto ErrorTrap
+
+'Print "In WriteGeosetMetadataSymbol"
+'Print "  Symbol type = " + StyleAttr(styleSymbol, SYMBOL_KIND)
+
+  sKey = sKey + "\SYMBOL\"
+  '*******************************************************************
+  ' 
+  ' Here is a real mess:
+  '
+  ' In MI Pro & MapBasic
+  '   1 for MapInfo 3.0 symbols
+  '   2 for TrueType symbols
+  '   3 for bitmap file symbols. 
+  '
+  ' In MapX the correct constants are :
+  '   0 for Truetype Font Symbols
+  '   1 for BitMap Symbols
+  '   2 for Vector Symbols
+  '
+  ' In MapX 4.0, the constants are wrong they are:
+  '   0 - Vector Symbols
+  '   1 - TruetypeFont Symbols
+  '   2 - Bitmap Symbols
+  '*******************************************************************
+  If gsGeoSetVersion = GEOSET_VERSION_400 Then
+    Do Case StyleAttr(styleSymbol, SYMBOL_KIND)
+      Case 1 ' MapInfo 3.0 symbols
+        iKind = 0
+      Case 2 ' TrueType symbols
+        iKind = 1
+     Case 3 ' bitmap file symbols
+        iKind = 2
+    End Case
+  Else
+    Do Case StyleAttr(styleSymbol, SYMBOL_KIND)
+      Case 1 ' MapInfo 3.0 symbols
+        iKind = 2
+      Case 2 ' TrueType symbols
+        iKind = 0
+      Case 3 ' bitmap file symbols
+        iKind = 1
+    End Case
+  End If
+  bOK = WriteGeosetMetadata(sKey + "TYPE", iKind)
+
+  If bOK Then
+'Print "    writing out common info"
+    bOK = WriteGeosetMetadata(sKey + "CODE", StyleAttr(styleSymbol, SYMBOL_CODE))
+      And WriteGeosetMetadata(sKey + "POINTSIZE", StyleAttr(styleSymbol, SYMBOL_POINTSIZE))
+      And WriteGeosetMetadata(sKey + "COLOR", StyleAttr(styleSymbol, SYMBOL_COLOR))
+  End If
+
+  ' if it's a font symbol, write font info
+  If bOK And StyleAttr(styleSymbol, SYMBOL_KIND) = SYMBOL_KIND_FONT Then
+'Print "    writing out font info"
+    bOK = WriteGeosetMetadata(sKey + "FONT\DESCRIPTION", StyleAttr(styleSymbol, SYMBOL_FONT_NAME))
+      And WriteGeosetMetadata(sKey + "FONT\STYLE", StyleAttr(styleSymbol, SYMBOL_FONT_STYLE) Mod 256)
+      And WriteGeosetMetadata(sKey + "FONT\EXTSTYLE", StyleAttr(styleSymbol, SYMBOL_FONT_STYLE) \ 256)
+      And WriteGeosetMetadata(sKey + "FONT\ROTATION", StyleAttr(styleSymbol, SYMBOL_ANGLE )) ' BP 12.06.98
+  End If 'font symbols
+
+  ' if it's a bitmap symbol, write bitmap info
+  If bOK And StyleAttr(styleSymbol, SYMBOL_KIND) = SYMBOL_KIND_CUSTOM Then
+'Print "    writing out bitmap info"
+    sTransparent = "FALSE"
+    sOverrideColor = "FALSE"
+    Do Case StyleAttr(styleSymbol, SYMBOL_CUSTOM_STYLE)
+      Case 0
+        sTransparent = "TRUE"
+      Case 2
+        sOverrideColor = "TRUE"
+    End Case
+    bOK = WriteGeosetMetadata(sKey + "BITMAP\NAME", StyleAttr(styleSymbol, SYMBOL_CUSTOM_NAME))
+      And WriteGeosetMetadata(sKey + "BITMAP\OVERRIDECOLOR", sOverrideColor)
+      And WriteGeosetMetadata(sKey + "BITMAP\TRANSPARENT", sTransparent)
+  End If 'font symbols
+
+Done:
+  WriteGeosetMetadataSymbol = bOK
+  Exit Function
+
+ErrorTrap:
+  Print "WriteGeosetMetadataSymbol: " + Error$()
+  Resume Done
+End Function 'WriteGeosetMetadataSymbol

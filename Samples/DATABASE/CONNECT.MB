@@ -1,0 +1,380 @@
+'****************************************************************************
+'                             MAPINFO CORPORATION
+'
+' Date:         7/12/96          
+'
+' Module:       connect.mb
+' For Version:  MapInfo 4.0
+' 
+' Overview:
+'
+'   The MapInfo DBMS Connection Connection Manager dialog and related functions
+' are coded here.   
+' Simply call  SQLConnectDialog() to put up the connection manager dialog.
+'
+'  This function returns a connection handle and other associated
+' information in global variables as follows:
+'    demohdbc       The connection handle of the new/selected connection
+'    demodb         the specific define identifying the connectyed database
+'    demodbname     the database name connected to
+'    demoDSName     the data source name
+'    demoquotechar  the identifier quote character	
+'    democonnname   a unique name for display identifying this connection 
+'****************************************************************************
+INCLUDE "MAPBASIC.DEF"
+INCLUDE "..\INC\DLSAMP.DEF"
+' External Function
+' DECLARE FUNCTION SQLConnectDialog() AS INTEGER
+
+'Local functions
+Declare SUB DoConnection()
+Declare SUB GetConnectionList()
+Declare Function SQLNewConnectionDialog()AS INTEGER
+Declare Function GetConnection() AS INTEGER
+Declare SUB DescribeConnection(BYVAL hdbc AS INTEGER)
+Declare SUB RemoveConnection(BYVAL hdbc AS INTEGER)
+Declare FUNCTION GetToolkit AS STRING
+
+DIM Connections(), Connection     AS INTEGER
+DIM ConnectionNames() AS STRING
+
+Define DL_ToolkitName_Width      95 
+Define DL_PushButton_Width       45 
+
+'**  SQLConnectDialog()  ********************************************************
+'* Mainline to call to get a connection (Reuse or new)
+'* Success returns a non 0 connection handle (demohdbc)
+'****************************************************************************
+Function SQLConnectDialog() AS INTEGER
+  IF dbg THEN
+    print "Entering SQLConnectDialog"
+  END IF
+
+  ' Get list of existing connections
+  Call  GetConnectionList()
+
+  ' No Connections available? Get a new one
+  IF UBOUND(Connections) = 0 THEN
+     demohdbc = SQLNewConnectionDialog()
+  ELSE
+    ' Let user pick from a list of existing connections
+    demohdbc = GetConnection()
+  END IF
+
+  ' Set return value
+  SQLConnectDialog = demohdbc
+
+  ' Set some other information associated with this connection	
+  IF demohdbc <> 0 THEN
+    demodb        = WhichSQLDatabase(demohdbc)    ' get the demodb, and demodbname
+    demoDSName    = GetDSName(demohdbc)       ' get the data source name
+    
+    if (Len(Rtrim$(Ltrim$(demoDSName)))) = 0 then
+		demoDSName = GetDBName(demohdbc)
+    End If
+
+    demoquotechar = GetQuoteChar(demohdbc) ' get the identifier quote character	
+    democonnname  = demohdbc + ": " + demoDSName  
+  ELSE
+    demodb = ""    
+    demoDSName = ""   
+    demoquotechar = "" 
+    democonnname = ""  
+  END IF
+END FUNCTION
+
+define CONNECTION_LIST_ID              1
+define SELECT_CONNECTION_BUTTON_ID     2
+define NEW_CONNECTION_BUTTON_ID        3
+define DISCONNECT_CONNECTION_BUTTON_ID 4
+define CLOSE_CONNECTION_MANAGER_ID     5
+define DESCRIBE_CONNECTION_BUTTON_ID   6
+
+'**  GetConnection()  ********************************************************
+'* The Connection Manager lets you:
+'*   Select an existing connection to use.
+'*   Disconnect existing connections
+'*   Get new connections
+'****************************************************************************
+FUNCTION GetConnection() AS INTEGER
+  DIM ConnectionSelection AS INTEGER
+
+  ' Let the user chose from an existing connection to reuse   
+  DIALOG
+    Title "Connection Manager"
+    CONTROL LISTBOX
+      Position 8,8
+      Width 120
+      Height 78
+      Value 1
+      TITLE FROM VARIABLE ConnectionNames
+      Into ConnectionSelection
+      ID CONNECTION_LIST_ID
+    Control Button
+      Title "Select"
+      Position 20, 92 
+      Width 45
+      ID SELECT_CONNECTION_BUTTON_ID
+      CALLING DoConnection
+    Control Button
+      Title "Close"
+      Position 85, 92
+      Width 45
+      ID CLOSE_CONNECTION_MANAGER_ID
+      CALLING DoConnection
+    
+    ' Connection management buttons on right of list
+    Control Button
+      Title "Describe"
+      Position 138, 8
+      Width 45
+      ID DESCRIBE_CONNECTION_BUTTON_ID
+      CALLING DoConnection
+    Control Button
+      Title "New..."
+      Position 138, 38
+      Width 45
+      ID NEW_CONNECTION_BUTTON_ID
+      CALLING DoConnection
+    Control Button
+      Title "Disconnect"
+      Position 138, 58
+      Width 45
+      ID DISCONNECT_CONNECTION_BUTTON_ID
+      CALLING DoConnection
+  
+    ' Set result value
+    GetConnection=Connection
+END FUNCTION
+
+
+'**  DoConnection()  **********************************************
+'* Handler to get a connection 
+'****************************************************************************
+SUB DoConnection()
+  DIM Selected AS INTEGER
+
+  DO CASE TRIGGERCONTROL()
+    Case SELECT_CONNECTION_BUTTON_ID 
+      ' Select a connection, then exit dialog
+      IF UBOUND(Connections) <> 0 THEN 
+        Connection= Connections(ReadControlValue(CONNECTION_LIST_ID))
+      ELSE
+        Connection=0
+      END IF
+      DIALOG REMOVE
+    Case DESCRIBE_CONNECTION_BUTTON_ID 
+      ' Select a connection, then exit dialog
+      IF UBOUND(Connections) <> 0 THEN 
+        Connection= Connections(ReadControlValue(CONNECTION_LIST_ID))
+        Call DescribeConnection(Connection) 
+      END IF
+
+    Case CLOSE_CONNECTION_MANAGER_ID 
+      ' Set selected connection to 0 - no selection, then exit dialog
+	IF UBOUND(Connections) <> 0 THEN 
+      	Connection= Connections(ReadControlValue(CONNECTION_LIST_ID))
+	ELSE
+		Connection=0
+	END IF
+      DIALOG REMOVE
+
+    Case DISCONNECT_CONNECTION_BUTTON_ID 
+      Selected = ReadControlValue(CONNECTION_LIST_ID)
+
+      ' Disconnect the selected connection
+      IF UBOUND(Connections) <> 0 THEN 
+        Connection= Connections(ReadControlValue(CONNECTION_LIST_ID))
+        Server Connection disconnect
+        Call GetConnectionList()
+        ALTER Control CONNECTION_LIST_ID TITLE FROM VARIABLE ConnectionNames
+      END IF
+
+      IF UBOUND(Connections) <> 0 THEN 
+        IF Selected > UBOUND(Connections) THEN
+          ALTER Control CONNECTION_LIST_ID VALUE UBOUND(Connections)
+        ELSE
+          ALTER Control CONNECTION_LIST_ID VALUE Selected
+        END IF 
+      ELSE 
+		Connection = 0
+		demodb = 0     
+      END IF
+
+    Case NEW_CONNECTION_BUTTON_ID 
+      ' Get a new connection
+      Connection=SQLNewConnectionDialog()
+      IF Connection <> 0 THEN
+        Call GetConnectionList()
+        ALTER Control CONNECTION_LIST_ID TITLE FROM VARIABLE ConnectionNames
+        ALTER Control CONNECTION_LIST_ID VALUE UBOUND(Connections)
+      END IF
+
+   END CASE
+END SUB
+
+
+'**  SQLNewConnectionDialog()  **********************************************
+'* Get a new connection 
+'****************************************************************************
+Function SQLNewConnectionDialog() AS INTEGER
+  IF dbg THEN
+    print "SQLNewConnectionDialog"
+  END IF
+
+  ONERROR GOTO CONNERR 
+
+  DIM DriverName as String
+  DriverName = GetToolkit()
+		
+  SQLNewConnectionDialog = SERVER_CONNECT(DriverName, "DLG=2")
+
+  GOTO ALLDONE
+
+  CONNERR:
+    Note Error$()
+    SQLNewConnectionDialog=0
+    Resume ALLDONE
+
+  ALLDONE:
+END FUNCTION
+
+define MAX_CONNECTIONS  20
+
+'**  GetConnectionList()  **********************************************
+'* Discover the list of existing connections
+'****************************************************************************
+SUB GetConnectionList()
+  Dim i, NumConnections, odbchconn, Connection AS INTEGER
+  Dim ConnName as String  'Connection name, either DSN or DBMS, DBMS for fileDSN's
+  Dim dlg_string as String
+  	
+  REDIM Connections(MAX_CONNECTIONS) 
+  REDIM ConnectionNames(MAX_CONNECTIONS) 
+
+'*** HACK ALERT ***
+'Server_getODBChconn will crash if ODBC is not installed.
+'Since we are at FCC Build 17 Staten  I chose to call Server_DriverInfo.
+'If this funtion fails ODBC is not working.  Also the error message displayed,
+'when ODBC is not installed, states that ODBC32.dll cannot be found.  Which is correct !
+'To really fix this bug FIX Server_getODBChconn.  Probably we are flocking a null handle
+  dlg_string = Server_DriverInfo(0, SRV_DRV_INFO_NAME_LIST)
+  if(Len(dlg_string) = 0) Then GOTO ALLDONE
+  End IF
+
+
+  ONERROR GOTO NOCONNECTION
+	
+
+  FOR i = 1 TO MAX_CONNECTIONS
+
+    odbchconn = Server_getODBChconn(i)
+    NumConnections=NumConnections+1   
+    Connections(NumConnections)=i  
+    demohdbc = i
+    
+    ConnName = GetDSName(i)	
+    if (Len(Rtrim$(Ltrim$(ConnName)))) = 0 then
+		ConnName = GetDBName(i)
+    End If
+
+    ConnectionNames(NumConnections)= i + ": " + ConnName 
+    IF dbg THEN
+      PRINT ConnectionNames(NumConnections) + "Hdbc = " + i
+    END IF
+
+SKIP:
+  NEXT
+
+  GOTO ALLDONE
+
+NOCONNECTION:
+  RESUME SKIP
+
+ALLDONE:
+  Redim Connections(NumConnections) 
+  Redim ConnectionNames(NumConnections)   
+  IF dbg THEN
+    PRINT NumConnections
+  END IF
+
+END SUB
+
+'**  DescribeConnection()  **********************************************
+'* Show information on a given connection
+'****************************************************************************
+SUB DescribeConnection(BYVAL hdbc AS INTEGER)
+  IF dbg THEN
+    print "DescribeConnection"
+    print "HDBC: "+hdbc
+  END IF
+  dim dbnum as integer
+  dim dbname, username, midbname, dbmsname, dsname, servername as string
+  
+  dbnum = WhichSQLDatabase(hdbc) 
+  midbname = demodbname 
+  dbmsname = GetDBName(hdbc)
+  dsname = GetDSName(hdbc)
+  dbname = GetDB(hdbc)
+  servername=GetServerName(hdbc)
+  username = GetSQLUserid(hdbc)
+
+  note "dsname="+dsname+Chr$(10)+"midbname="+midbname+Chr$(10)+"nusername=" + username+Chr$(10)+"dbmsname=" + dbmsname+Chr$(10)+"dbname=" + dbname +Chr$(10)+ "servername="+servername
+END SUB
+
+'**  GetToolkit  ********************************************************
+'* Select a toolkit to use.
+'* If only one available. Select it for the user, else diaplay a
+'* Dialog that lets the user chose
+'****************************************************************************
+GLOBAL ToolKitSelection AS INTEGER
+
+FUNCTION GetToolkit() AS STRING
+
+  ' No toolkits available? Error
+  IF Server_NumDrivers() = 0 THEN
+    Note "No MapInfo Connection Toolkits found; Check that you have SQL DataLink Installed"
+    GetToolkit=""
+    EXIT SUB
+
+  ' If only one toolkit installed, pick it for the user   
+  ELSEIF Server_NumDrivers() = 1 THEN
+    ToolKitSelection = 1
+    GetToolkit = Server_DriverInfo(ToolkitSelection, SRV_DRV_INFO_NAME)
+    EXIT SUB
+ 
+  ELSE
+    ' Multiple toolkits installed
+    ' Allow user to select the toolkit to use
+    ' Set default toolkit to the last one used  
+    IF ToolKitSelection = 0 THEN
+      ToolKitSelection = 1
+    END IF
+
+    DIALOG
+      Title "SQL Toolkit"
+      Control StaticText
+        Title "Select Toolkit:"
+        Position 8, 8 
+      Control PopupMenu
+        Title Server_DriverInfo(0, SRV_DRV_INFO_NAME_LIST)
+        Position 8, 22 
+        Width DL_ToolkitName_Width
+        Value ToolKitSelection
+        Into ToolKitSelection
+      Control OKButton
+        Title "OK"
+        Position 8, 42 
+        Width DL_PushButton_Width
+      Control CancelButton
+        Title "Cancel"
+        Position 58, 42 
+        Width DL_PushButton_Width
+    
+    IF COMMANDINFO ( CMD_INFO_DLG_OK ) THEN
+      GetToolkit = Server_DriverInfo(ToolKitSelection, SRV_DRV_INFO_NAME)
+    ELSE 
+      GetToolkit = ""
+    END IF
+  END IF
+END FUNCTION

@@ -1,0 +1,152 @@
+'*********************************************************************
+'*
+'*	GeoCode
+'*
+'*	This program demonstrates geocoding using MapBasic.
+'*
+'*	There is no GeoCode command in MapBasic.  However, it is easy to
+'*	duplicate the GeoCoding functionality of MapInfo with the MapBasic
+'*	commands Find and CreatePoint.
+'*
+'*	The strategy is to use Find to find the address, and then use 
+'*	Update with CreatePoint to insert the point object into the table 
+'*	being geocoded.
+'*
+'*	MapBasic Commands demonstrated:
+'*		Find Using
+'*		Find 
+'*		Update with CreatePoint		
+'*
+'*	NOTE:  This example uses the standard MapInfo sample files
+'*	STATES and US_CUSTG on Windows or "US States" and "US Customers"
+'*	on Mac.
+'*
+'*	Changes to the file paths may be needed to run the program.
+'*	It currently searches the paths set up in Options > Preferences >
+'*	Directories
+'**********************************************************************
+
+
+Include "mapbasic.def"  ' Standard MapBasic definitions file
+
+
+
+'-------------------   Sub Routine Declarations  -----------------------
+Declare Sub Main
+Declare Sub Scanner(sAddressTable As String)
+
+
+Sub Main
+
+
+'**************************************************************************************
+'*
+'*	SMapPath is the path\Filename of the map file used for GeoCoding.
+'*	sMapName is the extracted map table name
+'*	aMapCol is the column name to use from the map table
+'*	sAddressTablePath is the path\Filename of the data file used for GeoCoding.
+'*	sAddressTable is the extracted data table name	
+'*
+'***************************************************************************************
+
+Dim	sMapPath,
+	sMapName,
+	sAddressTablePath,
+	sAddressTable		As String,
+
+	aMapCol	     		As Alias
+
+'**	open the files
+
+	' This example use the San Francisco MapInfo sample files.
+	' Changes to path and/or table names may be required to 
+	' make this run on your system
+
+	if SystemInfo(SYS_INFO_PLATFORM) = PLATFORM_MAC Then
+	  sMapPath = "US States" 
+	  sAddressTablePath = "US Customers"
+	Else
+	  sMapPath = "states.tab"	
+	  sAddressTablePath = "us_custg.tab"
+	End If
+
+	Open Table sMapPath Interactive
+	Open Table sAddressTablePath Interactive
+
+
+'**	extract the table names
+
+	sMapName = PathToTableName$(sMapPath)
+	sAddressTable = PathToTableName$(sAddressTablePath)
+
+	aMapCol =	"State"
+
+
+'** Find Using must get the Map Name and Column Name in this format
+
+	Find Using sMapName(aMapCol)
+		
+	Call Scanner(sAddressTable)				' go do it
+
+End Sub '** Main
+
+
+'******************************************************************
+'*
+'*	Scanner
+'*
+'*	Scanner is called by the Main routine
+'*  
+'*	This routine loops through the table processing each row.  
+'*
+'******************************************************************
+Sub Scanner(sAddressTable As String)
+
+Dim		aRowid,
+		aAddress				As Alias,
+
+		iCounter,
+		iResult				As Integer,
+
+		x,y						As Float
+
+
+	aRowid = sAddressTable + ".rowid"
+	aAddress = sAddressTable + ".state"
+
+	Fetch First from sAddressTable				' cursor to first record
+
+	Do While NOT EOT( sAddressTable )
+
+		iCounter = aRowid
+
+		Find aAddress
+
+		iResult = CommandInfo(CMD_INFO_FIND_RC)
+
+		' By checking the return code you can make sure that a point will
+		' not be created for records that did not match.  The return code 
+		' will always be negative for records that did not match.  The
+		' return code could also be used to update a result column so
+		' the addresses could be refined for future geocoding passes. 
+
+		If iResult < 0 Then
+			Print aAddress + " NOT FOUND"
+		Else
+			x = CommandInfo(CMD_INFO_X)
+			y = CommandInfo(CMD_INFO_Y)
+			update sAddressTable
+				Set obj = CreatePoint (x,y)
+				Where rowid = iCounter
+		End If
+   
+		Fetch Next from sAddressTable
+
+	Loop
+
+
+	Commit table sAddressTable
+
+End Sub '* Scanner
+
+

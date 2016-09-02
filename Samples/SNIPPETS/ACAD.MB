@@ -1,0 +1,337 @@
+'***********************************************************************
+'*	ACAD
+'*
+'*	This program demonstrates using MapInfo as a DDE client.  The progam
+'*	allows you to select items in a MapInfo Mapper and then send them
+'*	into AutoCAD Release 11 Extension for Windows.  It transfers points,
+'*	lines, polylines, regions, rectangles, and rounded rectangles.  It 
+'*	doesn't handle colors or linetypes.  AutoCAD for Windows Extension
+'*	should be running before you load this program.
+'*
+'***********************************************************************
+
+Include "mapbasic.def"
+
+'***********************************************************************
+' Sub program declarations
+'***********************************************************************
+Declare Sub EndHandler
+Declare Sub about_box
+Declare Sub send_command
+Declare Sub transfer_graphics
+Declare Function valid_selection as Logical
+Declare Sub SelChangedHandler
+Declare Function numstr(ByVal numvar as Float ) as String
+Declare Sub transfer_point(ByVal ovar as Object) 
+Declare Sub transfer_line (ByVal ovar as Object)
+Declare Sub transfer_polyline (ByVal ovar as Object)
+Declare Sub transfer_region(ByVal ovar as Object)
+Declare Sub transfer_pline(ByVal ovar as Object, ByVal polygon as SmallInt, ByVal num_points as Integer)
+Declare Sub transfer_rectangle(ByVal ovar as Object)
+
+'***********************************************************************
+' Global variable definitions
+'***********************************************************************
+
+Global channel as Integer,
+		bChannel as Logical,
+		bSelection as Logical
+
+'***********************************************************************
+' Main
+'
+' Note:  This example uses an implied Main procedure.
+'***********************************************************************
+
+bChannel = FALSE
+bSelection = TRUE
+
+If SystemInfo(SYS_INFO_PLATFORM) <> PLATFORM_WIN Then
+	Note "This program requires Microsoft Windows"
+	End Program
+End If	
+
+Create Menu "ACAD" as
+	"Transfer Graphics" calling transfer_graphics,
+	"Send Command" calling send_command,
+	"Exit" calling EndHandler,
+	"About" calling about_box
+Alter Menu Bar Add "ACAD"
+
+
+Call SelChangedHandler
+
+channel = DDEInitiate("AutoCAD", "System")
+bChannel = TRUE
+
+Print Chr$(12)
+Print "MapBasic application ""ACAD"" now running."
+'Go to sleep
+
+'***********************************************************************
+' EndHandler
+'***********************************************************************
+Sub EndHandler
+	If bChannel Then
+		DDETerminate channel
+		bChannel = FALSE
+	End If
+	End Program
+End Sub
+
+'***********************************************************************
+' about_box	
+'***********************************************************************
+
+Sub about_box
+Dialog Title "ACAD"
+  Control StaticText
+    Position 5, 5
+    Title "MapBasic ACAD program"
+  Control StaticText
+    Position 5, 13
+    Title "Send objects and commands to AutoCAD for Windows"
+  Control StaticText
+    Position 5, 21
+    Title ""
+  Control StaticText
+    Position 5, 29
+    Title "Written as a MapBasic sample program."
+  Control OKButton
+    Position 5, 42
+    Width 40
+    Title "OK"
+End Sub
+
+'***********************************************************************
+' send_command
+'
+' This routine sends a command that the user typed to AutoCAD.
+'***********************************************************************
+Sub send_command
+	Dim user_string as String,
+		 command_string as String
+
+	Dialog
+		Title "Send Command"
+		Control StaticText Title "Enter command to send to AutoCAD:"
+		Control EditText Into user_string
+		Control OKButton
+		Control CancelButton
+	If CommandInfo(CMD_INFO_DLG_OK) Then
+		command_string = "[" + user_string + " ]"
+		DDEExecute channel, command_string
+	End If
+End Sub
+
+'***********************************************************************
+' transfer_graphics
+'
+' This routine transfers each object in the selection over to AutoCAD.
+' AutoCAD zooms to the extents of the drawing after it is finished.
+'***********************************************************************
+Sub transfer_graphics
+	Dim table_number as Integer,
+		 table_name as String,
+		 num_rows as Integer,
+		 i as Integer,
+		 bTransfer as Logical
+
+	table_number = TableInfo("Selection", TAB_INFO_NUM)
+	num_rows = TableInfo(table_number, TAB_INFO_NROWS)
+	if not num_rows Then
+		Note "Invalid selection"
+		Exit Sub
+	End If
+	bTransfer = FALSE
+		
+	Fetch First From selection
+	For i = 1 To num_rows
+		Do Case ObjectInfo(selection.obj, OBJ_INFO_TYPE)
+			Case OBJ_LINE
+				Call transfer_line(selection.obj)
+				bTransfer = TRUE
+			Case OBJ_POINT
+				Call transfer_point(selection.obj)
+				bTransfer = TRUE
+			Case OBJ_PLINE
+				Call transfer_polyline(selection.obj)
+				bTransfer = TRUE
+			Case OBJ_REGION
+				Call transfer_region(selection.obj)
+				bTransfer = TRUE
+			Case OBJ_RECT, OBJ_ROUNDRECT
+				Call transfer_rectangle(selection.obj)
+				bTransfer = TRUE
+			Case Else
+				Print "AutoCAD transfer of " + Str$(selection.obj) + " not supported."
+		End Case
+		Fetch Next From selection
+	Next
+	If (bTransfer) Then
+		DDEExecute channel, "[Zoom Extents ]"
+	End If
+End Sub
+
+'***********************************************************************		
+' valid_selection
+'
+' This routine returns TRUE if there is a selection and if the selection
+' is mappable; FALSE otherwise.
+'***********************************************************************
+Function valid_selection as Logical
+	Dim table_name as String
+
+	OnError Goto valid_selection_error_handler
+	table_name = SelectionInfo(SEL_INFO_SELNAME)
+	If table_name and TableInfo(table_name,TAB_INFO_MAPPABLE) Then
+		valid_selection = TRUE
+	Else
+		valid_selection = FALSE
+	End If
+	Exit Function
+
+	valid_selection_error_handler:
+
+	If Err() = ERR_NULL_SELECTION Then
+		valid_selection = FALSE
+	End If
+End Function
+
+'***********************************************************************
+' SelChangedHandler
+'
+' This routine handles enables and disables the transfer objects menu item
+' The menu item is enabled if there is a selection, and if the selection
+' is mappable.
+'***********************************************************************
+Sub SelChangedHandler
+	Dim enable as Logical
+
+	enable = valid_selection()
+	if bSelection and not enable Then
+		bSelection = FALSE
+		Alter Menu Item transfer_graphics disable
+	ElseIf not bSelection and enable Then
+		bSelection = TRUE
+		Alter Menu Item transfer_graphics enable
+	End If
+End Sub
+
+'***********************************************************************
+' transfer_point
+'
+' This routine draws a point in AutoCAD.
+'***********************************************************************
+Sub transfer_point (ByVal ovar as Object)
+	Dim command_string as String
+
+	command_string = "[Point " +
+			  			numstr(ObjectGeography(ovar, OBJ_GEO_POINTX)) + 
+			  			"," +
+			  			numstr(ObjectGeography(ovar, OBJ_GEO_POINTY)) +
+			  			" ]"
+	DDEExecute channel, command_string
+End Sub
+
+'***********************************************************************
+' transfer_line
+'
+' This routine draws a line in AutoCAD.
+'***********************************************************************
+Sub transfer_line (ByVal ovar as Object)
+	Dim command_string as String 
+
+	command_string =	"[Line " +
+						numstr(ObjectGeography(ovar, OBJ_GEO_LINEBEGX)) +
+						"," +
+						numstr(ObjectGeography(ovar, OBJ_GEO_LINEBEGY)) +
+						" " +
+						numstr(ObjectGeography(ovar, OBJ_GEO_LINEENDX)) +
+						"," +
+						numstr(ObjectGeography(ovar, OBJ_GEO_LINEENDY)) +
+						"  ]"
+	DDEExecute channel, command_string
+End Sub
+
+'***********************************************************************
+' transfer_pline
+'
+' This routine draws a single polyline in AutoCAD.  This polyline can
+' be either a simple polyline or a polygon that makes up a region.
+'***********************************************************************
+Sub transfer_pline(ByVal ovar as Object,
+					  ByVal polygon as SmallInt,
+					  ByVal num_points as Integer)
+	Dim x as Float, y as Float, i as Integer
+
+	DDEExecute channel, "[pline ]"
+	For i = 1 to num_points
+		x = ObjectNodeX(ovar, polygon, i)
+		y = ObjectNodeY(ovar, polygon, i)
+		DDEExecute channel, "[" + numstr(x) + "," + numstr(y) + " ]"
+	Next
+	DDEExecute channel, "[ ]"
+End Sub
+
+'***********************************************************************
+' transfer_polyline
+'
+' This routine draws a polyline in AutoCAD.
+'***********************************************************************
+Sub transfer_polyline (ByVal ovar as Object)
+	Call transfer_pline(ovar, 0, ObjectInfo(ovar, OBJ_INFO_NPNTS))
+End Sub
+
+
+'***********************************************************************
+' transfer_region
+'
+' This routine draws a region in AutoCAD.  It does this by individually
+' drawing each polygon.
+'***********************************************************************
+Sub transfer_region(ByVal ovar as Object)
+	Dim	num_polygons as Integer, i as Integer
+
+	num_polygons = ObjectInfo(ovar, OBJ_INFO_NPOLYGONS)
+
+	For i = 1 to num_polygons
+		Call transfer_pline(ovar, i, ObjectInfo(ovar, OBJ_INFO_NPOLYGONS+i))
+	Next
+End Sub
+
+'***********************************************************************
+' transfer_rectangle
+'
+' This routine draws a rectangle in AutoCAD.
+'***********************************************************************
+Sub transfer_rectangle(ByVal ovar as Object)
+	Dim command_string as String, minxstr as String, maxxstr as String,
+		 minystr as String, maxystr as String
+
+	minxstr = numstr(ObjectGeography(ovar, OBJ_GEO_MINX))
+	maxxstr = numstr(ObjectGeography(ovar, OBJ_GEO_MAXX))
+	minystr = numstr(ObjectGeography(ovar, OBJ_GEO_MINY))
+	maxystr = numstr(ObjectGeography(ovar, OBJ_GEO_MAXY))
+
+	command_string = "[pline " +
+						minxstr + "," + minystr + " " +
+						maxxstr + "," + minystr + " " +
+						maxxstr + "," + maxystr + " " +
+						minxstr + "," + maxystr + " " +
+						"c ]"
+	DDEExecute channel, command_string
+End Sub	
+
+				
+'***********************************************************************
+' numstr
+'
+' This routine formats a floating point number to contain a large number
+' of decimal points.  If we didn't use Format$, we would lose precision
+' when converting to a string.
+'***********************************************************************
+Function numstr (ByVal numvar as Float) as String
+	numstr = Format$(numvar, "#.##########")
+End Function
+	

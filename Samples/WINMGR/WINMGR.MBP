@@ -1,0 +1,5 @@
+[Link] 
+Application=WinMgr.mbx 
+Module=WinMgr.mbo
+Module=..\Lib\ResStrng.mbo
+

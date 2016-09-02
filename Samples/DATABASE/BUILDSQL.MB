@@ -1,0 +1,1230 @@
+'****************************************************************************
+'                             MAPINFO CORPORATION
+'
+' Date:         7/12/96          
+'
+' Module:       Buildsql.mb
+' For Version:  MapInfo 4.0
+' 
+' Overview:
+'
+'   This is the main source file for the Buildsql mapbasic application.
+' Buildsql lets you connect to DBMS databases, 
+' build, save and load queries. run queries and preview or download the results.
+' download can become a linked or unlinked table.
+' A query can contain a parameter to prompt for information at execute time.
+' See Prepsql.mb for more details.
+'****************************************************************************
+INCLUDE "MAPBASIC.DEF"
+INCLUDE "..\inc\DLSAMP.DEF"
+INCLUDE "..\inc\AUTO_LIB.DEF" 
+
+' Defines
+DEFINE SQLSTRING_ID             1
+DEFINE PROJECTION_ID            2
+DEFINE FROM_ID                  3
+DEFINE WHERE_ID                 4
+DEFINE GROUP_ID                 5    
+DEFINE ORDER_ID                 6
+
+DEFINE CHK_PROJECTION_ID        12
+DEFINE CHK_FROM_ID              13
+DEFINE CHK_WHERE_ID             14
+DEFINE CHK_GROUP_ID             15
+DEFINE CHK_ORDER_ID             16
+
+DEFINE TBLNAME_ID               7
+
+DEFINE CONNECTION_NAME_ID       9
+DEFINE CONNECTION_BUTTON_ID    10
+
+DEFINE RUNNER_SAVE_BUTTON_ID   21
+DEFINE RUNNER_LOAD_BUTTON_ID   22
+DEFINE RUNNER_CLEAR_BUTTON_ID  23
+
+DEFINE BUILDER_SAVE_BUTTON_ID  31
+DEFINE BUILDER_LOAD_BUTTON_ID  32
+DEFINE BUILDER_CLEAR_BUTTON_ID 33
+
+' External
+DECLARE SUB MAIN
+
+
+' The SQL Runner and its dialog handlers
+DECLARE SUB SQLRunnerDialog()
+DECLARE Sub RunSQL()
+DECLARE Sub SQLDone()
+DECLARE Sub SQLAbout()
+
+' Shared dialog handlers between Builder and Runner
+DECLARE SUB ClearSQL()
+DECLARE SUB LoadSQL()
+DECLARE SUB SaveSQL()
+
+' The SQL Builder and its dialog handlers
+DECLARE SUB SQLBuilderDialog()
+DECLARE SUB InitBuilder()
+DECLARE Sub PickTable()
+DECLARE Sub PickColumn()
+DECLARE Sub PickOperator()
+DECLARE Sub PickAggregate()
+DECLARE Sub PickFunction()
+DECLARE SUB AppendSQL(BYVAL SQLword AS STRING)
+DECLARE Sub GoRunner()
+DECLARE Sub FetchSQL()
+DECLARE Sub SQLDownload()
+DECLARE Sub SQLDownloadLinked()
+DECLARE Sub SetFocus()
+
+' SQL Utilities
+DECLARE Sub BuildSQL(SQLString AS STRING,
+             BYVAL SQLProjection AS STRING,
+             BYVAL SQLFrom  AS STRING,
+             BYVAL SQLWhere  AS STRING,
+             BYVAL SQLOrder  AS STRING,
+             BYVAL SQLGroup  AS STRING)
+DECLARE Sub ParseSQL(BYVAL SQLString AS STRING,
+             SQLProjection AS STRING,
+             SQLFrom  AS STRING,
+             SQLWhere  AS STRING,
+             SQLOrder  AS STRING,
+             SQLGroup  AS STRING)
+DECLARE SUB SQLLoader(SQLString AS STRING)
+DECLARE SUB SQLSaver(BYVAL SQLString AS STRING)
+DECLARE Sub ExecuteSQL(BYVAL SQLString AS STRING)
+
+DECLARE Sub FindNextClause()
+Declare Sub StripLineFeeds(Str AS STRING)
+DECLARE SUB SQLConnect()
+
+DECLARE FUNCTION IsOCI(BYVAL hdbc AS INTEGER) AS LOGICAL
+
+' Local Globals
+DIM TabOwner, TabName, TabFullName as STRING
+DIM SQLString, SQLProjection, SQLFrom, SQLWhere, SQLGroup, SQLOrder, SQLPreparedString AS STRING
+DIM PickerFocus AS INTEGER
+
+'****************************************************************************
+'* Main program
+'****************************************************************************
+SUB Main
+  'Set the globals used by auto_lib
+  gsAppDescription = "SQL DataLink Runner/Builder"
+  gsAppFilename    = "BUILDSQL.MBX"
+  Create menu "DBMS &BuildSQL" As 
+    "DBMS &BuildSQL ..." Calling  SQLRunnerDialog,
+    "(-",
+    "&About DBMS BuildSQL..." Calling SQLAbout,
+    "E&xit DBMS BuildSQL" Calling SQLDone
+
+  Call set_tools_menu("DBMS &BuildSQL")  
+
+End Sub
+
+
+
+'******************************************************
+'******************************************************
+'******************************************************
+Sub SQLRunnerDialog
+  if not IsDBMSInstalled(TRUE) then
+    ' IsDBMSInstalled displayed a message.
+    exit sub
+  end if
+
+  CALL DebugInit("BUILDSQL")  
+
+  IF demohdbc = 0 THEN
+    ' Get a connection before starting
+    CALL SQLConnect()
+  END IF
+
+  DIALOG
+
+    TITLE "MapInfo DBMS SQL Runner"
+    
+    '-------------------------------------------------
+    ' Connection maintenance
+    Control StaticText
+      Title "Database Connection:"
+      Position 8, 8
+
+'    CONTROL CHECKBOX 
+'      ID DEBUG_CHECKBOX_ID
+'      TITLE "Debug" VALUE FALSE CALLING SetDebug 
+'      Position 168, 2
+             
+    Control EditText
+      Value    democonnname
+      Position 42, 22
+      Width 120
+      Id CONNECTION_NAME_ID
+      Disable
+
+    Control Button
+      Title "Connection..."
+      Position 168, 21
+      Calling SQLConnect
+      Id CONNECTION_BUTTON_ID
+
+    '-------------------------------------------------
+    ' SQL maintenance
+    Control StaticText
+      Title "SQL Statement:"
+      Position 8, 48
+
+    CONTROL EDITTEXT
+      VALUE SQLString   ' prime from global persistant value
+      ID SQLSTRING_ID
+      Position 8, 62
+      Width 260
+      Height 75
+
+    ' Button row 1
+    CONTROL BUTTON
+      Title "Load..."
+      Calling LoadSQL
+      POSITION 16, 144
+      WIDTH  55
+      ID RUNNER_LOAD_BUTTON_ID
+    CONTROL BUTTON
+      Title "Save..."
+      Calling SaveSQL
+      POSITION 77, 144
+      WIDTH  55
+      ID RUNNER_SAVE_BUTTON_ID
+    CONTROL BUTTON
+      Title "Clear"
+      Calling ClearSQL
+      POSITION 138, 144
+      WIDTH  55
+      ID RUNNER_CLEAR_BUTTON_ID
+    CONTROL BUTTON
+      Title "Build Query..."
+      Calling SQLBuilderDialog
+      POSITION 209, 144
+      WIDTH  55
+
+    ' Button row 2
+    CONTROL OKBUTTON
+      Title "Execute..."
+      Calling RunSQL
+      POSITION 16, 167
+      WIDTH  55
+    CONTROL CANCELBUTTON
+      POSITION 77, 167
+      WIDTH  55
+
+  ' Leave connection open for future use
+
+END SUB
+
+
+'********************************************
+Sub SQLDone
+  END PROGRAM
+END SUB
+
+'**********************************************************************
+'**********************************************************************
+'  Dialog handlers for the SQL Runner
+'**********************************************************************
+'**********************************************************************
+Sub RunSQL()
+  DIM SQLOut as STRING
+  ' Get the latest value of the SQLString
+  SQLString=READCONTROLVALUE(SQLSTRING_ID)
+
+  ' Presrve dilog though OKBUTTON was pressed
+  DIALOG PRESERVE
+
+  ' Prepare for execution (Does argument substitution)
+  Call SQLPrepare(SQLString, SQLPreparedString)
+
+  ' Execute the SQL statement
+  Call ExecuteSQL(SQLPreparedString)
+End Sub
+
+'**********************************************************************
+'**********************************************************************
+'  End of Dialog handlers for the SQL Runner
+'**********************************************************************
+'**********************************************************************
+
+'******************************************************
+Sub SQLBuilderDialog
+  ' INPUTS: demohdbc, SQLString
+  ' OUTPUTS: SQLString
+
+  IF demohdbc=0 THEN
+    GOTO ALLDONE
+  END IF
+  IF IsOCI(demohdbc) THEN
+    note "Warning: This application does not support OCI connections."
+'    demohdbc = 0
+    GOTO ALLDONE
+  END IF
+
+  ' Get the latest SQLString value
+  SQLString=READCONTROLVALUE(SQLSTRING_ID)
+
+  ' Parse it into its SQL Components for the builder GUI
+  Call ParseSQL(SQLString, SQLProjection, SQLFrom, SQLWhere, SQLOrder, SQLGroup)
+
+  DIALOG
+    TITLE "SQL DataLink Query Builder"
+    CALLING InitBuilder
+    CONTROL STATICTEXT TITLE "Select Columns:"   Position 8, 8    WIDTH 65
+    CONTROL STATICTEXT TITLE "From Tables:"      Position 8, 52   WIDTH 65
+    CONTROL STATICTEXT TITLE "Where Conditions:" Position 8, 70   WIDTH 65
+    CONTROL STATICTEXT TITLE "Group By Columns:" Position 8, 114  WIDTH 65
+    CONTROL STATICTEXT TITLE "Order By Columns:" Position 8, 132  WIDTH 65
+      
+    CONTROL CHECKBOX ID CHK_PROJECTION_ID Position 75, 8    CALLING SetFocus VALUE FALSE
+    CONTROL CHECKBOX ID CHK_FROM_ID       Position 75, 52   CALLING SetFocus VALUE TRUE
+    CONTROL CHECKBOX ID CHK_WHERE_ID      Position 75, 70   CALLING SetFocus VALUE FALSE
+    CONTROL CHECKBOX ID CHK_GROUP_ID      Position 75, 114  CALLING SetFocus VALUE FALSE
+
+    CONTROL CHECKBOX ID CHK_ORDER_ID      Position 75, 132  CALLING SetFocus VALUE FALSE
+
+    CONTROL EDITTEXT ID PROJECTION_ID Position 89, 8   WIDTH 120 HEIGHT 38 VALUE SQLProjection
+
+    CONTROL EDITTEXT ID FROM_ID       Position 89, 52  WIDTH 120           VALUE SQLFrom
+    CONTROL EDITTEXT ID WHERE_ID      Position 89, 70  WIDTH 120 HEIGHT 38 VALUE SQLWhere
+    CONTROL EDITTEXT ID GROUP_ID      Position 89, 114 WIDTH 120           VALUE SQLGroup
+    CONTROL EDITTEXT ID ORDER_ID      Position 89, 132 WIDTH 120           VALUE SQLOrder
+
+    CONTROL GROUPBOX
+      POSITION 213, 3
+      WIDTH 63
+      HEIGHT 124
+    CONTROL EDITTEXT
+      DISABLE
+      POSITION 217, 12
+      ID TBLNAME_ID
+      WIDTH 55
+    CONTROL BUTTON
+      Title "Tables..."
+      Calling PickTable
+      POSITION 217, 28
+      WIDTH 55
+    CONTROL BUTTON
+      Title "Columns..."
+      Calling PickColumn
+      POSITION 217, 48
+      WIDTH 55
+    CONTROL BUTTON
+      Title "Operators..."
+      Calling PickOperator
+      POSITION 217, 68
+      WIDTH 55
+    CONTROL BUTTON
+      Title "Aggregates..."
+      Calling PickAggregate
+      POSITION 217, 88
+      WIDTH 55
+    CONTROL BUTTON
+      Title "Functions..."
+      Calling PickFunction
+      POSITION 217, 108
+      WIDTH 55
+
+    CONTROL OKBUTTON
+      Title "Run..."
+      Calling GoRunner
+      POSITION 8, 160
+      WIDTH  45
+    CONTROL CANCELBUTTON
+      POSITION 59, 160
+      WIDTH  45
+
+    CONTROL BUTTON
+      Title "Load..."
+      Calling LoadSQL
+      POSITION 127, 160
+      WIDTH  45
+      ID BUILDER_LOAD_BUTTON_ID
+    CONTROL BUTTON
+      Title "Save..."
+      Calling SaveSQL
+      POSITION 178, 160
+      WIDTH  45
+      ID BUILDER_SAVE_BUTTON_ID
+    CONTROL BUTTON
+      Title "Clear"
+      Calling ClearSQL
+      POSITION 228, 160
+      WIDTH  45
+      ID BUILDER_CLEAR_BUTTON_ID
+
+  IF CommandINFO(CMD_INFO_DLG_OK) THEN
+    ' Reset Runner GUI values from newly parsed SQL 
+    ALTER CONTROL SQLSTRING_ID VALUE SQLString
+  END IF
+
+  ALLDONE:
+
+END SUB
+
+
+'**********************************************************************
+'**********************************************************************
+'  Dialog handlers for the SQL Builder
+'**********************************************************************
+'**********************************************************************
+'********************
+SUB InitBuilder()
+  ALTER CONTROL TBLNAME_ID  VALUE TabFullName
+  PickerFocus = CHK_FROM_ID
+END SUB
+
+'********************
+Sub SetFocus()
+  ' Forcing radio button behavior onto the checkboxes
+  ' Which box was checked to trigger this dialog handler 
+  PickerFocus = TRIGGERCONTROL()
+
+  ' Now uncheck all boxes
+  ALTER CONTROL CHK_PROJECTION_ID VALUE FALSE
+  ALTER CONTROL CHK_FROM_ID       VALUE FALSE
+  ALTER CONTROL CHK_WHERE_ID      VALUE FALSE
+  ALTER CONTROL CHK_GROUP_ID      VALUE FALSE
+  ALTER CONTROL CHK_ORDER_ID      VALUE FALSE
+
+  ' and Check the one that was pressed and save it globally
+  ALTER CONTROL PickerFocus VALUE TRUE
+END SUB
+
+
+'********************
+Sub PickTable()
+  Call TablePickerDialog (demohdbc, TabOwner, TabName, "Table Picker")
+  IF TabName<> "" THEN
+    IF TabOwner="" THEN
+      TabFullName= demoquotechar + TabName + demoquotechar
+    ELSE
+      TabFullName= demoquotechar + TabOwner+ demoquotechar + "." +
+       demoquotechar + TabName + demoquotechar 
+    END IF
+    CALL AppendSQL(TabFullName)
+
+    ' Show current table ower.name (Used to control Column list)
+    ALTER CONTROL TBLNAME_ID VALUE TabFullName
+  END IF
+END SUB
+
+'********************
+Sub PickColumn()
+  DIM ColumnName AS STRING
+  Call ColumnPickerDialog(demohdbc, TabOwner, TabName, ColumnName, "Column Picker")
+  IF ColumnName <> "" THEN
+    ColumnName =  demoquotechar + ColumnName + demoquotechar
+    CALL AppendSQL(ColumnName)
+  END IF
+END SUB
+
+'********************
+Sub PickOperator()
+  DIM operator, list AS STRING
+  list = GetOperators(operator)
+  operator = PickerDialog (list, "Pick Operator")
+  CALL AppendSQL(operator)
+END SUB
+
+'********************
+Sub PickAggregate()
+  DIM aggregate, list AS STRING
+  list = GetAggregates(aggregate)
+  aggregate = PickerDialog (list, "Pick Aggregate")
+  CALL AppendSQL(aggregate)
+END SUB
+
+'********************
+Sub PickFunction()
+  DIM func, list AS STRING
+  list = GetFunctions(func)
+  func = PickerDialog (list, "Pick Function")
+  CALL AppendSQL(func)
+END SUB
+
+'********************
+Sub GoRunner()
+  ' Get latest copy of clause values
+  SQLProjection=READCONTROLVALUE(PROJECTION_ID)
+  SQLFrom=READCONTROLVALUE(FROM_ID)
+  SQLWhere=READCONTROLVALUE(WHERE_ID)
+  SQLGroup=READCONTROLVALUE(GROUP_ID)
+  SQLOrder=READCONTROLVALUE(ORDER_ID)
+
+  ' Build a fresh SQL String from the SQL Components
+  Call BuildSQL(SQLString, SQLProjection, SQLFrom, SQLWhere, SQLOrder, SQLGroup)
+  ' Then just exit from Builder to Runner
+END Sub
+
+'********************
+SUB AppendSQL(BYVAL SQLWord AS STRING)
+  DIM whichclause AS INTEGER
+ 
+  IF SQLWord="" THEN
+    EXIT SUB
+  END IF
+
+  SQLProjection=READCONTROLVALUE(PROJECTION_ID)
+  SQLFrom=READCONTROLVALUE(FROM_ID)
+  SQLWhere=READCONTROLVALUE(WHERE_ID)
+  SQLGroup=READCONTROLVALUE(GROUP_ID)
+  SQLOrder=READCONTROLVALUE(ORDER_ID)
+
+  ' Unable to determine which window or character position the
+  ' cursor is in from within MapBasic.
+  ' Therefore, Use checkboxes to allow the user to direct 
+  ' which window to place the Picker output, and only provide append
+  ' to the string within that window (Sorry!)
+  whichclause=PickerFocus 
+
+  DO CASE whichclause
+    CASE CHK_PROJECTION_ID
+      IF SQLProjection="" THEN
+          SQLProjection = SQLWord
+      ELSE
+          SQLProjection=SQLProjection + ", " + SQLWord
+      END IF   
+    CASE CHK_FROM_ID      
+      IF SQLFrom="" THEN
+        SQLFrom=SQLWord
+      ELSE
+        SQLFrom=SQLFrom + ", " + SQLWord
+      END IF   
+    CASE CHK_WHERE_ID     
+      SQLWhere=SQLWhere + " " + SQLWord
+    CASE CHK_GROUP_ID     
+      IF SQLGroup="" THEN
+        SQLGroup=SQLWord
+       ELSE
+        SQLGroup=SQLGroup + ", " + SQLWord
+       END IF
+    CASE CHK_ORDER_ID     
+      IF SQLOrder="" THEN
+        SQLOrder=SQLWord
+      ELSE    
+        SQLOrder=SQLOrder + ", " + SQLWord
+      END IF
+  END CASE
+
+  ALTER CONTROL PROJECTION_ID VALUE SQLProjection
+  ALTER CONTROL FROM_ID       VALUE SQLFrom
+  ALTER CONTROL WHERE_ID      VALUE SQLWhere
+  ALTER CONTROL GROUP_ID      VALUE SQLGroup
+  ALTER CONTROL ORDER_ID      VALUE SQLOrder
+
+  Call BuildSQL(SQLString, SQLProjection, SQLFrom, SQLWhere, SQLOrder, SQLGroup)
+End SUB
+
+'**********************************************************************
+'**********************************************************************
+'  End of Dialog handlers for the SQL Buiulder
+'**********************************************************************
+'**********************************************************************
+
+'**********************************************************************
+'**********************************************************************
+' Shared Dialog Handlers
+'**********************************************************************
+'**********************************************************************
+'********************
+SUB ClearSQL()
+  SQLString = ""
+
+  SQLProjection=""
+  SQLFrom=""
+  SQLWhere=""
+  SQLGroup=""
+  SQLOrder=""
+
+  ' Reset dialog values depending on who called
+  IF TRIGGERCONTROL() = RUNNER_CLEAR_BUTTON_ID THEN
+    ALTER CONTROL SQLSTRING_ID VALUE SQLString
+  ELSE
+    ALTER CONTROL PROJECTION_ID VALUE SQLProjection
+    ALTER CONTROL FROM_ID       VALUE SQLFrom
+    ALTER CONTROL WHERE_ID      VALUE SQLWhere
+    ALTER CONTROL GROUP_ID      VALUE SQLGroup
+    ALTER CONTROL ORDER_ID      VALUE SQLOrder
+  END IF
+End SUB
+
+'*****************************************
+SUB LoadSQL()
+  Call SQLLoader(SQLString)
+
+  '* Parse SQLString into clause components
+  Call ParseSQL(SQLString, SQLProjection, SQLFrom, SQLWhere, SQLOrder, SQLGroup)
+
+  '* Rebuild New SQLString from clause components
+  Call BuildSQL(SQLString, SQLProjection, SQLFrom, SQLWhere, SQLOrder, SQLGroup)
+
+  ' Reset dialog values depending on who called
+  IF TRIGGERCONTROL() = RUNNER_LOAD_BUTTON_ID THEN
+    ALTER CONTROL SQLSTRING_ID VALUE SQLString
+  ELSE
+    ALTER CONTROL PROJECTION_ID VALUE SQLProjection
+    ALTER CONTROL FROM_ID       VALUE SQLFrom
+    ALTER CONTROL WHERE_ID      VALUE SQLWhere
+    ALTER CONTROL GROUP_ID      VALUE SQLGroup
+    ALTER CONTROL ORDER_ID      VALUE SQLOrder
+  END IF
+END SUB
+
+
+
+
+'*****************************************
+SUB SaveSQL()
+  ' Set values depending on which dialog called
+  IF TRIGGERCONTROL() = RUNNER_SAVE_BUTTON_ID THEN
+    SQLString = READCONTROLVALUE(SQLSTRING_ID)
+  ELSE
+    SQLProjection=READCONTROLVALUE(PROJECTION_ID)
+    SQLFrom=READCONTROLVALUE(FROM_ID)
+    SQLWhere=READCONTROLVALUE(WHERE_ID)
+    SQLGroup=READCONTROLVALUE(GROUP_ID)
+    SQLOrder=READCONTROLVALUE(ORDER_ID)
+
+    ' Build the latest query in SQLString
+    Call BuildSQL(SQLString, SQLProjection, SQLFrom, SQLWhere, SQLOrder, SQLGroup)
+  END IF
+
+  Call SQLSaver(SQLString)
+End Sub
+
+'**********************************************************************
+'**********************************************************************
+'  End of shared dialog handlers
+'**********************************************************************
+'**********************************************************************
+
+
+'**********************************************************************
+'**********************************************************************
+'*  Utility functions
+'**********************************************************************
+
+'*******************************************
+Sub ExecuteSQL(BYVAL SQLStr AS STRING)
+  DIM colcnt AS INTEGER   
+
+  ONERROR GOTO EXECUTE_ERROR
+  demohstmnt = SERVER_EXECUTE(demohdbc, SQLStr)
+
+  ONERROR GOTO NONSELECT
+  colcnt = SERVER_NUMCOLS(demohstmnt)
+
+  FETCHING:
+  ONERROR GOTO 0
+
+  IF colcnt = 0 THEN
+    ' Assume Non Query since no result set was built
+    ' show OK not
+    Note "SQL statement executed successfully!"  
+    SERVER demohstmnt CLOSE
+  Else                           
+    ' Query result set exists - provide fetch options dialog
+    Call FetchSQL()
+  End If
+  GOTO ALLDONE
+
+  NONSELECT:
+    IF dbg THEN
+      PRINT "SERVER_NUMCOLS FAILED: " + ERROR$()
+    END IF
+    colcnt=0
+    RESUME FETCHING 
+
+  EXECUTE_ERROR:
+    NOTE ERROR$()
+    RESUME ALLDONE     
+
+  ALLDONE:
+End Sub
+
+'******************************************
+SUB FetchSQL()
+
+  ONERROR GOTO FETCH_ERROR
+  Dialog
+   Title "Fetch Options"
+     Control Button
+       Title "Preview..."
+       Width 70
+       Position 8, 6
+       Calling SQLPreview
+     Control Button
+       Title "Download..."
+       Width 70
+       Position 8, 26
+       Calling SQLDownload
+     Control Button
+       Title "Download Linked..."
+       Width 70
+       Position 8, 46
+       Calling SQLDownloadLinked
+     Control CancelButton
+       Title "Cancel"
+       Width 70
+       Position 8, 66
+
+  '* Be nice and close the statement and the connection before bolting!
+  SERVER demohstmnt CLOSE
+  GOTO ALLDONE
+
+  FETCH_ERROR:
+    SERVER demohstmnt CLOSE
+    NOTE ERROR$()
+    RESUME ALLDONE
+
+  ALLDONE:
+END SUB
+
+'*****************************************
+SUB SQLLoader(SQLString AS STRING)
+  Dim filespec as String
+  Dim iobuf, sep as String
+
+  '* No extensions on the Mac dude!
+  If SYSTEMINFO(SYS_INFO_PLATFORM) = PLATFORM_MAC THEN
+    filespec = FileOpenDlg ( "", "", "", "Load SQL from file..." )
+  Else
+    filespec = FileOpenDlg ( "", "", "SQL", "Load SQL from file..." )
+  End If
+
+  If filespec = "" Then
+    GOTO ALLDONE
+  END IF
+
+  OnError goto OpenError
+  Open File filespec For Input As #6
+
+  OnError goto ReadError
+  Line Input #6, iobuf
+
+  SQLString = ""
+  sep=""
+  While not EOF(6)
+    SQLString = SQLSTring + sep + iobuf
+    sep=CHR$(10)      ' place a linefeed to preserve format
+    Line Input #6, iobuf
+  Wend
+  Close File #6
+
+  IF dbg THEN
+    Print "SQLString="+SQLString
+  END IF
+
+  GOTO ALLDONE
+
+OpenError:
+    NOTE ERROR$()
+    Resume ALLDONE
+
+ReadError:
+    Close File #6
+    Note Error$()
+    Resume ALLDONE
+
+ALLDONE:
+
+END SUB
+
+
+'*****************************************
+SUB SQLSaver(BYVAL SQLString AS STRING)
+  Dim filespec as String
+  Dim iobuf as String
+  Dim frompos, topos, iolen as Integer
+
+  If dbg Then
+    print "SQLString=" + SQLString
+  End If
+
+  if SQLString = "" then
+    Note "There is no SQL statement to save"
+    exit sub
+  end if
+
+  OnError Goto Errexit
+  '* No file extensions on the Mac
+  If SYSTEMINFO(SYS_INFO_PLATFORM) = PLATFORM_MAC THEN
+    filespec = FileSaveAsDlg ( "", "", "", "Save SQL in file" )
+  Else
+    filespec = FileSaveAsDlg ( "", "", "SQL", "Save SQL in file" )
+  End If
+  If dbg Then
+    print "Save to file " + filespec
+  End If
+
+  ' Check if cancel was pressed in Save As 
+  If filespec = "" Then
+    GOTO ALLDONE
+  End If
+
+  Open File filespec For Output As #7
+
+  ' Some dancing is done here to handle posrtions of the
+  ' SQLstring that exceed 255 bytes without a carriage return.
+  ' I split these into multiple records so they won't be truncated.
+  ' For carriage returns that already exists within the string
+  ' then we leave them where they are. WY"SAVE"IWYG 
+
+  frompos = 1
+
+  iobuf="X"  ' prime with junk for loop entry 
+  While iobuf <> ""
+    topos = INSTR(frompos, SQLString, CHR$(10))
+
+    iolen=topos-frompos
+    IF iolen < 0 OR iolen > 255 THEN
+      ' no carriage return within 256 bytes
+      ' write next 255 bytes to avoid truncation
+      iolen=255
+      iobuf = Mid$(SQLString, frompos, iolen)
+      frompos=frompos+iolen 
+    ELSE
+      ' found a carriage return, write rec up to return
+      iobuf = Mid$(SQLString, frompos, iolen)
+      frompos=frompos+iolen+1   'skip over the return 
+    END IF
+    
+    IF iobuf <> "" THEN
+      If dbg Then
+         print "iobuf: " + "[" + iobuf + "]"
+      End If
+
+      ' Print appends a carriage reutn to each output record 
+      Print #7, iobuf
+    END IF
+  Wend
+
+  Close File #7
+
+  ALLDONE:
+     exit sub
+
+  errexit:
+     Note error$()
+     Resume ALLDONE
+END SUB
+
+
+'********************************************************
+Sub BuildSQL(SQLString AS STRING,
+             BYVAL SQLProjection AS STRING,
+             BYVAL SQLFrom  AS STRING,
+             BYVAL SQLWhere  AS STRING,
+             BYVAL SQLOrder  AS STRING,
+             BYVAL SQLGroup  AS STRING)
+
+  ' Inputs SQLProjection, SQLFrom, SQLWhere, SQLGroup, SQLOrder
+  ' Output formatted SQLString (with line feeds)
+
+  IF dbg THEN
+    Print "SQLProjection = '" + SQLProjection  + "'"
+    Print "SQLFrom       = '" + SQLFrom        + "'"
+    Print "SQLWhere      = '" + SQLWhere       + "'"
+    Print "SQLOrder      = '" + SQLOrder       + "'"
+    Print "SQLGroup      = '" + SQLGroup       + "'"
+  END IF
+
+  If SQLProjection <> "" THEN
+     SQLString = "SELECT " + SQLProjection
+  ELSEIf SQLFrom <> "" THEN
+     SQLString = "SELECT *"
+  END IF
+
+  If SQLFrom <> "" THEN
+    SQLString = SQLString +  CHR$(10) + "   FROM " + SQLFrom
+  END IF 
+
+  If SQLWhere <> "" THEN
+    SQLString = SQLString + CHR$(10) + " WHERE " + SQLWhere 
+  END IF 
+  If SQLGroup <> "" THEN
+    SQLString = SQLString + CHR$(10) + " GROUP BY " + SQLGroup
+  END IF
+  If SQLOrder <> "" THEN
+    SQLString = SQLString + CHR$(10) + " ORDER BY " + SQLOrder
+  END IF
+
+NOSELECT:
+  IF dbg THEN
+    Print "SQLString     = '" + SQLString      + "'"
+  END IF
+END SUB
+
+'* Parse variables
+DIM CurrentClause, NextClause, ParsePos, ParseLen AS INTEGER
+DIM ParseString AS STRING
+
+
+'*********************************************
+Sub ParseSQL(BYVAL SQLString AS STRING,
+             SQLProjection AS STRING,
+             SQLFrom  AS STRING,
+             SQLWhere  AS STRING,
+             SQLOrder  AS STRING,
+             SQLGroup  AS STRING)
+
+' Parse through the SQLString to find each clause initiator
+' and set each clause value
+'    "SELECT "
+'    " FROM "
+'    " WHERE "
+'    " GROUP " "BY "
+'    " ORDER " "BY "
+  IF dbg THEN
+    Print "SQLString     = '" + SQLString      + "'"
+  END IF
+
+  '* Init local Parse variables
+  ParseString=LTRIM$(RTRIM$(SQLString))
+  ParseLen=LEN(ParseString)
+  
+  IF ParseString = "" THEN
+    EXIT SUB
+  END IF
+  Call StripLineFeeds(ParseString)
+
+  '* Init output 
+  SQLProjection = ""
+  SQLFrom = ""
+  SQLWhere = ""
+  SQLOrder = ""
+  SQLGroup = ""
+
+  '* First token MUST be SELECT
+  IF UCASE$(LEFT$(LTRIM$(ParseString), 7)) <> "SELECT " THEN
+    NOTE "Current SQL Statement is not a SELECT statement"
+    EXIT SUB
+  END IF
+
+'  Initialize Output now that we know this is a SELECT statement
+  '* Skip past SELECT token
+  ParseString=LTRIM$(MID$(ParseString, 7, ParseLen))
+  ParseLen=LEN(ParseString)
+  NextClause = PROJECTION_ID
+
+  WHILE ParseLen > 0
+    CurrentClause = NextClause
+
+    IF dbg THEN
+      PRINT "Next iteration"
+      PRINT "ParseString   =" + ParseString
+      PRINT "ParseLen      =" + ParseLen
+      PRINT "CurrentClause =" + CurrentClause
+      PRINT "NextClause    =" + NextClause
+    END IF
+
+    ' Finds beginning of next clause, sets NextClause 
+    Call FindNextClause()
+
+    IF dbg THEN
+      PRINT "After FindNextClause"   
+      PRINT "ParseString   =" + ParseString
+      PRINT "ParsePos   =" + ParsePos
+      PRINT "NextClause =" + NextClause
+      PRINT "CurrentClause =" + CurrentClause
+    END IF
+ 
+    ' Copy LastClause
+    DO CASE CurrentClause
+      CASE PROJECTION_ID
+        SQLProjection=LEFT$(ParseString, ParsePos-1)
+      CASE FROM_ID
+        SQLFrom=LEFT$(ParseString, ParsePos-1)
+      CASE WHERE_ID
+        SQLWhere=LEFT$(ParseString, ParsePos-1)
+      CASE GROUP_ID
+        SQLGroup=LEFT$(ParseString, ParsePos-1)
+      CASE ORDER_ID
+        SQLOrder=LEFT$(ParseString, ParsePos-1)
+    END CASE
+
+    IF dbg THEN
+      Print "SQLProjection = '" + SQLProjection  + "'"
+      Print "SQLFrom       = '" + SQLFrom        + "'"
+      Print "SQLWhere      = '" + SQLWhere       + "'"
+      Print "SQLOrder      = '" + SQLOrder       + "'"
+      Print "SQLGroup      = '" + SQLGroup       + "'"
+    END IF
+
+    '* Skip past last CLAUSE
+    '* Skip past NEXT CLAUSE INITIATOR TOKEN
+    DO CASE NextClause
+      CASE PROJECTION_ID
+        ParseString=LTRIM$(MID$(ParseString, ParsePos+LEN("SELECT")+1, ParseLen))
+      CASE FROM_ID
+        ParseString=LTRIM$(MID$(ParseString, ParsePos+LEN("FROM")+1, ParseLen))
+      CASE WHERE_ID
+        ParseString=LTRIM$(MID$(ParseString, ParsePos+LEN("WHERE"+1), ParseLen))
+      CASE GROUP_ID
+        ParseString=LTRIM$(MID$(ParseString, ParsePos+LEN("GROUP"+1), ParseLen))
+        ParseString=LTRIM$(MID$(ParseString, LEN("BY"+1), ParseLen))
+      CASE ORDER_ID
+        ParseString=LTRIM$(MID$(ParseString, ParsePos+LEN("ORDER"+1), ParseLen))
+        ParseString=LTRIM$(MID$(ParseString, LEN("BY"+1), ParseLen))
+      CASE ELSE
+        ParseString="" 
+    END CASE
+
+    ParseLen=LEN(ParseString)
+  WEND
+
+  ' DEFAULT PROJECTION WIZARD!       
+  If SQLFrom <> "" AND SQLProjection = "" THEN
+     SQLProjection = "*"
+  END IF 
+
+End Sub
+
+
+'**************************
+Sub FindNextClause()
+  DIM pos AS INTEGER
+
+  IF dbg THEN
+    PRINT "ParseString="+ ParseString
+  END IF
+
+  IF CurrentClause=PROJECTION_ID THEN
+    ' Have a SELECT, Look for Required FROM clause
+     ParsePos=INSTR(1, UCASE$(ParseString), "FROM ")
+     If ParsePos<>0 THEN
+       NextClause=FROM_ID
+       EXIT SUB
+     ELSE
+       NOTE "Expected FROM Clause not found; Statement is incomplete!"
+       GOTO ENDSQL   
+     END IF
+  END IF
+
+  IF CurrentClause=FROM_ID THEN
+    ' Have a FROM , Look for WHERE clause (Not required)
+     ParsePos=INSTR(1, UCASE$(ParseString), "WHERE ")
+     If ParsePos<>0 THEN
+       NextClause=WHERE_ID
+       EXIT SUB
+     END IF
+  END IF
+
+  '* These can be in either order
+  ParsePos=INSTR(1, UCASE$(ParseString), "GROUP ")
+  If ParsePos <> 0  THEN
+    NextClause=GROUP_ID
+  END IF
+   
+  pos=INSTR(1, UCASE$(ParseString), "ORDER ")
+  If pos<>0 AND (ParsePos = 0 OR pos < ParsePos) THEN
+    ParsePos=pos    
+    NextClause=ORDER_ID
+  END IF
+
+ENDSQL:
+  ' Handle End of SQL String
+  IF ParsePos=0 THEN
+
+     ParsePos=ParseLen+1
+
+
+     NextClause=-1
+  END IF
+End Sub
+
+
+'**********************************
+Sub SQLDownload()
+  Dim filespec, tablename as String
+  Dim starttime, elapsedtime as Integer   '* timer variables
+
+  If dbg Then
+    Print "IN Sub SQLDownload"
+  End If
+
+  Dialog Remove        '* remove fetch options dialog
+
+  filespec = FileSaveAsDlg ( "", "", "TAB", "Save as MapInfo table..." )
+
+  If dbg Then
+    Print "outfile" + filespec
+  End If
+
+  '* Only fetch of OK was pressed and filespec != ""
+  If filespec <> "" Then
+    tablename = PathToTableName$(filespec)
+ 
+    If dbg Then
+      Print "outtbl" + tablename
+    End If
+
+    STATUSBAR MESSAGE "SQL DataLink Downloading... Press Esc to Cancel" 
+
+'    NOTE "SQL DataLink Downloading..." + CHR$(13) +
+'         CHR$(13) +
+'         "Press Esc to Cancel" 
+
+    OnError Goto SrvFailed
+
+    starttime = TIMER()
+
+    Server demohstmnt Fetch Into tablename File filespec
+
+    elapsedtime = TIMER() - starttime
+    If dbg Then
+      Print "*****> SQL Download elapsed time = " + elapsedtime
+    End If
+
+  End If
+
+  '* Only Browse if OK was pressed and filespec != ""
+  ' Browse is asynchronous!
+  If filespec <> "" Then
+    Browse * From tablename
+  End If
+
+  GOTO ALLDONE
+
+  SrvFailed:
+    elapsedtime = TIMER() - starttime
+    If dbg Then
+      Print "*****> Cancelled SQL Download elapsed time = " + elapsedtime
+    End If
+
+    '* Browse even if error since we don't remove the table"
+    If filespec <> "" Then
+      Browse * From tablename
+    End If
+
+    Note error$()
+    RESUME ALLDONE
+
+ ALLDONE:
+
+End Sub
+
+
+
+'***************************************************************************
+Sub SQLDownloadLinked()
+  Dim filespec, tablename as String
+  Dim starttime, elapsedtime as Integer   '* timer variables
+
+  If dbg Then
+    Print "IN Sub SQLDownloadLinked"
+  End If
+
+  Dialog Remove        '* remove fetch options dialog
+
+  filespec = FileSaveAsDlg ( "", "TEMP", "TAB", "Save as MapInfo table..." )
+
+  If dbg Then
+    Print "outfile" + filespec
+  End If
+
+  '* Only fetch of OK was pressed and filespec != ""
+  If filespec <> "" Then
+    tablename = PathToTableName$(filespec)
+ 
+    If dbg Then
+      Print "outtbl=" + tablename
+    End If
+
+'    NOTE "SQL DataLink Downloading..." + CHR$(13) +
+'         CHR$(13) +
+'         "Press Esc to Cancel" 
+
+    OnError Goto SrvFailed
+
+    starttime = TIMER()
+
+    SERVER demohdbc LINK TABLE SQLPreparedString INTO tablename FILE filespec
+
+    elapsedtime = TIMER() - starttime
+    If dbg Then
+      Print "*****> SQL Download elapsed time = " + elapsedtime
+    End If
+
+  End If
+
+  '* Only Browse if OK was pressed and filespec != ""
+  ' Browse is asynchronous!
+  If filespec <> "" Then
+    Browse * From tablename
+  End If
+
+  GOTO ALLDONE
+
+  SrvFailed:
+    Note error$()
+    RESUME ALLDONE
+
+ ALLDONE:
+
+End Sub
+
+
+'***************************************************************************
+'* Get a new connection 
+'* Use QELIB DLG=1 option to get an DBMS connection dialog
+'***************************************************************************
+SUB SQLConnect()
+  ' get a new connection
+  demohdbc = SQLConnectDialog() 
+
+  ONERROR GOTO WHOCARES
+
+  ' Set dialog connection control to display connection name
+  ALTER CONTROL CONNECTION_NAME_ID VALUE democonnname
+
+  GOTO ALLDONE
+
+  WHOCARES:
+    RESUME NEXT
+
+  ALLDONE:
+
+END SUB
+
+
+'**  SQLAbout ***************************************************************
+' The About procedure displays a brief explanatory blurb.
+'****************************************************************************
+Sub SQLAbout
+  Dialog 
+    Title "About MapInfo DBMS SQL Runner"
+    Width 204
+    Control StaticText Position 10, 10 Title"Now running Buildsql.mbx"    
+    Control StaticText Position 10, 30 Title"MapInfo SQL BuildSQL"    
+    
+    Control StaticText Position 10, 50 Title "This application allows you to connect to an SQL"
+    Control StaticText Position 10, 60 Title "database server, build queries and execute SQL statements."
+
+    Control StaticText Position 10, 80 Title "You can issue queries to preview data, and"
+    Control StaticText Position 10, 90 Title "download query results to a local MapInfo table."
+
+    Control OKButton
+      Title  "OK"   
+      Position 83, 105
+
+End Sub
+
+'****************************************
+Sub StripLineFeeds(Str AS STRING)
+  DIM StrLen, i as INTEGER
+
+  StrLen = LEN(STR)
+  i = INSTR(1, Str, CHR$(10))
+  WHILE i <> 0
+    Str = LEFT$(Str, i-1) + MID$(Str, i+1, StrLen)  
+    i = INSTR(1, Str, CHR$(10))
+  WEND
+End Sub
+
+

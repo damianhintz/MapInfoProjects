@@ -1,0 +1,83 @@
+' Resource String Ids
+Define IDS_STR_RES_RANGE_ERR             1
+Define IDS_APP_DESCRIPTION               2
+Define IDS_MENU_NAME                     3
+Define IDS_MENU_ITEM_NAME                4
+Define IDS_ABOUT_MENU_ITEM_NAME          5
+Define IDS_EXIT_MENU_ITEM_NAME           6
+Define IDS_MAKE_MAP_ACTIVE               7
+Define IDS_VERSION                       8
+Define IDS_ROTATION_X_Y                  9
+Define IDS_MAP_CENTER                    10
+Define IDS_ROTATION_ANGLE                11
+Define IDS_IN_DEGREES                    12
+Define IDS_RECENTER                      13
+Define IDS_ROTATE                        14
+Define IDS_UNROTATE                      15
+Define IDS_SAVE_AS                       16
+Define IDS_DONE                          17
+Define IDS_0_DEGREES                     18
+Define IDS_45_DEGREES                    19
+Define IDS_90_DEGREES                    20
+Define IDS_135_DEGREES                   21
+Define IDS_180_DEGREES                   22
+Define IDS_225_DEGREES                   23
+Define IDS_270_DEGREES                   24
+Define IDS_315_DEGREES                   25
+Define IDS_RASTER                        26
+Define IDS_MUST_BE_NUMERIC               27
+Define IDS_OUT_OF_RANGE                  28
+Define IDS_OK                            29
+Define IDS_CANCEL                        30
+Define IDS_ERROR_1                       31
+Define IDS_ERROR_2                       32
+Define IDS_ERROR_3                       33
+Define IDS_ERROR_4                       34
+Define IDS_FOR_ORIGIN                    35
+Define IDS_AND_ANGLE                     36
+Define IDS_IN_MAP_WINDOW                 37
+Define IDS_FOR_MAP_WINDOW                38
+Define IDS_NO_LAYERS_TO_SAVE             39
+Define IDS_CHOOSE_A_TABLE                40
+Define IDS_SPECIFY_NAME                  41
+Define IDS_ABOUT                         42
+Define IDS_ABOUT_1                       43
+Define IDS_ABOUT_2                       44
+Define IDS_ABOUT_3                       45
+Define IDS_ABOUT_4                       46
+Define IDS_ABOUT_5                       47
+Define IDS_DEG_SYMBOL                    48
+Define IDS_TILESERVER                    49
+
+'Strings Not to be localized
+Define STR_RES_STR_FILE                  "RotateMapWindow.str"
+Define STR_FILE_NOT_ACCESSIBLE           "Unable to access resource string file: "
+Define STR_APP_FILE_NAME                 "RotateMapWindow.mbx"
+Define STR_MENU_ITEM_SEPERATOR           "(-"
+Define STR_EMPTY_STR1                    ""
+Define STR_EMPTY_STR2                    " "
+Define STR_EMPTY_STR3                    """"
+Define STR_COMMA                         ", "
+Define STR_OPEN_BRAC                     "("
+Define STR_CLOSE_BRAC                    ")"
+Define STR_CMD_ALTER_MENU_ITEM_GUI       "Alter Menu Item GUI "
+Define STR_ENABLE                        "Enable"
+Define STR_DISABLE                       "Disable"
+Define STR_TAB                           "TAB"
+Define STR_AS                            " As "
+Define STR_CMD_COMMIT_TABLE              "Commit Table "
+Define STR_AFFINE                        "Affine"
+Define STR_ZERO                          "0"
+Define STR_MI                            "mi"
+Define STR_NONE                          "none"
+Define STR_SUB_MAIN                      "Main: "
+Define STR_SUB_ROTATE                    "Rotate: "
+Define STR_SUB_UNROTATE                  "Unrotate: "
+Define STR_SUB_SAVE                      "Save: "
+Define STR_SUB_MAP_CENTER                "MapCenter: "
+Define STR_SUB_ABOUT                     "About: "
+Define STR_SUB_EXIT                      "Exit: "
+Define STR_SUB_ROTATE_ENABLE             "RotateEnable: "
+Define STR_SUB_GUI                       "GUI: "
+Define STR_SET_MAP                       "Set Map "
+Define STR_AFFINE_UNITS                  " Affine Units "

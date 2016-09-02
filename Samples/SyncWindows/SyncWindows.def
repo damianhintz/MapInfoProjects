@@ -1,0 +1,97 @@
+Declare Function GetParent Lib "USER32" Alias "GetParent" (ByVal hwnd as Integer) As Integer
+
+Include "..\INC\ResStrng.def"
+Include "..\INC\Auto_Lib.def"
+'Include "..\Legends\legends.def"
+Include "SyncString.def"
+include "..\INC\mapbasic.def"
+include "..\INC\icons.def"
+include "..\INC\menu.def"
+Include "..\inc\SetToolBarPos.def"
+
+declare sub main
+Declare Sub Start
+declare sub tile_window
+declare sub clone_map
+declare sub map_sync
+declare sub Do_Sync
+declare sub WinChangedHandler
+declare sub create_legend(ByVal windowID as Integer)
+declare sub Redline_Symbol
+declare sub Redline_Polyline
+declare sub Redline_Polygon
+Declare Sub RedLine_Ellipse
+Declare Sub ClearCosmetic
+Declare Sub MapperId
+Declare Sub Rename
+Declare Sub Exit_Program
+Declare Sub About
+Declare Sub RemoveCurrentLegendButtonHandler
+Declare Sub RemoveAllLegendButtonHandler
+Declare Sub RemoveEmbeddedLegend(ByVal windowId as Integer)
+Declare Sub AlwaysEmbedLegendCheckBoxChangedHandler
+Declare Sub InitializeSynchronizeDialogHandler
+Declare Sub EnableDisableRemoveLegendControls(ByVal enabled as Logical)
+Declare Sub EmbedCurrentLegendButtonHandler
+Declare Sub EmbedAllLegendButtonHandler
+Declare Sub DisableWindowButtons()
+
+Declare Sub mapSyncDynamic
+Declare Sub endHandler 
+Declare Sub winClosedHandler 
+
+Declare Function WindowHasLegend(ByVal win as Integer, ByVal bEmbedded as Logical) As Integer
+Declare Function WindowParented(ByVal hwndChild as Integer, ByVal hwndParent as Integer) As Logical
+
+Global glUseFrontWinProjForSync as logical
+Global t_rnd as integer
+Global tab_list as string
+Global tag_map_sync as logical
+Global tag_sync_inaction as logical
+Global tag_embed_legend as logical
+Global g_int_MapperId() as integer
+Global l_Center as logical
+Global l_zoom as logical
+
+'The below strings are not to be localized
+Define STR_OVERVIEW                                  "Overview"
+Define STR_AREA_OF_DETAIL                            "Area of Detail"
+Define STR_SET_MAP_WINDOW                            "Set Map Window "
+Define STR_EMPTY_SPACE                               " "
+Define STR_RES_STR_FILE                              "SyncWindows.str"
+Define STR_FILE_NOT_ACCESSIBLE                       "Unable to access resource string file: "
+Define STR_APP_FILE_NAME                             "CoordinateExtractor.mbx"
+Define STR_MENU_ITEM_SEPARATOR                       "(-"
+Define STR_FN_MAIN                                   "Main: "
+Define STR_FN_START                                  "Start: "
+Define STR_FN_TILE_WINDOW                            "tile_window :"
+Define STR_FN_CLONE_MAP                              "clone_map: "
+Define STR_FN_MAP_SYNC                               "map_sync: "
+Define STR_FN_REMOVE_CURRENT_LEGEND_BUTTON_HANDLER   "RemoveCurrentLegendButtonHandler: "
+Define STR_FN_EMBED_CURRENT_LEGEND_BUTTON_HANDLER    "EmbedCurrentLegendButtonHandler: "
+Define STR_FN_REMOVE_ALL_LEGEND_BUTTON_HANDLER       "RemoveAllLegendButtonHandler: "
+Define STR_FN_EMBED_ALL_LEGEND_BUTTON_HANDLER        "EmbedAllLegendButtonHandler: "
+Define STR_FN_ENABLE_DISABLE_REMOVE_LEGEND_CONTROLS  "EnableDisableRemoveLegendControls: "
+Define STR_FN_INITIALIZE_SYNCHRONIZE_DIALOG_HANDLER  "InitializeSynchronizeDialogHandler: "
+Define STR_FN_DISABLE_WINDOW_BUTTONS                 "DisableWindowButtons: "
+Define STR_FN_ALWAYS_EMBED_LEGEND_CHKBOX_HANDLER     "AlwaysEmbedLegendCheckBoxChangedHandler: "
+Define STR_FN_DO_SYNC                                "Do_Sync: "
+Define STR_FN_WIN_CHANGED_HANDLER                    "WinChangedHandler: "
+Define STR_FN_CREATE_LEGEND                          "create_legend: "
+Define STR_FN_REDLINE_SYMBOL                         "Redline_Symbol: "
+Define STR_FN_REDLINE_POLYLINE                       "Redline_Polyline: "
+Define STR_FN_REDLINE_POLYGON                        "Redline_Polygon: "
+Define STR_FN_REDLINE_ELLIPSE                        "Redline_Ellipse: "
+Define STR_FN_RENAME                                 "Rename: "
+Define STR_FN_CLEAR_COSMETIC                         "ClearCosmetic: "
+Define STR_FN_MAPPER_ID                              "MapperId: "
+Define STR_FN_ABOUT                                  "About: "
+Define STR_FN_MAP_SYNC_DYNAMIC                       "mapSyncDynamic: "
+Define STR_FN_END_HANDLER                            "endHandler: "
+Define STR_FN_WIN_CLOSED_HANDLER                     "winClosedHandler: "
+Define STR_FN_REMOVE_EMBEDDED_LEGEND                 "RemoveEmbeddedLegend: "
+Define STR_FN_CREATE_EMBEDDED_LEGEND_FOR_ACTIVE_WIN  "CreateEmbeddedLegendForActiveWindow: "
+Define STR_FN_WINDOW_HAS_LEGEND                      "WindowHasLegend: "
+Define STR_FN_WINDOW_PARENTED                        "WindowParented: "
+Define STR_EMPTY_STR                                 ""
+Define STR_LEGEND                                    "Legend"

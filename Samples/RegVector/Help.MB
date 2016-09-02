@@ -1,0 +1,54 @@
+'
+'       Copyright (c) 2007, Pitney Bowes MapInfo Corporation
+'       All rights reserved.
+'       Confidential Property of Pitney Bowes MapInfo Corporation
+'
+Include "Mapbasic.def"
+Include "menu.def"
+Include "Icons.def"
+include "auto_lib.def"
+include "register.def"
+include "Register_Strings.def"
+include "..\inc\Resstrng.def"
+
+Define AppVersion 1.0
+
+Sub About
+
+	Dialog
+		Title GetResString(IDS_Help_Title) & "(" & GetResString(IDS_Version) & AppVersion & ")"
+			Control StaticText
+				title GetResString(IDS_About_1)
+				position 5,10
+			Control StaticText
+				title	GetResString(IDS_About_2)
+				position 5,18
+			Control StaticText
+				title GetResString(IDS_About_3)
+				position 5,26
+			Control StaticText
+				title	GetResString(IDS_About_4)
+				position 5,34
+			Control StaticText
+				title GetResString(IDS_About_5)
+				position 5,42
+			Control StaticText
+				title GetResString(IDS_About_6)
+				position 5,58
+			Control StaticText
+				title GetResString(IDS_About_7)
+				position 5,66
+			Control StaticText
+				title GetResString(IDS_About_8)
+				position 5,74
+			Control StaticText
+				title GetResString(IDS_About_9)
+				position 5,90
+			Control StaticText
+				title GetResString(IDS_About_10)
+				position 5,98
+	
+			Control OKButton
+				Title "&OK"
+
+End Sub

@@ -1,0 +1,85 @@
+' Resource String Ids
+Define IDS_LONG_LAT_CALC                          1
+Define IDS_CNVRT_COORD                            2
+Define IDS_ABT_LONGLATS                           3
+Define IDS_CNVRT_COL_DMS                          4
+Define IDS_CNVRT_COL_DEC_DEG                      5
+Define IDS_MENU_ITEM_SEPERATOR                    6
+Define IDS_ABT_CNVRT                              7
+Define IDS_EXIT_CNVRT                             8
+Define IDS_CNVRTER                                9
+Define IDS_CNVRT_DEC_DEG_TO_DMS                  10
+Define IDS_CLOSE_BRAC                            11  
+Define IDS_TABLE                                 12
+Define IDS_GET_DEC_DEG_VAL                       13
+Define IDS_STORE_RESULT                          14
+Define IDS_STR_RESULT_SEPARTOR                   15
+Define IDS_COMMA_SEPARATOR                       16
+Define IDS_BROWSE_RESULTS                        17
+Define IDS_DEC_SECONDS                           18
+Define IDS_NUM_SEP_NOT_VALID                     19
+Define IDS_DASH_DELIMIT_NOT_SUPPORTED            20
+Define IDS_GET_DMS_VALUE                         21
+Define IDS_DMS_SEPRATOR_STR                      22
+Define IDS_COORD_ENTRD_THROUGH_DLG               23
+Define IDS_SEPRATOR_DIFF_FROM_TABLE_SEPARATOR    24
+Define IDS_NO_OPEN_TABLE                         25
+Define IDS_NO_VALID_TABLE_OPEN                   26
+Define IDS_VALID_TABLE_REQT_1                    27
+Define IDS_VALID_TABLE_REQT_2                    28
+Define IDS_FALSE                                 29
+Define IDS_PROG_DESC_1                           30
+Define IDS_DMS_FORMAT_1                          31
+Define IDS_DMS_FORMAT_2                          32
+Define IDS_DEC_DEG_FORMAT_1                      33
+Define IDS_DEC_DEG_FORMAT_2                      34
+Define IDS_DMS_COL_REQT                          35
+Define IDS_READONLY_TABLE                        36
+Define IDS_ABT_CNVRT_VER                         37
+Define IDS_ERR_INVALID_TABLE_TYPE                38
+Define IDS_ERR_INVALID_COL_TYPE                  39
+Define IDS_ABOUT_LL                              40
+Define IDS_LONGLATS_DESC1                        41
+Define IDS_LONGLATS_DESC2                        42
+Define IDS_OK                                    43
+Define IDS_CNVRT_LL_COORD                        44
+Define IDS_FROM_DMS_TO_DD_AND_DD_TO_DMS          45
+Define IDS_COORD_IN_DMS                          46
+Define IDS_DEG                                   47
+Define IDS_MIN                                   48
+Define IDS_SEC                                   49
+Define IDS_COORD_IN_DD                           50
+Define IDS_DEGREES                               51
+Define IDS_CNVRT                                 52
+Define IDS_DONE                                  53
+Define IDS_DEG_OUT_OF_RANGE                      54
+Define IDS_MIN_OUT_OF_RANGE                      55
+Define IDS_SEC_OUT_OF_RANGE                      56
+Define IDS_DD_OUT_OF_RANGE                       57
+Define IDS_CNVRT_DMS_TO_DEC_DEG                  58
+
+
+'Strings not to be localised
+Define STR_TRUE                                  "true"                        
+Define STR_FALSE                                 "false"
+Define STR_ZERO                                  "0"
+Define STR_IND                                   ".ind"
+Define STR_COL_NUM                               "col"
+Define STR_FORMAT1                               "0.####"
+Define STR_FORMAT2                               "0.########"
+Define STR_EMPTY_STR1                            "   "
+Define STR_EMPTY_STR2                            " "
+Define STR_EMPTY_STR3                            ""
+Define STR_FORMAT3                              "####.######"
+Define STR_EQUALTO                               "== "
+Define STR_X                                     "X"
+Define STR_Y                                     "Y"
+Define STR_S                                     " S"
+Define STR_N                                     " N"
+Define STR_W                                     " W"
+Define STR_E                                     " E"
+Define STR_RES_STR_FILE                          "Dmscnvrt.str"
+Define STR_FILE_NOT_ACCESSIBLE                   "Unable to access resource string file: "
+Define STR_NEW_LINE                              "\n"
+Define STR_DOT_SEPRATOR                          "."
+Define STR_MINUS_SIGN                            "-"

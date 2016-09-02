@@ -1,0 +1,239 @@
+'*****************************************************************************
+'       Copyright (c) 2000, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: LONGLATS.MB $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+'  Code module that provides support for the MapInfo 3.0 style Longlats
+'  program in the 4.0 DMSCNVRT utility.
+'
+'------------------------------------------------------------------------
+
+' Include standard definitions files 
+Include "..\Inc\mapbasic.def"
+Include "..\Inc\icons.def" 
+Include "Dmscnvrt.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+Declare Sub LongLatsMain 
+Declare Sub LongLatConvert 
+Declare Sub about
+Declare Sub convert 
+Declare Sub Point_and_click 
+Declare Sub calc_parts(total_var, deg_var, min_var, sec_var As Float)
+Declare Function Build_Parts$(ByVal x_or_y As String, 
+                              ByVal num As Float, 
+                              ByVal deg As Float, 
+                              ByVal min As Float, 
+                              ByVal sec As Float) As String 
+
+Global d, m, s, total As Float
+
+'*****************************************************************
+Sub LongLatsMain 
+   If LoadStrings((ApplicationDirectory$() + STR_RES_STR_FILE)) = FALSE   Then 
+    Note STR_FILE_NOT_ACCESSIBLE + ApplicationDirectory$() + STR_RES_STR
+    Exit Sub
+  End If
+  
+  total = 42.75833333
+  Call calc_parts(total, d, m, s) 
+  Call LongLatConvert
+End Sub 
+
+
+Sub about
+  ' 
+  ' this procedure displays an "about" dialog, giving a brief
+  ' blurb explaining what the application does. 
+  ' 
+  Dialog 
+	Title GetResString(IDS_ABOUT_LL)
+	     
+    Control StaticText
+        Title GetResString(IDS_LONGLATS_DESC1) + Chr$(13) + Chr$(13) + 
+              GetResString(IDS_LONGLATS_DESC2)
+        Position 10, 10
+        Width 270
+        Height 85
+     
+     Control OKButton
+        Title GetResString(IDS_OK)  'Position 100, 65 
+
+End Sub 
+
+
+Sub LongLatConvert
+  '
+  ' This procedure displays a Dialog, which lets the user type in 
+  ' a longitude or latitude, in either decimal degrees or in 
+  ' DMS (degrees, minutes, seconds).  After typing in either type
+  ' of long/lat value, the user can click the "Convert" button,
+  ' and the dialog shows what the other degree format looks like. 
+  ' 
+  Dialog
+     Title GetResString(IDS_CNVRT_LL_COORD)
+
+     Control RadioGroup
+       Title GetResString(IDS_FROM_DMS_TO_DD_AND_DD_TO_DMS)
+       Value 1 
+       Id 1
+     Control StaticText
+       Title GetResString(IDS_COORD_IN_DMS)
+       Position 25, 45
+     Control EditText
+       Value Str$(d)
+       Position 35, 55
+       'Width 30
+       Id 2
+     Control StaticText
+       Title GetResString(IDS_DEG)
+     Control EditText
+       Value Str$(m) 
+       'Width 30
+       Id 3
+     Control StaticText
+       Title GetResString(IDS_MIN)
+     Control EditText
+       Value Format$(s, STR_FORMAT1)
+       'Width 40
+       Id 4
+     Control StaticText
+       Title GetResString(IDS_SEC)
+     Control StaticText
+       Title GetResString(IDS_COORD_IN_DD)
+       Position 25, 80
+     Control EditText
+       Value Format$(total, STR_FORMAT2) 
+       Position 35, 90
+       Id 5 
+     Control StaticText 
+       Title GetResString(IDS_DEGREES)
+     Control OKButton
+       Title GetResString(IDS_CNVRT)
+       Calling convert 
+     Control CancelButton 
+       Title GetResString(IDS_DONE)
+
+End Sub
+
+
+
+Sub convert
+  ' 
+  '  This is the handler procedure for the OKButton control 
+  '  from the LongLatConvert procedure.  
+  ' 
+  '  In this dialog, the OK button reads "Convert" instead of "OK".
+  '  When the user clicks the button, we update the dialog; 
+  '  so, we'll issue a Dialog Preserve statement right off the bat. 
+  '  
+  Dialog Preserve
+
+  Dim bNegZero As Logical
+  Dim workD As string
+
+  If  ReadControlValue(1) = 1 Then
+    bNegZero = (STR_MINUS_SIGN = Left$(ReadControlValue(2), 1))
+    d = Round(Val(ReadControlValue(2)), 1)  'degrees: -180 to 180 
+    m = Round(Val(ReadControlValue(3)), 1)  'minutes: 0 - 59 (no fractions) 
+    s = Val(ReadControlValue(4))            'seconds: 0 - 59 (fractions ok)
+    workD = STR_EMPTY_STR3
+    If bNegZero = TRUE Then
+	  workD = STR_MINUS_SIGN
+    End If
+    workD = workD & Abs(d)
+    Alter Control 2 Value Str$(workD)
+    Alter Control 3 Value Str$(m)
+    Alter Control 4 Value Format$(s, STR_FORMAT1) 
+    s = Val(ReadControlValue(4))            
+    If d < -180 or d > 180 Then
+      Note GetResString(IDS_DEG_OUT_OF_RANGE)
+      Exit Sub
+    ElseIf m < 0 or m > 59 Then
+      Note GetResString(IDS_MIN_OUT_OF_RANGE)
+      Exit Sub
+    ElseIf s < 0 or s >= 60 Then
+      Note GetResString(IDS_SEC_OUT_OF_RANGE)
+      Exit Sub
+    End If
+    total = Abs(d) + (  (m + (s / 60)) / 60  ) 
+    If d < 0 Or bNegZero Then 
+      total = total * -1
+    End If 
+    Alter Control 5 Value Format$(total, STR_FORMAT2)  
+  Else
+    total = Val(ReadControlValue(5))
+    If total > 180 or total < -180 Then
+      Note GetResString(IDS_DD_OUT_OF_RANGE)
+      Exit Sub
+    End If
+    Call calc_parts(total, d, m, s)
+    workD = STR_EMPTY_STR3
+    If total < 0 Then
+      workD = STR_MINUS_SIGN
+    End If
+    workD = workD & str$(d)
+    Alter Control 2 Value workD
+    Alter Control 3 Value Str$(m)
+    Alter Control 4 Value Format$(s, STR_FORMAT1) 
+    s = Val(ReadControlValue(4))        
+  End If 
+
+  Print GetResString(IDS_COORD_ENTRD_THROUGH_DLG) 
+  Print STR_EMPTY_STR1 + Build_Parts$(STR_EMPTY_STR2, total, d, m, s) 
+  Print STR_EQUALTO + Format$(total, STR_FORMAT3) + Chr$(13) 
+
+End Sub
+
+
+Sub calc_parts( total_var, deg_var, min_var, sec_var As Float )
+  '
+  ' given a variable "total_var" that represents a single 
+  ' decimal degree value, calculate the various "parts" (degrees,
+  ' minutes, seconds) and return them in the other parameters. 
+  '
+  Dim work As Float 
+
+  work = Abs(total_var) 
+  deg_var = work \ 1
+  work = 60 * (work - deg_var) 
+  min_var = work \ 1
+  sec_var = 60 * (work - min_var)
+End Sub 
+
+
+Function Build_Parts$(ByVal x_or_y As String,
+                      ByVal num As Float, 
+                      ByVal deg As Float, 
+                      ByVal min As Float, 
+                      ByVal sec As Float) As String 
+
+  Dim trailer As String 
+
+  If UCase$(x_or_y) = STR_X  Then 
+    If num < 0 Then 
+      trailer = STR_W
+    Else
+      trailer = STR_E
+    End If 
+  ElseIf UCase$(x_or_y) = STR_Y Then 
+    If num < 0 Then 
+      trailer = STR_S
+    Else
+      trailer = STR_N
+    End If 
+  Else 
+    trailer = STR_EMPTY_STR2
+  End If 
+
+  Build_Parts$ = Str$(Abs(deg)) + Chr$(176) + STR_EMPTY_STR2 + Str$(min) + Chr$(146) 
+                + STR_EMPTY_STR2 + Format$(sec, STR_FORMAT1) + Chr$(34) + trailer 
+
+End Function 

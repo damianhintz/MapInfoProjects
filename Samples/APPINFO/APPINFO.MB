@@ -1,0 +1,265 @@
+'******************************************************************************
+'                             MAPINFO CORPORATION
+'
+' Date:         6/14/95          
+'
+' Module:       AppInfo.mb
+' Application:  AppInfo.mbx
+' For Version:  MapInfo 4.0
+' 
+' Overview:
+'
+'   This application provides the ability to get information on the
+'   MapBasic applications that are currently running in MapInfo, including
+'   an application's globals and their values.
+'
+'   It will even report information on its own globals and their values,
+'   since this is also a currently running MapBasic application (See the 
+'   'Change Test Global...' menu item).
+'
+'   Note: Global array variables will have no values due to the nature
+'   of DDERequest$().
+'
+' Concepts that are featured:
+'
+'   DDE communication between MapBasic applications.
+'  
+'******************************************************************************
+
+Include "MAPBASIC.DEF"
+Include "MENU.DEF"
+
+'Sample Application common routines
+Include "..\Inc\AUTO_LIB.DEF"
+
+'Module routines
+Declare Sub Main
+Declare Sub Punt
+Declare Sub EndHandler
+Declare Sub AboutAppInfo
+
+Declare Sub WhatApps
+Declare Sub ListSelect
+Declare Sub WhatGlobals
+Declare Sub ChgTest
+Declare Function GetWord$(text As String, ByVal delim As String) As String
+
+'Module defines and globals
+Define TAB Chr$(9)
+Global gsTestGlobal As String
+Global gsAppList() As String
+
+'------------------------------------------------------------------------------
+' Application startup, menu items and initialization.
+'------------------------------------------------------------------------------
+Sub Main()
+  Create Menu "&AppInfo" As
+    "&What Applications?" Calling WhatApps,
+    "&Change Test Global..." Calling ChgTest,
+    "(-",
+    "&About AppInfo..."		Calling AboutAppInfo,
+    "E&xit AppInfo"       Calling Punt
+
+  Call set_tools_menu("&AppInfo")
+
+  gsTestGlobal = "Test Value"
+
+  '''''''''''''''''''''''''''''''''''''
+  ' Auto-Load support global variables.
+  gsAppDescription = "AppInfo"
+  gsAppFilename = "appinfo.mbx"
+End Sub
+
+'------------------------------------------------------------------------------
+' Terminate Application.
+'------------------------------------------------------------------------------
+Sub Punt()
+  End Program
+End Sub
+
+'------------------------------------------------------------------------------
+' Cleanup before shutting down the application.
+'------------------------------------------------------------------------------
+Sub EndHandler()
+  DDETerminateAll
+End Sub
+
+'------------------------------------------------------------------------------
+' About Box for AppInfo.
+'------------------------------------------------------------------------------
+Sub AboutAppInfo
+   Dialog Title "About AppInfo"
+
+   Control statictext Title "This application provides the ability to get"   position 10,10
+   Control statictext Title "information on the MapBasic applications that"  position 10,18
+   Control statictext Title "are currently running in MapInfo, including an" position 10,26
+   Control statictext Title "application's globals and their values."        position 10,34
+
+   Control statictext Title "It will even report information on its own"     position 10,46
+   Control statictext Title "globals and their values, since this is also"   position 10,54
+   Control statictext Title "a currently running MapBasic application"       position 10,62
+   Control statictext Title "(See the 'Change Test Global...' menu item)."   position 10,70
+
+   Control statictext Title "Note: Global array variables will have no"      position 10,82
+   Control statictext Title "values due to the nature of DDERequest$()."     position 10,90
+
+   Control OKButton                                                          position 63,128
+End Sub
+
+'------------------------------------------------------------------------------
+' Display the MapBasic applications currently running.
+'------------------------------------------------------------------------------
+Sub WhatApps()
+  Dim nChan, i As Integer
+  Dim sTopics, sWord As String
+
+  OnError Goto ERROR_TRAP
+  '''''''''''''''''''''''''''''''''''''
+  ' Establish a conversation with MapInfo and get a list of the MapBasic applications
+  ' that are currently in use.
+  nChan = DDEInitiate("MapInfo", "System")
+  sTopics = DDERequest$(nChan, "Topics")
+  DDETerminate nChan
+
+  '''''''''''''''''''''''''''''''''''''
+  ' The list is tab delimited, retrieve each application name, and store them
+  ' in an array. (Retrieve and ignore the first item in the list because it is
+  ' "System").
+  sWord = GetWord$(sTopics, TAB)
+  ReDim gsAppList(0)
+  i = 1
+  Do While sTopics <> "" 
+    ReDim gsAppList(i)
+    gsAppList(i) = PathToFileName$(GetWord$(sTopics, TAB))
+    i = i + 1
+  Loop
+
+  '''''''''''''''''''''''''''''''''''''
+  ' Display the array list of applications.
+  If UBound(gsAppList) Then
+    Dialog Title "MapBasic Applications" 
+    Control ListBox Title From Variable gsAppList Width 200 ID 1 Value 1 Calling ListSelect
+    Control Button Title "What Globals?" Calling WhatGlobals
+    Control CancelButton Title "Close"
+  Else 
+    Note "No MapBasic applications are currently active."
+  End If
+
+DONE:
+  Exit Sub
+ERROR_TRAP:
+  Note Error$()
+  Resume DONE
+End Sub
+
+'------------------------------------------------------------------------------
+' Checks for double clicks on a list item.
+'------------------------------------------------------------------------------
+Sub ListSelect
+  OnError Goto ERROR_TRAP
+
+  If CommandInfo(CMD_INFO_DLG_DBL) Then
+    Call WhatGlobals
+  End If
+
+DONE:
+  Exit Sub
+ERROR_TRAP:
+  Note Error$()
+  Resume DONE
+End Sub
+
+'------------------------------------------------------------------------------
+' Display the globals and their values for the selected MapBasic application.
+'------------------------------------------------------------------------------
+Sub WhatGlobals()
+  Dim sGlobals, sGlobList(), sAppName As String
+  Dim i, nAppChan As Integer
+
+  OnError Goto ERROR_TRAP
+  '''''''''''''''''''''''''''''''''''''
+  ' Establish a conversation with the selected application and get a list of the names
+  ' of global variables in use.
+  sAppName = gsAppList(ReadControlValue(1))
+  nAppChan = DDEInitiate("MapInfo", sAppName)
+  sGlobals = DDERequest$(nAppChan, "{items}")
+
+  '''''''''''''''''''''''''''''''''''''
+  ' The list is tab delimited, retrieve each global name and its value, and store them
+  ' in an array.
+  ReDim sGlobList(0)
+  i = 1
+  Do While sGlobals <> "" 
+    ReDim sGlobList(i)
+    sGlobList(i) = GetWord$(sGlobals, TAB)
+    sGlobList(i) = sGlobList(i) + " = " + DDERequest$(nAppChan, sGlobList(i))
+    i = i + 1
+  Loop
+
+  '''''''''''''''''''''''''''''''''''''
+  ' Terminate the conversation with this application.
+  DDETerminate nAppChan
+
+  '''''''''''''''''''''''''''''''''''''
+  ' Display the array list of globals.
+  If UBound(sGlobList) Then
+    Dialog Title "Global Variables"
+    Control ListBox Title From Variable sGlobList Width 200 ID 1 Value 1
+    Control CancelButton Title "Close"
+  Else 
+    Note "This application does not have any global variables defined."
+  End If
+
+DONE:
+  Exit Sub
+ERROR_TRAP:
+  Note Error$()
+  Resume DONE
+End Sub
+
+'------------------------------------------------------------------------------
+' Dialog to change the value of the global test variable.
+'------------------------------------------------------------------------------
+Sub ChgTest
+  OnError Goto ERROR_TRAP
+
+  Dialog Title "Change Test Global"
+  Control EditText Value gsTestGlobal Into gsTestGlobal Width 100
+  Control OKButton
+  Control CancelButton
+
+DONE:
+  Exit Sub
+ERROR_TRAP:
+  Note Error$()
+  Resume DONE
+End Sub
+
+'------------------------------------------------------------------------------
+' This function gets the first word that appears within the given string. A word
+' being defined by delimiters of type delim.
+'
+' NOTE: The passed text string is altered, having the first word in it removed.
+'------------------------------------------------------------------------------
+Function GetWord$(sText As String, ByVal sDelim As String) As String
+  Dim iDelimPos As SmallInt
+
+  OnError Goto ERROR_TRAP
+  sText = RTrim$(LTrim$(sText))
+
+  iDelimPos = InStr(1, sText, sDelim)
+  If iDelimPos Then
+    GetWord$ = Left$(sText, iDelimPos-1)
+    sText = Right$(sText, Len(sText)-iDelimPos)
+  Else
+    GetWord$ = sText
+    sText = ""
+  End If
+
+DONE:
+  Exit Function
+ERROR_TRAP:
+  Note Error$()
+  GetWord$ = ""
+  Resume DONE
+End Function

@@ -1,0 +1,1109 @@
+
+Include "MapBasic.def"
+Include "sw_spatialize_tab.def"
+Include "..\Inc\auto_lib.def"
+Include "..\Inc\ResStrng.def"
+
+DECLARE	Sub			Main
+DECLARE	Sub			func_dialog_spatial_column()
+DECLARE	Sub			func_spatialize_column()
+DECLARE	Sub			func_despatialize_column()
+DECLARE	Sub			func_sptialize_or_despatialize(label as Integer)
+DECLARE	Sub			init_spatial_dialog()
+DECLARE	Sub			init_spatial_column(click	AS Logical)
+DECLARE	Sub			pickup_spatial_column()
+DECLARE	Sub			add_spatial_or_key_column(label AS INTEGER)
+DECLARE	Sub			func_add_spatial_column()
+DECLARE	Sub			func_add_key_column()
+DECLARE	Sub			func_dialog_both_enable()
+DECLARE	Sub			func_dialog_spatial_disable()
+DECLARE	Sub			func_dialog_key_disable()
+DECLARE	Sub			func_dialog_both_disable()
+DECLARE	Sub			sptialize_sqlserver_handler()
+DECLARE	Sub			about_spatialize_tab()
+DECLARE	Sub			exit_spatialize_tab()
+DECLARE	SUB			sw_do_connection()
+
+DECLARE	FUNCTION	sw_get_toolkit AS STRING
+DECLARE	FUNCTION 	sw_get_connection() AS INTEGER
+DECLARE	FUNCTION	func_check_dup_dsnname(dsn_name as string) AS LOGICAL
+
+GLOBAL		hdbc						As INTEGER
+GLOBAL		OwnerName					AS STRING
+GLOBAL		TableName					AS STRING
+GLOBAL		OwnerTableName			AS STRING
+GLOBAL		SpatialColumnName		AS STRING
+GLOBAL		KeyColumnName				AS STRING
+GLOBAL		FileGroupName				AS STRING
+GLOBAL		PrefetchSize				AS STRING
+GLOBAL		CacheSize					AS STRING
+GLOBAL		KeyColumnNum				AS INTEGER
+GLOBAL		SpatialColumnNum			AS INTEGER
+GLOBAL		AddSpatialColumnVisible	AS Logical
+GLOBAL		AddKeyColumnVisible			AS Logical
+GLOBAL		OwnerNames()				AS STRING
+GLOBAL		TableNames()				AS STRING
+GLOBAL		OwnerTableNames()		AS STRING
+GLOBAL		SpatialColumnNames()	AS STRING
+GLOBAL		KeyColumnNames()			AS STRING
+GLOBAL		IsNewDbc					AS INTEGER
+GLOBAL		ToolKitSelection			AS INTEGER
+GLOBAL		NumTableNames				AS INTEGER
+
+DIM			SW_Connections()			AS INTEGER
+DIM			SW_ConnectionNames()	AS STRING
+
+SUB Main
+	DIM menu_name as STRING
+
+	'load the message file
+	If LoadStrings((ApplicationDirectory$() + "sw_spatialize_tab.str")) = FALSE Then
+		Note "Unable to access resource string file: " + ApplicationDirectory$() + "sw_spatialize_tab.str"
+		Exit Sub
+	End If
+
+	gsAppFilename =  "sw_spatialize_tab.mbx"
+	gsAppDescription = GetResString(IDS_APP_DESCRIPTION)
+
+	menu_name = GetResString(IDS_SPATIALIZE_MENU_NAME)
+
+	Create Menu menu_name as
+ 		menu_name		Calling sptialize_sqlserver_handler,
+  		"(-",
+  		GetResString(IDS_SPATIALIZE_ABOUT_DIALOG)	Calling about_spatialize_tab,
+  		GetResString(IDS_SPATIALIZE_EXIT_DIALOG)	Calling exit_spatialize_tab
+
+	Call set_tools_menu(menu_name)  
+
+End Sub
+
+'*********************************************************************
+'create a connection and check if it is SQL Server Database
+'*********************************************************************
+Sub sptialize_sqlserver_handler()
+	Dim i, NumConnections, odbchconn,cur_dbc_id AS INTEGER
+	Dim ConnName as String
+	Dim dlg_string as String
+	Dim DriverName as String
+	Dim server_name as string
+  	
+  ' No toolkits available? Give message
+  IF Server_NumDrivers() = 0 THEN
+    Note GetResString(IDS_NO_TOOLKIT_MSG)
+    EXIT SUB
+  END IF
+
+	IsNewDbc = 0
+	NumConnections = 0
+	hdbc = 0
+
+	REDIM SW_Connections(SW_MAX_CONNECTIONS) 
+	REDIM SW_ConnectionNames(SW_MAX_CONNECTIONS) 
+
+	FOR i = 1 TO SW_MAX_CONNECTIONS
+		SW_Connections(i) = 0
+		SW_ConnectionNames(i) = ""
+	NEXT
+
+	dlg_string = Server_DriverInfo(0, SRV_DRV_INFO_NAME_LIST)
+	if(Len(dlg_string) = 0) Then GOTO ALLDONE
+	End IF
+
+	cur_dbc_id = 0
+
+	ONERROR GOTO NOCONNECTION
+
+	FOR i = 1 TO SW_MAX_CONNECTIONS
+
+	odbchconn = Server_getODBChconn(i)
+
+	ConnName = Server_ConnectInfo(i, SRV_CONNECT_INFO_DS_NAME)
+
+	' Filter the dbc name and take out the duplication dbc.
+	if func_check_dup_dsnname(ConnName) = 0 then
+		NumConnections=NumConnections+1   
+		SW_Connections(NumConnections)=i  
+		SW_ConnectionNames(NumConnections)= i + ": " + ConnName 
+	end if
+
+SKIP:
+  NEXT
+
+  GOTO ALLDONE
+
+NOCONNECTION:
+  RESUME SKIP
+
+ALLDONE:
+	Redim SW_Connections(NumConnections) 
+	Redim SW_ConnectionNames(NumConnections)   
+
+	IF UBOUND(SW_Connections) = 0 THEN
+		ONERROR GOTO CONNERR 
+
+		DriverName = sw_get_toolkit()
+
+		' If no suitable driver, exit.
+		if DriverName = "" then
+			exit sub
+		end if
+		hdbc = SERVER_CONNECT(DriverName, "DLG=2")
+		IsNewDbc = 1
+
+		GOTO ALLDONE2
+
+		CONNERR:
+'			Note Error$()
+			hdbc = 0
+	ELSE
+		' Let user pick from a list of existing connections
+		hdbc = sw_get_connection()
+	END IF
+
+ALLDONE2:
+	if hdbc <> 0 then
+		server_name = Server_ConnectInfo (hdbc, SRV_CONNECT_INFO_DB_NAME)
+
+		' Checking whether the driver for SQL Server.
+		if like(UCase$(server_name),"%SQL SERVER%", "") then
+			Call func_dialog_spatial_column
+		else
+			Note	GetResString(IDS_NOT_SURPPORTED_DSN)
+		end if
+		if IsNewDbc = 1 then
+	 		Server hdbc Disconnect
+		end if
+	end if
+End Sub
+
+'Pick up the driver.
+FUNCTION sw_get_toolkit() AS STRING
+
+DIM		driver_names	as String
+
+  ' No toolkits available? Error
+	IF Server_NumDrivers() = 0 THEN
+		Note GetResString(IDS_NO_TOOLKIT_MSG)
+		sw_get_toolkit=""
+		EXIT SUB
+
+  ' If only one toolkit installed, pick it for the user   
+	ELSEIF Server_NumDrivers() = 1 THEN
+		ToolKitSelection = 1
+		sw_get_toolkit = Server_DriverInfo(ToolkitSelection, SRV_DRV_INFO_NAME)
+		EXIT SUB
+ 
+	ELSE
+		' Multiple toolkits installed
+		' Allow user to select the toolkit to use
+		' Set default toolkit to the last one used  
+		IF ToolKitSelection = 0 THEN
+			ToolKitSelection = 1
+		END IF
+
+		'If ODBC is one of the driver name, pick it up directly.
+		driver_names = RTRIM$(LTRIM$(UCase$(Server_DriverInfo(0, SRV_DRV_INFO_NAME_LIST))))
+		if driver_names = "ODBC" 
+				OR like(driver_names, "ODBC;%", "") 
+				OR like(driver_names, "%;ODBC", "") 
+				OR like(driver_names, "%;ODBC;%", "") then
+			sw_get_toolkit = "ODBC"
+		else
+			DIALOG
+				Title GetResString(IDS_TEXT_SQL_TOOLKIT)
+				Control StaticText
+					Title GetResString(IDS_TEXT_SELECT_TOOLKIT)
+					Position 8, 8 
+				Control PopupMenu
+					Title Server_DriverInfo(0, SRV_DRV_INFO_NAME_LIST)
+					Position 8, 22 
+					Width SW_DL_ToolkitName_Width
+					Value ToolKitSelection
+					Into ToolKitSelection
+				Control OKButton
+					Title GetResString(IDS_TEXT_OK)
+					Position 8, 42 
+					Width SW_PushButton_Width
+				Control CancelButton
+					Title GetResString(IDS_TEXT_CANCEL)
+					Position 58, 42 
+					Width SW_PushButton_Width
+    
+			IF COMMANDINFO ( CMD_INFO_DLG_OK ) THEN
+				sw_get_toolkit = Server_DriverInfo(ToolKitSelection, SRV_DRV_INFO_NAME)
+			ELSE 
+				sw_get_toolkit = ""
+			END IF
+		end if
+	END IF
+END FUNCTION
+
+'The dialog of choosing the exist connection or create a new one.
+'**  sw_get_connection()  **********************************************
+'* The dialog of choosing the exist connection or create a new one.
+'****************************************************************************
+FUNCTION sw_get_connection() AS INTEGER
+	DIM ConnectionSelection AS INTEGER
+
+	DIALOG
+		Title GetResString(IDS_TEXT_CONNECTION_MANAGER)
+		CONTROL LISTBOX
+			Position 8,8
+			Width 120
+			Height 78
+			Value 1
+			TITLE FROM VARIABLE SW_ConnectionNames
+			Into ConnectionSelection
+			ID CONNECTION_LIST_ID
+		Control Button
+			Title GetResString(IDS_TEXT_NEW_DOT)
+			Position 138, 8
+			Width 45
+			HEIGHT 16
+			ID NEW_CONNECTION_BUTTON_ID
+			CALLING sw_do_connection
+		Control Button
+			Title GetResString(IDS_TEXT_SELECT)
+			Position 138, 38 
+			Width 45
+			HEIGHT 16
+			ID SELECT_CONNECTION_BUTTON_ID
+			CALLING sw_do_connection
+		Control Button
+			Title GetResString(IDS_TEXT_CLOSE)
+			Position 138,68
+			Width 45
+			HEIGHT 16
+			ID CLOSE_CONNECTION_MANAGER_ID
+			CALLING sw_do_connection
+
+	sw_get_connection = hdbc
+END FUNCTION
+
+'**  sw_do_connection()  **********************************************
+'* Handler to get a connection 
+'****************************************************************************
+SUB sw_do_connection()
+	DIM		Selected	AS INTEGER
+	DIM DriverName as String
+
+	DO CASE TRIGGERCONTROL()
+
+	Case SELECT_CONNECTION_BUTTON_ID 
+		IF UBOUND(SW_Connections) <> 0 THEN 
+			hdbc = SW_Connections(ReadControlValue(CONNECTION_LIST_ID))
+		ELSE
+			hdbc =0
+		END IF
+		DIALOG REMOVE
+
+	Case CLOSE_CONNECTION_MANAGER_ID 
+		hdbc = 0
+		DIALOG REMOVE
+
+	Case NEW_CONNECTION_BUTTON_ID 
+		DriverName = sw_get_toolkit()
+
+		if DriverName <> "" then
+
+			ONERROR GOTO CONNERR 
+
+			hdbc = SERVER_CONNECT(DriverName, "DLG=2")
+			IsNewDbc = 1
+
+			GOTO ALLDONE
+
+			CONNERR:
+'				Note Error$()
+				hdbc = 0
+			ALLDONE:
+			DIALOG REMOVE
+		end if
+	END CASE
+END SUB
+
+FUNCTION	func_check_dup_dsnname(dsn_name as string) AS LOGICAL
+	Dim		i	as integer
+
+	func_check_dup_dsnname = 0
+	FOR i = 1 TO UBOUND(SW_ConnectionNames)
+		if InStr(1, SW_ConnectionNames(i),": " + dsn_name) then
+			func_check_dup_dsnname = 1
+			exit For
+		end if
+	NEXT
+END FUNCTION
+
+'*********************************************************************
+'create the main dialog window
+'*********************************************************************
+Sub func_dialog_spatial_column()
+
+	PrefetchSize= "200"
+	CacheSize = "400"
+
+'	OwnerName = Server_ConnectInfo(hdbc, SRV_CONNECT_INFO_SQL_USER_ID)
+
+	Call init_spatial_dialog()
+
+	if AddSpatialColumnVisible = 1 and AddKeyColumnVisible = 1 then
+		Call func_dialog_both_enable()
+	elseif AddSpatialColumnVisible = 0 and AddKeyColumnVisible = 1 then
+		Call func_dialog_spatial_disable()
+	elseif AddSpatialColumnVisible = 1 and AddKeyColumnVisible = 0 then
+		Call func_dialog_key_disable()
+	else
+		Call func_dialog_both_disable()
+	end if
+End Sub
+
+'*********************************************************************
+'spatialize the table
+'*********************************************************************
+Sub func_spatialize_column()
+	DIM		label	AS INTEGER
+	label = 1
+	call func_sptialize_or_despatialize (label)
+End Sub
+
+'*********************************************************************
+'despatialize the table
+'*********************************************************************
+Sub func_despatialize_column()
+	DIM		label	AS INTEGER
+	label = -1
+	call func_sptialize_or_despatialize (label)
+End Sub
+
+'*********************************************************************
+'Spatialize or Despatialize the table
+'*********************************************************************
+Sub func_sptialize_or_despatialize(label as Integer)
+
+	Dim		stmt_cmd				AS String
+	Dim		hstmt					AS Integer
+	Dim		err_ori_str			AS String
+	Dim		err_msg				AS String
+	Dim		err_msg_identity		AS String
+	Dim		err_msg_pos			AS Integer
+
+	if ReadControlValue(TableName_ID) <= NumTableNames then
+		OwnerName = RTrim$(OwnerNames(ReadControlValue(TableName_ID)))
+		TableName = RTrim$(TableNames(ReadControlValue(TableName_ID)))
+	else
+		OwnerName = ""
+		TableName = ""
+	end if
+	if SpatialColumnNum = 0 then
+		SpatialColumnName = ""
+	else
+		SpatialColumnName = RTrim$(SpatialColumnNames(ReadControlValue(SpatialColumnName_ID)))
+	end if
+	if KeyColumnNum = 0 then
+		KeyColumnName = ""
+	else
+		KeyColumnName = RTrim$(KeyColumnNames(ReadControlValue(KeyColumnName_ID)))
+	end if
+
+	if TableName = "" then
+		Note GetResString(IDS_TABLE_NAME_NOT_NULL)
+		Exit Sub
+	elseif SpatialColumnName= "" then
+		Note GetResString(IDS_SPATIAL_COL_NOT_NULL)
+		Exit Sub
+	elseif KeyColumnName = "" then
+		Note GetResString(IDS_KEY_COL_NOT_NULL)
+		Exit Sub
+	end if
+
+	ONERROR GOTO IGNORE
+	if label = 1 then
+'		stmt_cmd = "exec sp_sw_spatialize_column '" + OwnerName + "','" + TableName + "','" + SpatialColumnName + "','" + KeyColumnName + "'"
+'		hstmt = Server_Execute (hdbc, stmt_cmd)
+'		Server hstmt Close
+		stmt_cmd = "exec sp_sw_create_rtree '" + OwnerName + "','" + TableName + "','" + SpatialColumnName + "','" + KeyColumnName + "'"
+		hstmt = Server_Execute (hdbc, stmt_cmd)
+		Server hstmt Close
+	else
+		stmt_cmd = "exec sp_sw_drop_rtree '" + OwnerName + "','" + TableName + "','" + SpatialColumnName + "','" + KeyColumnName + "'"
+		hstmt = Server_Execute (hdbc, stmt_cmd)
+		Server hstmt Close
+		stmt_cmd = "exec sp_sw_despatialize_column '" + OwnerName + "','" + TableName + "','" + SpatialColumnName + "','" + KeyColumnName + "'"
+		hstmt = Server_Execute (hdbc, stmt_cmd)
+		Server hstmt Close
+	end if
+	GOTO DONE
+	IGNORE:
+		err_msg_identity = "[SQL Server]"
+		err_ori_str = Error$()
+		err_msg_pos = InStr(1,err_ori_str,err_msg_identity)
+		if Len(err_ori_str)-err_msg_pos-11 > 1 then
+			err_msg = Right$(err_ori_str,Len(err_ori_str)-err_msg_pos-11)
+		else
+			err_msg = err_ori_str
+		end if
+		if LTRIM$(RTRIM$(err_msg)) = "SW-80009: The rtree is already created.." then
+			err_msg = GetResString(IDS_RTREE_EXIST_MSG)
+		elseif LTRIM$(RTRIM$(err_msg)) = "SW-80010: The rtree is not created.." then
+			err_msg = GetResString(IDS_NORTREE_MSG)
+		end if
+		Note  err_msg
+		exit sub
+	DONE:
+	if label = 1 then
+		Note  GetResString(IDS_SPATIALIZE_SUCCESS)
+	else
+		Note  GetResString(IDS_DESPATIALIZE_SUCCESS)
+	end if
+End Sub
+
+'*********************************************************************
+'initialize the values of table name, spatial column and key column
+'*********************************************************************
+Sub init_spatial_dialog()
+	DIM		CurDimLen						AS INTEGER
+	DIM		SizeTableNamesIncrement	AS INTEGER
+	DIM		odbchdbc						AS INTEGER
+	DIM		odbchstmt						AS INTEGER
+	DIM		rc								AS SMALLINT
+	DIM		OutOwn							AS STRING
+	DIM		OutTab							AS STRING
+	DIM		OutLen							AS INTEGER
+	DIM		param							AS Logical
+
+	DIM		TableOwnerFilter,TableNamesFilter,TableTypeFilter AS STRING
+	DIM		TableOwnerLen, TableNameLen, TableTypeLen AS SMALLINT
+
+	OutOwn   = STRING$(66, "0")
+	OutTab   = STRING$(66, "0")
+
+	TableOwnerFilter= "%"
+	TableNamesFilter = "%"
+	TableTypeFilter  = "TABLE"
+	TableOwnerLen = LEN(TableOwnerFilter)
+	TableNameLen  = LEN(TableNamesFilter)
+	TableTypeLen  = LEN(TableTypeFilter)
+
+	REDIM OwnerNames(0)
+	REDIM TableNames(0)
+	REDIM OwnerTableNames(0)
+	SizeTableNamesIncrement=20
+	NumTableNames=0
+	CurDimLen = 0
+
+	odbchdbc = Server_GetODBCHConn(hdbc)
+
+	rc = SQLAllocStmt(odbchdbc, odbchstmt)
+
+	rc = SQLTables(odbchstmt,0,0,TableOwnerFilter,TableOwnerLen,TableNamesFilter,TableNameLen,TableTypeFilter,TableTypeLen)
+
+	rc = SQLFetch(odbchstmt)
+
+	While rc = 0
+		rc = SQLGetData(odbchstmt, 2, 1, OutOwn,  66, OutLen)
+		rc = SQLGetData(odbchstmt, 3, 1, OutTab,  66, OutLen)
+		if not (like(RTRIM$(OutTab),"%#%r%","") or like(RTRIM$(OutTab),"%#%t%","") or like(RTRIM$(OutTab),"%#%m%","") or like(RTRIM$(OutTab),"MAPINFO\_MAPCATALOG","\")) then
+			NumTableNames=NumTableNames+1
+			CurDimLen = UBOUND(TableNames)
+			IF NumTableNames > CurDimLen THEN
+				REDIM OwnerNames(CurDimLen + SizeTableNamesIncrement)
+				REDIM TableNames(CurDimLen + SizeTableNamesIncrement)
+				REDIM OwnerTableNames(CurDimLen + SizeTableNamesIncrement)
+			END IF
+			OwnerNames(NumTableNames) = RTRIM$(OutOwn)
+			TableNames(NumTableNames) = RTRIM$(OutTab)
+			OwnerTableNames(NumTableNames) = "[" + OwnerNames(NumTableNames) + "].[" + TableNames(NumTableNames) + "]"
+		end if
+		rc = SQLFetch(odbchstmt)
+	WEND
+
+	rc = SQLFreeStmt(odbchdbc, 1)
+
+	REDIM OwnerNames(NumTableNames)
+	REDIM TableNames(NumTableNames)
+	REDIM OwnerTableNames(NumTableNames)
+	if NumTableNames >= 1 then
+		OwnerName = OwnerNames(1)
+		TableName = TableNames(1)
+		OwnerTableName = OwnerTableNames(1)
+	end if
+	param = 0
+	call init_spatial_column (param)
+
+END SUB
+
+'*********************************************************************
+'refresh the values spatial column and key column
+'*********************************************************************
+Sub pickup_spatial_column()
+	DIM		param		AS Logical
+	param = 1
+	Call init_spatial_column(param)
+End Sub
+
+'*********************************************************************
+'refresh the values of spatial column and key column
+'click = 0, initialize the values before the dialog window is active
+'click = 1, refresh the values, when new table is chosen
+'*********************************************************************
+Sub init_spatial_column(click	AS Logical)
+	DIM		ImageColumnNum				AS INTEGER
+	DIM		AllColumnNum					AS INTEGER
+	DIM		CurDimLen						AS INTEGER
+	DIM		SizeTableNamesIncrement	AS INTEGER
+	DIM		odbchdbc						AS INTEGER
+	DIM		odbchstmt						AS INTEGER
+	DIM		rc								AS SMALLINT
+	DIM		OutTab							AS STRING
+	DIM		OutLen							AS INTEGER
+	DIM		tab_len						AS INTEGER
+	DIM		ColType						AS STRING
+
+	DIM		TableOwnerFilter,TableNamesFilter, ColumnNameFilter AS STRING
+	DIM		TableOwnerLen, TableNameLen, ColumnNameLen AS SMALLINT
+
+	AddSpatialColumnVisible = 1
+	AddKeyColumnVisible = 1
+
+	if click = 1 then
+		TableOwnerFilter = RTrim$(OwnerNames(ReadControlValue(TableName_ID)))
+		TableNamesFilter = RTrim$(TableNames(ReadControlValue(TableName_ID)))
+	else
+		TableOwnerFilter = OwnerName
+		TableNamesFilter = TableName
+	end if
+	ColumnNameFilter = "%"
+	TableOwnerLen = LEN(TableOwnerFilter)
+	TableNameLen  = LEN(TableNamesFilter)
+	ColumnNameLen = LEN(ColumnNameFilter)
+
+	KeyColumnNum = 0
+	SpatialColumnNum = 0
+
+	OutTab = STRING$(66, "0")
+	ColType = STRING$(66, "0")
+
+	REDIM SpatialColumnNames(0)
+	REDIM KeyColumnNames(0)
+	SizeTableNamesIncrement=20
+	AllColumnNum=0
+	ImageColumnNum=0
+	CurDimLen = 0
+
+	odbchdbc = Server_GetODBCHConn(hdbc)
+
+	rc = SQLAllocStmt(odbchdbc, odbchstmt)
+
+	rc = SQLColumns(odbchstmt,0,0,TableOwnerFilter,TableOwnerLen,TableNamesFilter,TableNameLen,ColumnNameFilter ,ColumnNameLen )
+
+	rc = SQLFetch(odbchstmt)
+
+	While rc = 0
+		rc = SQLGetData(odbchstmt, 4, 1, OutTab,  66, OutLen)
+		rc = SQLGetData(odbchstmt, 5, 1, ColType,  66, OutLen)
+		if RTRIM$(ColType) = "-4" then
+			ImageColumnNum = ImageColumnNum + 1
+			CurDimLen = UBOUND(SpatialColumnNames)
+			IF ImageColumnNum > CurDimLen THEN
+				REDIM SpatialColumnNames(CurDimLen + SizeTableNamesIncrement)
+			END IF
+			SpatialColumnNames(ImageColumnNum) = RTRIM$(OutTab)
+			if SpatialColumnNames(ImageColumnNum) = "sw_geometry" then
+				SpatialColumnNum = ImageColumnNum
+				AddSpatialColumnVisible = 0
+			end if
+		else
+			AllColumnNum=AllColumnNum+1
+			CurDimLen = UBOUND(KeyColumnNames)
+			IF AllColumnNum> CurDimLen THEN
+				REDIM KeyColumnNames(CurDimLen + SizeTableNamesIncrement)
+			END IF
+			KeyColumnNames(AllColumnNum) = RTRIM$(OutTab)
+			if KeyColumnNames(AllColumnNum) = "sw_member" then
+				KeyColumnNum = AllColumnNum
+				AddKeyColumnVisible = 0
+			end if
+
+		end if
+
+		rc = SQLFetch(odbchstmt)
+
+	WEND
+
+	rc = SQLFreeStmt(odbchdbc, 1)
+
+	REDIM SpatialColumnNames(ImageColumnNum)
+	REDIM KeyColumnNames(AllColumnNum)
+
+	if ImageColumnNum > 0 and SpatialColumnNum = 0 then
+		SpatialColumnNum = 1
+	end if
+
+
+	if AllColumnNum> 0 and KeyColumnNum = 0 then
+		KeyColumnNum = 1
+	end if
+
+	if click = 1 then
+		if SpatialColumnNum > 0 then
+			Alter Control   SpatialColumnName_ID 
+				Title From Variable  SpatialColumnNames
+				Value SpatialColumnNum
+		else
+			Alter Control   SpatialColumnName_ID 
+				Title From Variable  SpatialColumnNames
+		end if
+		if KeyColumnNum > 0 then
+			Alter Control   KeyColumnName_ID 
+				Title From Variable  KeyColumnNames
+				Value KeyColumnNum
+		else
+			Alter Control   KeyColumnName_ID 
+				Title From Variable  KeyColumnNames
+		end if
+
+		if AddSpatialColumnVisible = 1 then
+			Alter Control   AddSpatialColumn_ID  Enable
+		else
+			Alter Control   AddSpatialColumn_ID  Disable
+		end if
+
+		if AddKeyColumnVisible = 1 then
+			Alter Control   AddKeyColumn_ID  Enable
+		else
+			Alter Control   AddKeyColumn_ID  Disable
+		end if
+	end if
+
+END SUB
+
+'*********************************************************************
+'Add spatial column
+'*********************************************************************
+Sub func_add_spatial_column()
+	DIM		param		AS integer
+	param = 2
+	Call add_spatial_or_key_column(param)
+End Sub
+
+'*********************************************************************
+'Add key column
+'*********************************************************************
+Sub func_add_key_column()
+	DIM		param		AS integer
+	param = 1
+	Call add_spatial_or_key_column(param)
+End Sub
+
+
+'*********************************************************************
+'label = 1, key column
+'label = 2, spatial column
+'*********************************************************************
+Sub add_spatial_or_key_column(label AS INTEGER)
+	Dim		stmt_cmd				AS	String
+	Dim		hstmt					AS	Integer
+	Dim		err_ori_str			AS	String
+	Dim		err_msg				AS	String
+	Dim		err_msg_identity		AS	String
+	Dim		err_msg_pos			AS	Integer
+	Dim		KeyColumnName			AS	String
+	Dim		SpatialColumnName	AS	String
+	DIM		param					AS Logical
+
+	if ReadControlValue(TableName_ID) <= NumTableNames then
+		OwnerName = RTrim$(OwnerNames(ReadControlValue(TableName_ID)))
+		TableName = RTrim$(TableNames(ReadControlValue(TableName_ID)))
+	else
+		OwnerName = ""
+		TableName = ""
+	end if
+
+	if TableName = "" then
+		Note  GetResString(IDS_TABLE_NAME_NOT_NULL)
+		Exit Sub
+	end if
+
+	KeyColumnName = "sw_member"
+	SpatialColumnName = "sw_geometry"
+	
+	if label = 1 then
+		stmt_cmd = "alter table [" + OwnerName + "].[" + TableName + "] add [" + KeyColumnName +"] integer not null IDENTITY PRIMARY KEY"
+	elseif label = 2 then
+		stmt_cmd = "alter table [" + OwnerName + "].[" + TableName + "] add [" + SpatialColumnName +"] ST_Spatial"
+	end if	
+
+	ONERROR GOTO IGNORE
+	hstmt = Server_Execute (hdbc, stmt_cmd)
+	Server hstmt Close
+	GOTO DONE
+	IGNORE:
+		err_msg_identity = "[SQL Server]"
+		err_ori_str = Error$()
+		err_msg_pos = InStr(1,err_ori_str,err_msg_identity)
+		if Len(err_ori_str)-err_msg_pos-11 > 1 then
+			err_msg = Right$(err_ori_str,Len(err_ori_str)-err_msg_pos-11)
+		else
+			err_msg = err_ori_str
+		end if
+
+		Note  err_msg
+		exit sub
+	DONE:
+		if label = 1 then
+			Note  GetResString(IDS_ADD_KEY_COL_SUCCESS)
+		elseif label = 2 then	
+			Note  GetResString(IDS_ADD_SPATIAL_COL_SUCCESS)
+		end if
+		param = 1
+		Call init_spatial_column(param)
+End Sub
+
+'*********************************************************************
+' Create the main dialog window
+' Enable the button "Add Spatial Column"
+' Enable the button "Add Key Column"
+'*********************************************************************
+Sub func_dialog_both_enable()
+	DIALOG
+		TITLE GetResString(IDS_TEXT_SPTIALIZEING_TABLE)
+		CONTROL STATICTEXT
+			TITLE GetResString(IDS_TEXT_TABLE_NAME)
+			Position 8, 4
+		CONTROL POPUPMENU
+			Width 256
+			Position 8, 20
+			ID TableName_ID
+			Calling pickup_spatial_column
+			Title From Variable OwnerTableNames
+
+		CONTROL STATICTEXT
+			TITLE GetResString(IDS_TEXT_SPATIAL_COLUMN)
+			Position 8, 40
+		CONTROL BUTTON
+			Position 62, 36
+			WIDTH 72
+			HEIGHT 16
+			ID	AddSpatialColumn_ID
+			Calling	func_add_spatial_column
+			Title  GetResString(IDS_TEXT_ADD_SPATIAL_COLUMN)
+		CONTROL POPUPMENU
+			Width 256
+			Position 8, 56
+			VALUE SpatialColumnNum
+			ID SpatialColumnName_ID
+			Title From Variable SpatialColumnNames
+
+		CONTROL STATICTEXT
+			TITLE GetResString(IDS_TEXT_KEY_COLUMN)
+			Position 8, 76
+		CONTROL BUTTON
+			Position 62, 72
+			WIDTH 72
+			HEIGHT 16
+			ID	AddKeyColumn_ID
+			Calling	func_add_key_column
+			Title  GetResString(IDS_TEXT_ADD_KEY_COLUMN)
+		CONTROL POPUPMENU
+			Width 256
+			Position 8, 92
+			VALUE KeyColumnNum
+			ID KeyColumnName_ID
+			Title From Variable KeyColumnNames
+
+		CONTROL BUTTON
+			Position 278, 10
+			WIDTH 60
+			HEIGHT 16
+			Calling	func_spatialize_column
+			Title  GetResString(IDS_TEXT_SPATIALIZE)
+
+		CONTROL BUTTON
+			Position 278, 46
+			WIDTH 60
+			HEIGHT 16
+			Calling	func_despatialize_column
+			Title  GetResString(IDS_TEXT_DESPATIALIZE)
+
+		CONTROL CANCELBUTTON
+			Position 278, 82 
+			HEIGHT 16
+			WIDTH 60
+			Title  GetResString(IDS_TEXT_EXIT)
+End Sub
+
+'*********************************************************************
+' Create the main dialog window
+' Disable the button "Add Spatial Column"
+' Enable the button "Add Key Column"
+'*********************************************************************
+Sub func_dialog_spatial_disable()
+	DIALOG
+		TITLE GetResString(IDS_TEXT_SPTIALIZEING_TABLE)
+		CONTROL STATICTEXT
+			TITLE GetResString(IDS_TEXT_TABLE_NAME)
+			Position 8, 4
+		CONTROL POPUPMENU
+			Width 256
+			Position 8, 20
+			ID TableName_ID
+			Calling pickup_spatial_column
+			Title From Variable OwnerTableNames
+
+		CONTROL STATICTEXT
+			TITLE GetResString(IDS_TEXT_SPATIAL_COLUMN)
+			Position 8, 40
+		CONTROL BUTTON
+			Position 62, 36
+			WIDTH 72
+			HEIGHT 16
+			ID	AddSpatialColumn_ID
+			Calling	func_add_spatial_column
+			Title  GetResString(IDS_TEXT_ADD_SPATIAL_COLUMN)
+			Disable
+
+		CONTROL POPUPMENU
+			Width 256
+			Position 8, 56
+			VALUE SpatialColumnNum
+			ID SpatialColumnName_ID
+			Title From Variable SpatialColumnNames
+
+		CONTROL STATICTEXT
+			TITLE GetResString(IDS_TEXT_KEY_COLUMN)
+			Position 8, 76
+		CONTROL BUTTON
+			Position 62, 72
+			WIDTH 72
+			HEIGHT 16
+			ID	AddKeyColumn_ID
+			Calling	func_add_key_column
+			Title  GetResString(IDS_TEXT_ADD_KEY_COLUMN)
+		CONTROL POPUPMENU
+			Width 256
+			Position 8, 92
+			VALUE KeyColumnNum
+			ID KeyColumnName_ID
+			Title From Variable KeyColumnNames
+
+		CONTROL BUTTON
+			Position 278, 10
+			WIDTH 60
+			HEIGHT 16
+			Calling	func_spatialize_column
+			Title  GetResString(IDS_TEXT_SPATIALIZE)
+
+		CONTROL BUTTON
+			Position 278, 46
+			WIDTH 60
+			HEIGHT 16
+			Calling	func_despatialize_column
+			Title  GetResString(IDS_TEXT_DESPATIALIZE)
+
+		CONTROL CANCELBUTTON
+			Position 278, 82 
+			HEIGHT 16
+			WIDTH 60
+			Title  GetResString(IDS_TEXT_EXIT)
+End Sub
+
+
+'*********************************************************************
+' Create the main dialog window
+' Enable the button "Add Spatial Column"
+' Disable the button "Add Key Column"
+'*********************************************************************
+Sub func_dialog_key_disable()
+	DIALOG
+		TITLE GetResString(IDS_TEXT_SPTIALIZEING_TABLE)
+		CONTROL STATICTEXT
+			TITLE GetResString(IDS_TEXT_TABLE_NAME)
+			Position 8, 4
+		CONTROL POPUPMENU
+			Width 256
+			Position 8, 20
+			ID TableName_ID
+			Calling pickup_spatial_column
+			Title From Variable OwnerTableNames
+
+		CONTROL STATICTEXT
+			TITLE GetResString(IDS_TEXT_SPATIAL_COLUMN)
+			Position 8, 40
+		CONTROL BUTTON
+			Position 62, 36
+			WIDTH 72
+			HEIGHT 16
+			ID	AddSpatialColumn_ID
+			Calling	func_add_spatial_column
+			Title  GetResString(IDS_TEXT_ADD_SPATIAL_COLUMN)
+
+		CONTROL POPUPMENU
+			Width 256
+			Position 8, 56
+			VALUE SpatialColumnNum
+			ID SpatialColumnName_ID
+			Title From Variable SpatialColumnNames
+
+		CONTROL STATICTEXT
+			TITLE GetResString(IDS_TEXT_KEY_COLUMN)
+			Position 8, 76
+		CONTROL BUTTON
+			Position 62, 72
+			WIDTH 72
+			HEIGHT 16
+			ID	AddKeyColumn_ID
+			Calling	func_add_key_column
+			Title  GetResString(IDS_TEXT_ADD_KEY_COLUMN)
+			Disable
+		CONTROL POPUPMENU
+			Width 256
+			Position 8, 92
+			VALUE KeyColumnNum
+			ID KeyColumnName_ID
+			Title From Variable KeyColumnNames
+
+		CONTROL BUTTON
+			Position 278, 10
+			WIDTH 60
+			HEIGHT 16
+			Calling	func_spatialize_column
+			Title  GetResString(IDS_TEXT_SPATIALIZE)
+
+		CONTROL BUTTON
+			Position 278, 46
+			WIDTH 60
+			HEIGHT 16
+			Calling	func_despatialize_column
+			Title  GetResString(IDS_TEXT_DESPATIALIZE)
+
+		CONTROL CANCELBUTTON
+			Position 278, 82 
+			HEIGHT 16
+			WIDTH 60
+			Title  GetResString(IDS_TEXT_EXIT)
+End Sub
+
+'*********************************************************************
+' Create the main dialog window
+' Enable the button "Add Spatial Column"
+' Disable the button "Add Key Column"
+'*********************************************************************
+Sub func_dialog_both_disable()
+	DIALOG
+		TITLE GetResString(IDS_TEXT_SPTIALIZEING_TABLE)
+
+		CONTROL STATICTEXT
+			TITLE GetResString(IDS_TEXT_TABLE_NAME)
+			Position 8, 4
+		CONTROL POPUPMENU
+			Width 256
+			Position 8, 20
+			ID TableName_ID
+			Calling pickup_spatial_column
+			Title From Variable OwnerTableNames
+
+		CONTROL STATICTEXT
+			TITLE GetResString(IDS_TEXT_SPATIAL_COLUMN)
+			Position 8, 40
+		CONTROL BUTTON
+			Position 62, 36
+			WIDTH 72
+			HEIGHT 16
+			ID	AddSpatialColumn_ID
+			Calling	func_add_spatial_column
+			Title  GetResString(IDS_TEXT_ADD_SPATIAL_COLUMN)
+			Disable
+		CONTROL POPUPMENU
+			Width 256
+			Position 8, 56
+			VALUE SpatialColumnNum
+			ID SpatialColumnName_ID
+			Title From Variable SpatialColumnNames
+
+		CONTROL STATICTEXT
+			TITLE GetResString(IDS_TEXT_KEY_COLUMN)
+			Position 8, 76
+		CONTROL BUTTON
+			Position 62, 72
+			WIDTH 72
+			HEIGHT 16
+			ID	AddKeyColumn_ID
+			Calling	func_add_key_column
+			Title  GetResString(IDS_TEXT_ADD_KEY_COLUMN)
+			Disable
+		CONTROL POPUPMENU
+			Width 256
+			Position 8, 92
+			VALUE KeyColumnNum
+			ID KeyColumnName_ID
+			Title From Variable KeyColumnNames
+
+		CONTROL BUTTON
+			Position 278, 10
+			WIDTH 60
+			HEIGHT 16
+			Calling	func_spatialize_column
+			Title  GetResString(IDS_TEXT_SPATIALIZE)
+
+		CONTROL BUTTON
+			Position 278, 46
+			WIDTH 60
+			HEIGHT 16
+			Calling	func_despatialize_column
+			Title  GetResString(IDS_TEXT_DESPATIALIZE)
+
+		CONTROL CANCELBUTTON
+			Position 278, 82 
+			HEIGHT 16
+			WIDTH 60
+			Title  GetResString(IDS_TEXT_EXIT)
+End Sub
+
+Sub exit_spatialize_tab
+	End Program
+End Sub
+
+Sub about_spatialize_tab
+  Dialog
+    Title GetResString(IDS_TEXT_ABOUT_TITLE)
+    Control StaticText
+      Title GetResString(IDS_TEXT_ABOUT_1) Position 10, 10
+    Control StaticText
+      Title GetResString(IDS_TEXT_ABOUT_2) Position 10, 20
+    Control StaticText
+      Title GetResString(IDS_TEXT_ABOUT_3) Position 10, 30
+    Control StaticText
+      Title GetResString(IDS_TEXT_ABOUT_4) Position 10, 40
+    Control StaticText
+      Title GetResString(IDS_TEXT_ABOUT_5) Position 10, 50
+    Control StaticText
+      Title GetResString(IDS_TEXT_ABOUT_6) Position 10, 60
+    Control StaticText
+      Title GetResString(IDS_TEXT_ABOUT_7) Position 10, 70
+    Control StaticText
+      Title GetResString(IDS_TEXT_ABOUT_8) Position 10, 80
+    Control StaticText
+      Title GetResString(IDS_TEXT_ABOUT_9) Position 10, 90
+    Control StaticText
+      Title GetResString(IDS_TEXT_ABOUT_10) Position 10, 100
+    Control StaticText
+      Title GetResString(IDS_TEXT_ABOUT_11) Position 10, 110
+    Control StaticText
+      Title GetResString(IDS_TEXT_ABOUT_12) Position 10, 120
+    Control StaticText
+      Title GetResString(IDS_TEXT_ABOUT_13) Position 10, 130
+    Control StaticText
+      Title GetResString(IDS_TEXT_ABOUT_14) Position 10, 140
+    Control StaticText
+      Title GetResString(IDS_TEXT_ABOUT_15) Position 10, 150
+    Control StaticText
+      Title GetResString(IDS_TEXT_ABOUT_16) Position 10, 160
+    Control StaticText
+      Title GetResString(IDS_TEXT_ABOUT_17) Position 10, 170
+    Control StaticText
+      Title GetResString(IDS_TEXT_ABOUT_18) Position 10, 180
+    Control StaticText
+      Title GetResString(IDS_TEXT_ABOUT_19) Position 10, 190
+	Control OKButton
+      Title GetResString(IDS_TEXT_OK) Position 155, 210
+End Sub

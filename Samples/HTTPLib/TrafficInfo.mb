@@ -1,0 +1,45 @@
+'*****************************************************************************
+'       Copyright © 2009 Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 66276 $
+'
+' Module Description:
+'
+' A MapBasic sample program to demonstate the usage of MapInfo HTTP/XML
+' library API to get traffic information from Yahoo.
+'
+'*****************************************************************************
+Include "../inc/Mapbasic.def"
+Include "../inc/Menu.def"
+Include "../inc/HTTPTypes.def"
+Include "YahooTrafficRSS.def"
+include "MapUtils.def"
+
+Declare Sub Main
+Declare Sub Init
+Declare Sub ExitSub
+
+Sub Main
+
+  Call Init
+
+  Create Menu "&Sample" As
+     "&Get Yahoo Traffic..."          HelpMsg "Get Traffic feed from Yahoo Traffic" Calling GetYahooTrafficDLG,
+     "(-",
+    "E&xit"                         HelpMsg "Exit Sample" Calling ExitSub
+
+  Alter Menu Bar Remove "Help"
+  Alter Menu Bar Add "&Sample", "Help"
+
+ End Sub
+
+Sub Init
+  Call YahooTrafficRSSGetPreferences
+  Call YahooTrafficRSSInit
+ End Sub
+
+Sub ExitSub
+  Alter Menu Bar Remove "&Sample"
+  End Program
+End Sub

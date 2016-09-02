@@ -1,0 +1,89 @@
+Global serv_debug as logical
+
+Define ID_CONNECTION_POPUP        100
+Define ID_CLOSE_CONNECTION_BUTTON 101
+
+Define SRV_DLG_OK     1
+Define SRV_DLG_CANCEL 0
+
+Global ConnectionConfigFile as String
+Global Current_Driver as String
+Global ActiveConnectionIndex as SmallInt
+Global nActiveConnections as SmallInt
+Global ActiveConnections as String
+Global ActiveConnectionArray(1) As Integer
+
+'-- MENU Strings (Initialized in srv_ini.mb) ----------------------------
+Global server_menu As String
+Global Menu_SelectDriver As String
+Global Menu_OpenConnection As String
+Global Menu_CloseConnection As String
+Global Menu_ServerSelect As String
+Global Menu_Shutdown As String
+Global Tbl_SelectDialogTitle As String
+Global no_active_connections_str As String
+
+Global hstmt As Integer
+
+Type ServerConnectionType
+  InUse             as Logical    'Array element in use - memory management
+  Active            as Logical    'Connection is active - connection management
+  ConnectNo         as Integer    'Connection number
+  ConnectName       as String     'Name by which to identify connection
+  ConnectString     as String     'MapBasic command to perform connection
+
+  Driver            as String     'Driver used to make connection
+
+  select_string     as String
+  StmtDesc          as String     'Semi-colon delimited list of column names
+  Description       as String
+
+  dbms              as String
+  user_id           as String
+  password          as String
+  server            as String
+  database_name     as String
+  df_dir            as String
+  dd_dir            as String
+  appl              as String
+
+End Type
+
+Global DBCnt(1) as ServerConnectionType
+
+Global nDBCnt, MaxDBCnt as SmallInt
+Global SelectedDBC as SmallInt
+
+Global res_code as SmallInt
+
+Global nSystems as integer
+Global default_dbsystem as SmallInt
+Global DefaultSelectString as String
+Global db_sys(20) as string
+Global available_dbs as String
+
+Global connection_driver(10) as String
+Global connection_driver_list as String
+Global n_connection_drivers as SmallInt
+
+'Entry points
+Declare Sub Srv_ShutdownServer
+Declare Sub Srv_ServerMenu1
+
+Declare Sub Cnt_GetDatabaseConnection
+
+Declare Sub Cls_CloseDatabaseConnection
+
+Declare Sub Ini_InitSourceList(ByVal DriverNo As Integer)
+
+Declare Sub Pvw_PreviewSelectResults
+
+Declare Sub Tbl_DoServerSelect
+
+Declare Function Utl_NewDBCnt As SmallInt
+Declare Sub Utl_ActivateConnection(ByVal CntNo As SmallInt)
+Declare Sub Utl_BuildConnectionPopupList
+Declare Sub Utl_LoadSavedConnections
+Declare Sub Utl_ResetSelectedDBC
+Declare Sub Utl_ResetPopupList
+Declare Sub Utl_SetDescription

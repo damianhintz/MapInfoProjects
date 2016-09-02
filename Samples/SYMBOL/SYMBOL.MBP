@@ -1,0 +1,5 @@
+[Link] 
+Application=symbol.mbx 
+Module=symbol.mbo
+Module=..\Lib\auto_lib.mbo
+Module=..\Lib\resstrng.mbo

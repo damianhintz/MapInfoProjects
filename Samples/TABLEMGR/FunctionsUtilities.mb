@@ -1,0 +1,299 @@
+'/*****************************************************************************
+'*       Copyright © 2011 Pitney Bowes Software Inc.
+'*       All rights reserved.
+'*****************************************************************************/
+Include "TableManager.def"
+'****************************************************************************
+' Sub procedure: InitValidFunctions
+'****************************************************************************
+Sub InitValidFunctions
+
+  OnError Goto HandleError
+
+  'The user should see the options that can be appended in his locale
+  gaLocalisedAppendValue(1)  = STR_SEMI_COLON
+  gaLocalisedAppendValue(2)  = GetResString(IDS_VALID_FUNCTION2)
+  gaLocalisedAppendValue(3)  = GetResString(IDS_VALID_FUNCTION3)
+  gaLocalisedAppendValue(4)  = GetResString(IDS_VALID_FUNCTION4) 
+  gaLocalisedAppendValue(5)  = GetResString(IDS_VALID_FUNCTION5) 
+  gaLocalisedAppendValue(6)  = GetResString(IDS_VALID_FUNCTION6) 
+  gaLocalisedAppendValue(7)  = GetResString(IDS_VALID_FUNCTION7) 
+  gaLocalisedAppendValue(8)  = GetResString(IDS_VALID_FUNCTION8)
+  gaLocalisedAppendValue(9)  = GetResString(IDS_VALID_FUNCTION9)
+  gaLocalisedAppendValue(10) = GetResString(IDS_VALID_FUNCTION10) 
+  gaLocalisedAppendValue(11) = GetResString(IDS_VALID_FUNCTION11) 
+  gaLocalisedAppendValue(12) = GetResString(IDS_VALID_FUNCTION12) 
+  gaLocalisedAppendValue(13) = GetResString(IDS_VALID_FUNCTION13) 
+  gaLocalisedAppendValue(14) = GetResString(IDS_VALID_FUNCTION14) 
+  gaLocalisedAppendValue(15) = GetResString(IDS_VALID_FUNCTION15)
+  gaLocalisedAppendValue(16) = GetResString(IDS_VALID_FUNCTION16)
+  gaLocalisedAppendValue(17) = GetResString(IDS_VALID_FUNCTION17)
+  gaLocalisedAppendValue(18) = GetResString(IDS_VALID_FUNCTION18)
+  gaLocalisedAppendValue(19) = GetResString(IDS_VALID_FUNCTION19)
+  gaLocalisedAppendValue(20) = GetResString(IDS_VALID_FUNCTION20)
+  gaLocalisedAppendValue(21) = GetResString(IDS_VALID_FUNCTION21)
+  gaLocalisedAppendValue(22) = GetResString(IDS_VALID_FUNCTION22)
+  gaLocalisedAppendValue(23) = GetResString(IDS_VALID_FUNCTION23) 
+  gaLocalisedAppendValue(24) = GetResString(IDS_VALID_FUNCTION24)
+  gaLocalisedAppendValue(25) = GetResString(IDS_VALID_FUNCTION25)
+  gaLocalisedAppendValue(26) = GetResString(IDS_VALID_FUNCTION26)
+  gaLocalisedAppendValue(MAX_VALID_FUNCTIONS) = GetResString(IDS_VALID_FUNCTION27)
+  
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_INIT_VALID_FUNCTIONS + Error$()
+  Resume Next
+
+End Sub
+'****************************************************************************
+' Sub procedure: AppendFunction
+'****************************************************************************
+Sub AppendFunction
+
+  OnError Goto HandleError
+
+  Dim sValue, sFunctionReturn As String
+  Dim iFunction, iCntSelection, iTabType As Integer
+
+  sValue = ReadControlValue(TB_VALUE)
+
+  iFunction = ReadControlValue(PUM_FUNCTIONS)
+  sFunctionReturn = PerformFunction(iFunction)
+
+  If sFunctionReturn <> STR_EMPTY_STR Then
+    If sValue <> GetResString(IDS_EMPTY) Then
+      sValue = sValue + sFunctionReturn
+    Else
+      sValue = sFunctionReturn
+    End If
+
+    Alter Control TB_VALUE
+      Value sValue
+  End If
+
+  Exit Sub
+
+HandleError:
+  If Err() = 644 Or Err() = 414 Then
+    sFunctionReturn = GetResString(IDS_UNDEFINED)
+    Resume Next
+  Else
+    Note STR_SUB_APPEND_FUNCTION + Error$() + STR_EMPTY_STR1 + STR_HASH + Err()
+    Resume Next
+  End If
+
+End Sub
+'****************************************************************************
+' Function: PerformFunction
+'****************************************************************************
+Function PerformFunction(iFunctions As Integer) As String
+
+  OnError Goto HandleError
+
+  Dim sFunctionReturn As String
+  Dim iCntSelection, iTabType As Integer
+
+  Do Case iFunctions
+    Case 1                   ' ;" 
+        sFunctionReturn = STR_EMPTY_STR
+    Case 2                   ' CurrentDate();" 
+        sFunctionReturn = curdate()
+    Case 3                   ' CurrentData & Time();" 
+        sFunctionReturn = curdate() + STR_EMPTY_STR1 + Left$(Time(24),2) + Mid$(Time(24), 4, 2) + Right$(Time(24),2) + STR_ZERO + STR_ZERO
+    Case 4                   ' Current Time();" 
+        sFunctionReturn = Left$(Time(24),2) + Mid$(Time(24), 4, 2) + Right$(Time(24),2) + STR_ZERO +STR_ZERO
+    Case 5                   ' NumberPointObjectsInTable();" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        If TableInfo(gsCurTable, TAB_INFO_TYPE) = TAB_TYPE_IMAGE Or TableInfo(gsCurTable, TAB_INFO_MAPPABLE) = FALSE then
+          sFunctionReturn = GetResString(IDS_NOT_APPLICABLE)
+        Else
+          Select * From gsCurTable where str$(obj) = STR_POINT into PtsInTab
+          iCntSelection = TableInfo(PtsInTab, TAB_INFO_NROWS)
+          Close Table PtsInTab
+          sFunctionReturn = iCntSelection
+        End If
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 6                   ' NumberRegionObjectsInTable();" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        If TableInfo(gsCurTable, TAB_INFO_TYPE) = TAB_TYPE_IMAGE Or TableInfo(gsCurTable, TAB_INFO_MAPPABLE) = FALSE then
+            sFunctionReturn = GetResString(IDS_NOT_APPLICABLE)
+        Else
+            Select * From gsCurTable where str$(obj) = STR_REGION into RegInTab
+            iCntSelection = TableInfo(RegInTab, TAB_INFO_NROWS)
+            Close Table RegInTab
+            sFunctionReturn = iCntSelection 
+        End If
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 7                   ' NumberLineObjectsInTable();" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        If TableInfo(gsCurTable, TAB_INFO_TYPE) = TAB_TYPE_IMAGE Or TableInfo(gsCurTable, TAB_INFO_MAPPABLE) = FALSE then
+            sFunctionReturn = GetResString(IDS_NOT_APPLICABLE)
+        Else
+            Select * From gsCurTable where str$(obj) = STR_LINE into LinInTab
+            iCntSelection = TableInfo(LinInTab, TAB_INFO_NROWS)
+            Close Table LinInTab
+            sFunctionReturn = iCntSelection 
+        End If
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 8                   ' NumberPolyLineObjectsInTable();" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        If TableInfo(gsCurTable, TAB_INFO_TYPE) = TAB_TYPE_IMAGE Or TableInfo(gsCurTable, TAB_INFO_MAPPABLE) = FALSE then
+            sFunctionReturn = GetResString(IDS_NOT_APPLICABLE)
+        Else
+            Select * From gsCurTable where str$(obj) = STR_POLYLINE into PlnInTab
+            iCntSelection = TableInfo(PlnInTab, TAB_INFO_NROWS)
+            Close Table PlnInTab
+            sFunctionReturn = iCntSelection 
+        End If
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 9                   ' TableInfo(TAB_INFO_NAME);" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        sFunctionReturn = TableInfo(gsCurTable, TAB_INFO_NAME)
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 10                 ' TableInfo(TAB_INFO_TYPE);" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        iTabType = TableInfo(gsCurTable, TAB_INFO_TYPE)
+        Do Case iTabType
+            Case 1
+                sFunctionReturn = STR_TAB_TYPE_BASE
+            Case 2
+                sFunctionReturn = STR_TAB_TYPE_RESULT
+            Case 3
+                sFunctionReturn = STR_TAB_TYPE_VIEW
+            Case 4
+                sFunctionReturn = STR_TAB_TYPE_IMAGE
+            Case 5
+                sFunctionReturn = STR_TAB_TYPE_LINKED
+        End Case
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 11                   ' TableInfo(TAB_INFO_NCOLS);" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        sFunctionReturn = TableInfo(gsCurTable,TAB_INFO_NCOLS) 
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 12                   ' TableInfo(TAB_INFO_MAPPABLE);" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        sFunctionReturn = TableInfo(gsCurTable,TAB_INFO_MAPPABLE)
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 13                   ' TableInfo(TAB_INFO_READONLY);" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        sFunctionReturn = TableInfo(gsCurTable,TAB_INFO_READONLY)
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 14                   ' TableInfo(TAB_INFO_NROWS);" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        sFunctionReturn = TableInfo(gsCurTable,TAB_INFO_NROWS)
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 15                   ' TableInfo(TAB_INFO_MAPPABLE_TABLE);" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        sFunctionReturn = TableInfo(gsCurTable,TAB_INFO_MAPPABLE_TABLE)
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 16                   ' TableInfo(TAB_INFO_TABFILE);"  
+      If gsCurTable <> STR_EMPTY_STR Then
+        sFunctionReturn = TableInfo(gsCurTable,TAB_INFO_TABFILE)
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 17                   ' TableInfo(TAB_INFO_MINX);" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        sFunctionReturn = Format$(TableInfo(gsCurTable,TAB_INFO_MINX),STR_FORMAT1)
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 18                   ' TableInfo(TAB_INFO_MINY);" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        sFunctionReturn = Format$(TableInfo(gsCurTable,TAB_INFO_MINY),STR_FORMAT1)
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 19                   ' TableInfo(TAB_INFO_MAXX);" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        sFunctionReturn = Format$(TableInfo(gsCurTable,TAB_INFO_MAXX),STR_FORMAT1)
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 20                   ' TableInfo(TAB_INFO_MAXY);" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        sFunctionReturn = Format$(TableInfo(gsCurTable,TAB_INFO_MAXY),STR_FORMAT1)
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 21                   ' TableInfo(TAB_INFO_SEAMLESS);" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        sFunctionReturn = TableInfo(gsCurTable,TAB_INFO_SEAMLESS)
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 22                   ' TableInfo(TAB_INFO_COORDSYS_MINX);" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        sFunctionReturn = Format$(TableInfo(gsCurTable,TAB_INFO_COORDSYS_MINX),STR_FORMAT1)
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 23                   ' TableInfo(TAB_INFO_COORDSYS_MINY);" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        sFunctionReturn = Format$(TableInfo(gsCurTable,TAB_INFO_COORDSYS_MINY),STR_FORMAT1)
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 24                   ' TableInfo(TAB_INFO_COORDSYS_MAXX);" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        sFunctionReturn = Format$(TableInfo(gsCurTable,TAB_INFO_COORDSYS_MAXX),STR_FORMAT1)
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 25                   ' TableInfo(TAB_INFO_COORDSYS_MAXY);" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        sFunctionReturn = Format$(TableInfo(gsCurTable,TAB_INFO_COORDSYS_MAXY),STR_FORMAT1)
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 26                   ' TableInfo(TAB_INFO_COORDSYS_CLAUSE);" 
+      If gsCurTable <> STR_EMPTY_STR Then
+        sFunctionReturn = TableInfo(gsCurTable,TAB_INFO_COORDSYS_CLAUSE)
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+    Case 27                   ' TableInfo(TAB_INFO_COORDSYS_NAME);"
+      If gsCurTable <> STR_EMPTY_STR Then
+        sFunctionReturn = TableInfo(gsCurTable,TAB_INFO_COORDSYS_NAME)
+      Else
+        sFunctionReturn = GetResString(IDS_EMPTY)
+      End If
+  End Case
+
+  PerformFunction = sFunctionReturn
+
+  Exit Function
+
+HandleError:
+  If Err() = 644 Or Err() = 414 Then
+    sFunctionReturn = GetResString(IDS_UNDEFINED)
+    Resume Next
+  Else
+    Note STR_SUB_PERFORM_FUNCTION + Error$() + STR_EMPTY_STR1 + STR_HASH + Err()
+    Resume Next
+  End If
+
+End Function

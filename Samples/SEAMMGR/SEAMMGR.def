@@ -1,0 +1,78 @@
+' Resource String Ids
+Define IDS_APP_NAME                       1
+Define IDS_SEAM_MGR                       2
+Define IDS_NEW_SEAM_TABLE                 3
+Define IDS_APPEND_SEAM_TABLE              4
+Define IDS_TURN_SEAM_ON                   5
+Define IDS_TURN_SEAM_OFF                  6
+Define IDS_SEAM_OPTIONS                   7
+Define IDS_ABOUT_SEAM_MGR                 8
+Define IDS_EXIT_SEAM_MGR                  9
+Define IDS_NO_SHEETS_CREATED             10
+Define IDS_TABLE_REMOVED                 11
+Define IDS_SELECT_MAP_WINDOW             12
+Define IDS_OPEN_MAP_WINDOW               13
+Define IDS_SEAM_TABLE_NOT_OPENED         14
+Define IDS_OPEN_TABLE_FOR_OPTION         15
+Define IDS_SELECT_SEAM_TABLE             16
+Define IDS_TABLE                         17
+Define IDS_NOT_DEFINED_SEAMLESS          18
+Define IDS_TABLE_APPENDED_NOT_OPENED     19
+Define IDS_DEFINED_SEAMLESS              20
+Define IDS_CANT_CONTAIN_OTHER_SEAM       21
+Define IDS_IS_GRID_TABLE                 22
+Define IDS_CANT_CONTAIN_GRID_TABLE       23
+Define IDS_TABLE_STRUCT_DIFFERENT        24
+Define IDS_SEAM_MAP_SHEET                25
+Define IDS_CREATED_CONTAINING            26
+Define IDS_TABLES                        27
+Define IDS_APPENDED_WITH                 28
+Define IDS_NO_LAYERS                     29
+Define IDS_ABOUT_APP                     30
+Define IDS_APP_DESC_1                    31
+Define IDS_APP_DESC_2                    32
+Define IDS_APP_DESC_3                    33
+Define IDS_APP_DESC_4                    34
+Define IDS_NO_TABLE_OPEN                 35
+Define IDS_CHOOSE_SEAMLESS_TABLE         36
+Define IDS_SEAM_MGR_OPTIONS              37
+Define IDS_TABLE_PATH                    38
+Define IDS_PATH_OPTIONS                  39
+Define IDS_IN_SEAM_TABLE                 40
+Define IDS_CANT_OPEN                     41
+Define IDS_SEAMLESS_TABLE                42
+Define IDS_DOT                           43
+Define IDS_COORDSYS_DIFFERS1             44
+Define IDS_COORDSYS_DIFFERS2             45
+Define IDS_COORDSYS_DIFFERS3             46
+Define IDS_CONTINUE                      47
+Define IDS_SKIP                          48
+Define IDS_IS_TILESERVER_TABLE           49
+Define IDS_CANT_CONTAIN_TILESERVER_TABLE 50
+
+' Strings not to be localized
+Define STR_RES_STR_FILE              "SEAMMGR.str"
+Define STR_FILE_NOT_ACCESSIBLE       "Unable to access resource string file: "
+Define STR_SEAM_MGR_MBX              "seammgr.mbx"
+Define STR_MENU_ITEM_SEPARATOR       "(-"
+Define STR_EMPTY                     ""
+Define STR_EMPTY2                    " "
+Define STR_COL1                      ".COL1"
+Define STR_TAB                       "TAB"
+Define STR_SAVE_MAP_SHEET            "Save Seamless Map Sheet"
+Define STR_SEMI_COLON                ";"
+Define STR_IS_SEAM                   "\IsSeamless"
+Define STR_COL_NUM                   "col"
+Define STR_CREATE_MAP_FOR            "Create Map For "
+Define STR_SUB_ALTER_SEAM            "AlterSeam: "
+Define STR_SUB_MAIN                  "Main: "
+Define STR_SUB_NEW_SEAM              "NewSeam: "
+Define STR_SUB_ABOUT                 "About: "
+Define STR_SUB_END_SEAM_MGR          "EndSeamMgr: "
+Define STR_SUB_GET_TABLE             "get_table: "
+Define STR_SUB_SEAMLESS_OPTIONS      "seamless_options: "
+Define STR_SUB_SEAMLESS_ON           "seamless_on: "
+Define STR_SUB_SEAMLESS_OFF          "seamless_off: "
+Define STR_FCN_BUILD_SEAMLESS        "Build_seamless: "
+Define STR_FCN_COMPPARE_TABLES       "compare_tables: "
+Define STR_FCN_FIND_COMPARE_SHEET    "find_compare_sheet: "

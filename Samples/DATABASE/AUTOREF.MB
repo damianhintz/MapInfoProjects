@@ -1,0 +1,30 @@
+' Program to refresh linked tables every (Interval) seconds
+' for as total of (Total Refresh times) times
+include "MAPBASIC.DEF"
+
+DIM Interval, TimeLast, TotalRefresh, RefreshCount, NumTabs, i AS INTEGER
+
+Interval = 5     '(seconds)
+TotalRefresh=5   ' # times to refresh, then stop program
+
+TimeLast=Timer()
+RefreshCount=0
+WHILE RefreshCount<TotalRefresh
+  
+   ' check if time interval for refresh has elapsed
+   IF (TIMER() - TimeLast) > Interval THEN
+   
+    ' Do the refresh for each open linked table
+    NumTabs=NumTables()
+    FOR i=1 TO NumTabs
+      IF TABLEINFO(i, TAB_INFO_TYPE)=TAB_TYPE_LINKED THEN
+        STATUSBAR MESSAGE "Refreshing " + i + " of " + NumTabs + " Linked Tables ..."
+        SERVER REFRESH TABLEINFO(i, TAB_INFO_NAME)
+      END IF
+    NEXT
+    
+    ' reset last time refresh was done
+    TimeLast=TIMER()
+    RefreshCount=RefreshCount+1
+  END IF
+WEND

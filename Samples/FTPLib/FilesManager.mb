@@ -1,0 +1,232 @@
+'*****************************************************************************
+'       Copyright © 2009 Pitney Bowes Software Inc.
+'       All rights reserved.
+'
+' $Revision: 66276 $
+'
+' Module Description:
+'
+' A MapBasic sample program to demonstate the usage of MapInfo HTTP/FTP
+' library API to receive/send/search files from/to FTP server.
+'
+'*****************************************************************************
+Include "../inc/Mapbasic.def"
+Include "../inc/HTTPTypes.def"
+Include "../inc/HTTPLib.def"
+Include "FilesManager.def"
+Include "Messagebox.def"
+
+'Init: initialize the global variables
+Sub Init
+  strFTP = ""
+  strUser =""
+  strPWD = ""
+End Sub
+
+'clean up session and connection
+Sub CleanUp
+  If hSession <> 0 Then
+    Call MICloseSession(hSession)
+    hSession =0
+  End If
+  If hConnect <> 0 Then
+    Call MICloseFtpConnection(hConnect)
+    hConnect =0
+  End If
+End Sub
+
+'FTPConnectDLG: get connetion information and try to connect
+Sub FTPConnectDLG
+
+  Dialog Title "FTP Connect"
+
+    Control StaticText Title "FTP:" Position 5,5
+    Control EditText Width 100 Value strFTP Position 55,3 ID 1 Into strFTP
+
+    Control StaticText Title "User Name:" Position 5,25
+    Control EditText Width 100 Value strUser Position 55,23 ID 2 Into strUser
+
+    Control StaticText Title "Password:" Position 5,45
+    Control EditText Width 100 Value strPWD Position 55,43 ID 3 Into strPWD
+
+    Control CancelButton Position 30, 65
+    Control OKButton Position 87, 65
+
+  If CommandInfo(CMD_INFO_DLG_OK) Then
+   Call Connect
+  End If
+End Sub
+
+'Connect: make the connection
+Sub Connect
+Dim nServiceType As Integer
+Dim strServer As String
+Dim strObject As String
+Dim nPort As INTERNET_PORT
+Dim dwFlags As Integer
+Dim hFile As CHttpFile
+
+Dim ret as SmallInt
+Dim dir as string
+Dim lenth as integer
+Dim nMmessageType As integer
+
+  If Len(strFTP)<1 Then
+   Note "Error: Empty URL."
+   Exit Sub
+  End If
+
+ 'parse the server name
+  strServer = Space$(STRING_LEN)
+  strObject = Space$(STRING_LEN)
+  If Not MIParseURL(strFTP, nServiceType, strServer, STRING_LEN, strObject, STRING_LEN, nPort) Then
+    Note "Error: Bad URL (" + strFTP + ")"
+    Exit Sub
+  End If
+
+  ' Check that URL is FTP
+  If INTERNET_SERVICE_FTP <> nServiceType Then
+     Note "Error: Unsupported Protocol " + nServiceType
+     Exit Sub
+  End If
+
+  'create session
+  If(hSession = 0) Then
+    hSession = MICreateSession("MapInfo Professional v" + Format$(SystemInfo(SYS_INFO_MIVERSION)/100,"#.##")) 'Create the User-Agent String
+    If(hSession = 0) Then
+      Note "Error: " + MIGetErrorMessage
+      Exit Sub
+    End If
+  End If
+
+  'get connection
+  If hConnect <> 0 Then
+    Call MICloseFtpConnection(hConnect)
+  End If
+
+  hConnect = MIGetFtpConnection(hSession, strServer, strUser, strPWD, nPort)
+  If(hConnect = 0) Then
+    Note "Error: " + MIGetErrorMessage()
+  Else
+     nMmessageType  = MB_OK+MB_ICONINFORMATION
+     nMmessageType =MessageBox(SystemInfo(SYS_INFO_MAPINFOWND),"Connecting succeeded.","MapInfo",nMmessageType )
+    Alter Menu Item FTPGetFileDLG Enable
+    Alter Menu Item ListFiles Enable
+  End If
+
+End Sub
+
+'FTPGetFileDLG: get files from the connected FTP site
+Sub FTPGetFileDLG
+  Dim ret As SmallInt
+  Dim context As Integer
+  Dim strRemoteName, strLocalName As String
+  Dim strTransferTypes As String
+  Dim TransferChoice, TransferType As Integer
+  Dim nMmessageType As Integer
+
+    strTransferTypes = "FTP_TRANSFER_TYPE_BINARY;FTP_TRANSFER_TYPE_ASCII;FTP_TRANSFER_TYPE_UNKNOWN"
+  TransferChoice = 1
+  TransferType = FTP_TRANSFER_TYPE_BINARY
+
+  ret = 0
+
+  If hConnect=0 Then
+    Note "Have to connect to a FTP site first!"
+    Exit Sub
+  End If
+  Dialog Title "Download File"
+
+    Control StaticText Title "Remote File Name:" Position 5,5
+    Control EditText Width 80 Value "" Position 65,3 ID 1 Into strRemoteName
+
+    Control StaticText Title "Local File Name:" Position 5,25
+    Control EditText Width 80 Value "" Position 65,23 ID 2 Into strLocalName
+
+    Control StaticText Title "Transfer Type:" Position 5,45
+    Control PopupMenu Width 125 Value TransferChoice Title strTransferTypes  Position 65,43 ID 3 Into TransferChoice
+
+    Control CancelButton Position 40, 65
+    Control OKButton Position 105, 65
+
+  If CommandInfo(CMD_INFO_DLG_OK) Then
+    If TransferChoice = 2 Then
+      TransferType = FTP_TRANSFER_TYPE_ASCII
+    ElseIf TransferChoice = 3 Then
+      TransferType = FTP_TRANSFER_TYPE_UNKNOWN
+    Else
+      TransferType = FTP_TRANSFER_TYPE_BINARY
+    End If
+
+    ret = MIGetFtpFile(hConnect,strRemoteName, strLocalName, 1, FILE_ATTRIBUTE_NORMAL, TransferType)
+    If ret = 1 Then
+      nMmessageType  = MB_OK+MB_ICONINFORMATION
+      nMmessageType =MessageBox(SystemInfo(SYS_INFO_MAPINFOWND), strLocalName + " is downloaded successfully.","MapInfo",nMmessageType )
+    Else
+      Note "Error: " + MIGetErrorMessage()
+    End If
+  End If
+
+End Sub
+
+'list files in the given directory
+Sub ListFiles
+  Dim hFTPFind As CFtpFileFind
+  Dim strFileName, strDir,strCurrDir As String
+  Dim ret As SmallInt
+  Dim lpdwLen As Integer
+
+  If hConnect=0 Then
+    Note "Have to connect to a FTP site first!"
+    Exit Sub
+  End If
+
+  strCurrDir = Space$(STRING_LEN)
+  lpdwLen = STRING_LEN
+  ret = MIGetCurrentFtpDirectory(hConnect, strCurrDir, lpdwLen)
+  If ret = 0 Then
+    strCurrDir = "\"
+  Else
+    strCurrDir = RTrim$(LTrim$(strCurrDir))
+  End If
+
+  Dialog Title "Directory Name"
+
+    Control StaticText Title "Directory Name:" Position 5,5
+    Control EditText Width 80 Value strCurrDir Position 65,3 ID 1 Into strDir
+
+    Control CancelButton Position 30, 35
+    Control OKButton Position 87, 35
+
+  If CommandInfo(CMD_INFO_DLG_OK) Then
+    If Len(strDir) > 0 Then
+      If StringCompareIntl(strDir, strCurrDir) <>0 Then
+        ret = MISetCurrentFtpDirectory(hConnect,strDir)
+        If ret =0 Then
+          Note "Set Dir Error: " + MIGetErrorMessage()
+          Exit Sub
+        End If
+      End If
+    End If
+  Else
+    Exit Sub
+  End If
+
+  strFileName = Space$(STRING_LEN)
+  hFTPFind  = MIGetFtpFileFind(hConnect)
+
+  If(hFTPFind <> 0) Then
+    ret = MIFindFtpFile(hFTPFind,"*")
+    While (ret=1)
+       ret = MIFindNextFtpFile(hFTPFind)
+       If MIIsFtpDirectory(hFTPFind)<>1 And MIIsFtpDots(hFTPFind)<>1 Then
+         Call MIGetFtpFileName(hFTPFind, strFileName,STRING_LEN)
+         strFileName = RTrim$(LTrim$(strFileName))
+         Print strFileName
+        End If
+    Wend
+    Call MICloseFtpFileFind(hFTPFind)
+  End If
+  'set back
+  ret = MISetCurrentFtpDirectory(hConnect,strCurrDir)
+End Sub

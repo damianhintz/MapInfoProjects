@@ -1,0 +1,5 @@
+[Link] 
+Application=disperse.mbx 
+Module=..\Lib\Resstrng.MBO
+Module=disp_pnt.mbo
+Module=..\Lib\auto_lib.mbo

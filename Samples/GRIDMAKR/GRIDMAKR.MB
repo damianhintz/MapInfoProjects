@@ -1,0 +1,1382 @@
+'/*****************************************************************************
+'*       Copyright © 2011 Pitney Bowes Software Inc.
+'*       All rights reserved.
+'*****************************************************************************/
+'
+' Module Description:
+'
+' Sample MapBasic 4.0 program that creates a grid (a graticule)
+'
+' Featured in this program:
+'   * Creating polylines
+'   * Creating regions
+'*****************************************************************************
+Include "..\Inc\mapbasic.def"
+Include "..\Inc\menu.def"
+Include "..\Inc\icons.def"
+Include "gridmakr.def"
+' Include a file that lets us use the "auto-load" library
+Include "..\Inc\auto_lib.def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+Declare Sub Main
+Declare Sub StartFromMenu
+Declare Sub StartFromMouse
+Declare Sub MainDialog
+Declare Sub MainDialogHandler
+Declare Sub About 
+Declare Sub GoodBye 
+Declare Sub BrowseTableName
+Declare Sub SetProjection
+Declare Sub SetExtentUnits
+
+Declare Sub calculate_whole_from_parts(
+        f_decimal_degrees As Float,
+  ByVal f_degrees As Float,
+  ByVal f_minutes As Float,
+  ByVal f_seconds As Float)
+
+Declare Sub calculate_parts_from_whole(
+  ByVal f_decimal_degrees As Float,
+        f_degrees As Float,
+        f_minutes As Float,
+        f_seconds As Float)
+
+Declare Sub create_polyline_grid(
+  ByVal table_name As String ) 
+
+Declare Sub create_region_grid(
+  ByVal table_name As String )
+
+Declare Sub create_labels(
+  ByVal table_name As String ) 
+
+Declare Function name_new_table(
+        s_default_name As String) As String 
+
+Declare Function rectangular_region(
+  ByVal min_x As Float,
+  ByVal min_y As Float, 
+  ByVal max_x As Float,
+  ByVal max_y As Float,
+  ByVal nodes_per_edge As Integer) As Object 
+
+Declare Function straight_polyline(
+  ByVal min_x As Float,
+  ByVal min_y As Float, 
+  ByVal max_x As Float,
+  ByVal max_y As Float,
+  ByVal nodes_per_line As Integer) As Object 
+
+Declare Function build_description$(
+  ByVal x_or_y As SmallInt, 
+  ByVal unit As SmallInt, 
+  ByVal degree_location As Float) As String 	
+
+Declare Function build_cellname$(
+  ByVal i_col As SmallInt) As String 
+
+Declare Sub PrepareCoordinates(
+        grid_min_x, grid_min_y, grid_max_x, grid_max_y,
+        current_x, current_y, x_spacing, y_spacing As Float)
+
+Declare Function GetLongFileName(
+  ByVal sShortName As String) As String
+
+Declare Function GetLongPathName Lib "kernel32" Alias "GetLongPathNameA" (
+  ByVal lpszShortPath As String,
+        lpszLongPath As String, 
+  ByVal cchBuffer As Integer) As Integer
+
+
+Define AppVersion 1.5
+
+Define MAX_CELLS 20648881
+
+Define XCOORD 1
+Define YCOORD 2 
+Define USE_REGIONS   1 
+Define USE_POLYLINES 2
+
+Define U_DEGREES 1 
+Define U_FEET    2 
+Define U_METERS  3 
+
+Define METERS_PER_FOOT .3048
+Define METERS_PER_US_SURVEY_FOOT (12/39.37)
+Define MILES_PER_DEGREE 69.093
+Define FEET_PER_MILE 5280
+
+   
+Define UNIT_DECIMAL 2 
+Define UNIT_DMS     1 
+
+Define OBJECT_TYPE_ID 10        'added 6/28/2001
+Define SPACING_VALUE_ID 11
+Define SPACING_UNITS_ID 12
+Define SMOOTHNESS_VALUE_ID 21
+Define EXTENT_UNIT_ID_1 31
+Define EXTENT_UNIT_ID_2 32
+Define EXTENT_UNIT_ID_3 33
+Define EXTENT_UNIT_ID_4 34
+Define EXTENT_ID_1 35
+Define EXTENT_ID_2 36
+Define EXTENT_ID_3 37
+Define EXTENT_ID_4 38
+Define EXTENT_ROUND_ID 39
+Define GRID_TABLE_ID 40
+
+Global g_pen As Pen               'line style used for the grid lines 
+Global g_brush As Brush           'file style used for grids, if polygons. 
+Global gi_smoothness As Smallint  'number, 0 - 100; defaults to 10 
+Global gi_obj_type As Smallint    '1 means Regions, 2 means polylines 
+Global gf_min_x, gf_min_y, gf_max_x, gf_max_y   As Float ' grid extents. 
+Global g_unit As Smallint         ' should be U_DEGREES, U_FEET, or U_METERS 
+Global map_id As Integer          ' ID of map window user clicked on. 
+Global dec_spacing, d_spacing, m_spacing, s_spacing As Float 
+Global gsFileSpec, gsGridTable, gsCoordSys, gsUnits As String
+Global glRoundExtents As Logical
+
+
+'**********************************************************************
+Sub Main
+
+  OnError Goto HandleError
+
+  If LoadStrings((ApplicationDirectory$() + STR_RES_STR_FILE)) = FALSE Then
+    Note STR_FILE_NOT_ACCESSIBLE + ApplicationDirectory$() + STR_RES_STR_FILE
+    Exit Sub
+  End If
+
+  ' Assign some global variables, so that the Auto-Load button
+  ' (in the About dialog) can use the library routines
+  ' stored in AUTO_LIB.MBO.
+  gsAppFilename =  STR_APP_FILE_NAME   ' name of MapBasic app file
+  gsAppDescription = GetResString(IDS_APP_DESCRIPTION)     ' short description of MB application
+
+  Create Menu GetResString(IDS_MENU_NAME) As
+    GetResString(IDS_MENU_ITEM_NAME) Calling StartFromMenu,
+    STR_MENU_ITEM_SEPERATOR,
+    GetResString(IDS_ABOUT_MENU_ITEM_NAME) Calling About,
+    GetResString(IDS_EXIT_MENU_ITEM_NAME) Calling GoodBye
+
+  Call set_tools_menu(GetResString(IDS_MENU_NAME))
+	
+  ' Add a custom button to the Tools pad.  The user can click
+  ' this custom button to create a grid.
+  Alter ButtonPad Id TB_TOOLS
+  
+    Add
+      Separator
+      ToolButton
+      Icon   MI_ICON_MB_8
+      DrawMode DM_CUSTOM_RECT
+      Cursor MI_CURSOR_CROSSHAIR
+      Calling StartFromMouse
+      HelpMsg GetResString(IDS_TOOL_HELP_MSG)
+    Show
+
+  g_pen  = MakePen(1, 2, BLACK)        ' default to thin black grid lines
+  g_brush = MakeBrush(1, BLACK, WHITE) ' default to hollow grid regions
+  gi_obj_type = USE_REGIONS            ' default to polylines
+  gi_smoothness = 4                    ' default to 4 extra nodes per edge
+  g_unit = U_DEGREES 
+  gsFileSpec = PathToDirectory$(TempFileName$(STR_EMPTY_STR1))
+  gsFileSpec = GetLongFileName(gsFileSpec) + GetResString(IDS_DEFAULT_FILE_NAME)
+  gsCoordSys = STR_COORDSYS_EARTH
+  gsUnits = STR_DEGREES
+  dec_spacing = 1
+  glRoundExtents = TRUE
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_MAIN + Error$()
+  Resume Next
+End Sub
+
+
+'*******************************************************
+' The  StartFromMenu  procedure is called if the user 
+' chose  Create Grid...  from the menu  (in which case, 
+' assign generic numbers for the default grid extents).
+'
+Sub StartFromMenu
+  OnError Goto HandleError
+
+  If gf_min_x = 0 And gf_max_x = 0 And gf_min_y = 0 And gf_max_y = 0 Then
+    gf_min_x = -180
+    gf_max_x = 180
+    gf_min_y = -90
+    gf_max_y = 90
+  End If
+  map_id = 0
+  Call MainDialog()
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_START_FROM_MENU + Error$()
+  Resume Next
+End Sub
+
+
+'*********************************************************
+' The  StartFromMouse  procedure is called if the user
+' drags a rectangle with our custom draw tool.
+'
+Sub StartFromMouse
+  OnError Goto HandleError
+
+  Dim x1, y1, x2, y2 As Float
+  Dim sLocalCoordSys As String
+
+  ' First, let's make sure the user dragged on a MAP, not a Layout.
+  If  WindowInfo( FrontWindow(), WIN_INFO_TYPE) <> WIN_MAPPER  Then
+    Note GetResString(IDS_TO_CREATE_GRID)
+    Exit Sub
+  End If
+
+  map_id = FrontWindow()
+
+  sLocalCoordSys = MapperInfo(FrontWindow(), MAPPER_INFO_COORDSYS_CLAUSE)
+  If InStr(1, sLocalCoordSys, STR_NON_EARTH) Then
+    Note GetResString(IDS_CANNOT_MAKE_NON_EARTH)
+    Exit Sub
+  Else
+    gsCoordSys = sLocalCoordSys
+    Run Command STR_SET + gsCoordSys
+  End If
+
+  gf_min_x = Minimum( CommandInfo(CMD_INFO_X), CommandInfo(CMD_INFO_X2) )
+  gf_min_y = Minimum( CommandInfo(CMD_INFO_Y), CommandInfo(CMD_INFO_Y2) )
+  gf_max_x = Maximum( CommandInfo(CMD_INFO_X), CommandInfo(CMD_INFO_X2) )
+  gf_max_y = Maximum( CommandInfo(CMD_INFO_Y), CommandInfo(CMD_INFO_Y2) )
+
+  'If the user clicked with the mouse and released without dragging,
+  'the grid extents won't be usable -- the extents may have zero width
+  'or zero height. So, only proceed if user actually dragged over an area.
+  If  gf_min_x <> gf_max_x  And  gf_min_y <> gf_max_y  Then 
+    Call MainDialog()
+  Else
+    Note GetResString(IDS_AREA_TOO_SMALL)
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_START_FROM_MOUSE + Error$()
+  Resume Next
+End Sub
+
+'*******************************************************************
+' The  MainDialog procedure  displays a dialog with grid options.
+'
+Sub MainDialog
+  OnError Goto HandleError
+
+  Dim map_width As Float        'the # of degrees across the window.
+  Dim map_zoom As Float         'the map's original zoom distance
+  Dim sCommand As String
+
+  ' Set default grid size. 
+  d_spacing = 1
+  m_spacing = 0
+  s_spacing = 0
+
+  Dialog
+    Title GetResString(IDS_APP_DESCRIPTION) + STR_EMPTY_STR2+ STR_OPEN_BRAC +
+          GetResString(IDS_VERSION) + STR_EMPTY_STR2 + Str$(AppVersion) + STR_CLOSE_BRAC
+    Calling SetExtentUnits
+
+
+    Control GroupBox
+      Title GetResString(IDS_OBJECT_TYPES)
+      Position 10, 10
+      Width 110
+      Height 50
+    Control RadioGroup
+      ID OBJECT_TYPE_ID                             'added 6/28/2001
+      Title GetResString(IDS_REGIONS_OR_POLYLINES)
+      Value gi_obj_type
+      Into  gi_obj_type
+      Position 20, 25
+
+
+    Control GroupBox
+      Title GetResString(IDS_OBJECT_STYLES)
+      Position 130,10
+      Width 95
+      Height 50
+
+    Control  BrushPicker 
+      Value  g_brush 
+      Into   g_brush 
+      Width  20   Height 15
+      Position 140, 23
+    Control StaticText
+      Title GetResString(IDS_REGIONS)
+      Position 165, 25
+
+    Control  PenPicker 
+      Value  g_pen 
+      Into   g_pen 
+      Width  20   Height 15 
+      Position 140, 40
+    Control StaticText
+      Title GetResString(IDS_POLYLINES)
+      Position  165, 42 
+
+
+    Control GroupBox 
+      Title GetResString(IDS_EXTENTS)
+      Position 10,65
+      Width 165  
+      Height 95
+
+    Control StaticText 
+      Title GetResString(IDS_NORTH)
+      Position 20, 77  
+    Control EditText 
+      ID EXTENT_ID_1
+      Value gf_max_y 
+      Into gf_max_y
+      Width 50
+    Control StaticText 
+      ID EXTENT_UNIT_ID_1  
+      Title STR_XXXXXXXXXXXXXXX
+
+    Control StaticText
+      Title GetResString(IDS_SOUTH) 
+      Position 20, 92
+    Control EditText
+      ID EXTENT_ID_2
+      Value gf_min_y
+      Into gf_min_y
+      Width 50
+    Control StaticText
+      ID EXTENT_UNIT_ID_2
+      Title STR_XXXXXXXXXXXXXXX
+
+    Control StaticText
+      Title GetResString(IDS_EAST)
+      Position 20, 107
+    Control EditText
+      ID EXTENT_ID_3
+      Value  gf_max_x
+      Into gf_max_x
+      Width 50
+    Control StaticText
+      ID EXTENT_UNIT_ID_3
+      Title STR_XXXXXXXXXXXXXXX
+
+    Control StaticText 
+      Title GetResString(IDS_WEST)
+      Position 20, 122
+    Control EditText
+      ID EXTENT_ID_4
+      Value gf_min_x 
+      Into gf_min_x
+      Width 50
+    Control StaticText 
+      ID EXTENT_UNIT_ID_4
+      Title STR_XXXXXXXXXXXXXXX
+
+    Control CheckBox
+      ID EXTENT_ROUND_ID
+      Title GetResString(IDS_ROUND_EXTENTS)
+      Value glRoundExtents
+      Into glRoundExtents
+      Position 20, 142
+
+    Control StaticText 
+      Title GetResString(IDS_SPACING) 
+      Position 10, 170  
+    Control EditText 
+      ID SPACING_VALUE_ID
+      Value  dec_spacing
+      Into dec_spacing
+      Width 40
+    Control PopupMenu 
+      Title GetResString(IDS_DEGREES_FEET_METERS) 
+      ID SPACING_UNITS_ID
+      Value g_unit
+      Into  g_unit 
+      Width 45 
+
+    Control StaticText
+      Title GetResString(IDS_SMOOTHNESS)
+      Position 10, 190
+    Control EditText
+      ID SMOOTHNESS_VALUE_ID
+      Value gi_smoothness 
+      Into gi_smoothness 
+      Width  20
+    Control StaticText 
+      Title GetResString(IDS_EXTRA_NODES)
+
+    Control StaticText
+      Title GetResString(IDS_NEW_TABLE)
+      Position 10, 210
+    Control EditText
+      Width 250
+      Position 10, 220
+      Value gsFileSpec
+      Into gsFileSpec
+      ID GRID_TABLE_ID
+
+    Control Button
+      Title GetResString(IDS_BROWSE)
+      Calling BrowseTableName
+
+    Control Button
+      Title GetResString(IDS_PROJECTION)
+      Position 10, 258
+      Calling SetProjection
+
+    Control OKButton 
+      Title GetResString(IDS_OK)
+      Calling MainDialogHandler
+
+    Control CancelButton
+      Title GetResString(IDS_CANCEL)
+
+  If CommandInfo(CMD_INFO_DLG_OK) Then
+    ' ... then the user clicked OK.
+
+    Call calculate_parts_from_whole(dec_spacing, d_spacing, m_spacing, s_spacing)
+
+    ' Modify the new table so that it's mappable.
+    sCommand = STR_CREATE_MAP_FOR + gsGridTable + STR_EMPTY_STR2 + gsCoordSys
+    Run Command sCommand
+
+    ' Temporarily suppress screen updates.
+    Set Event Processing Off
+
+    ' Draw the type of grid (polyline or region) that the user asked for.
+    If  gi_obj_type = USE_POLYLINES  Then
+      Call create_polyline_grid(gsGridTable)
+    Else
+      Call create_region_grid(gsGridTable)
+    End If 
+
+    ' If the user dragged a rectangle on a map, add the grid to that map;
+    ' otherwise, display the grid in its own map.
+    If map_id <> 0  Then
+      Add Map Window map_id Layer gsGridTable
+    Else
+      Map From gsGridTable
+      Set Map  Window FrontWindow()  Zoom Entire   Display Position
+    End If
+
+    Set Event Processing On
+
+  End If 
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_MAIN_DIALOG + Error$()
+  Resume Next
+End Sub 
+
+'*************************************************************************
+Sub BrowseTableName
+
+    gsFileSpec = ReadControlValue(GRID_TABLE_ID)
+
+    gsFileSpec = FileSaveAsDlg(PathToDirectory$(gsFileSpec), PathToFileName$(gsFileSpec), STR_TAB, GetResString(IDS_NEW_TABLE_PROMPT))
+    If gsFileSpec <> STR_EMPTY_STR1 Then 
+      Alter Control GRID_TABLE_ID Value gsFileSpec
+    End If 
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_BROWSE_TABLE_NAME + Error$()
+  Resume Next
+End Sub 
+
+'**************************************************************************
+' The  name_new_table  function prompts the user for a new table name,
+' then creates a table by that name and opens the table. 
+' If the user chooses the name of a table that already exists, 
+' this function prompts the user to either overwrite or choose a new name. 
+'
+' Input parameters:  
+'  1st parameter (string) is a table name to suggest to the user; 
+'  2nd parameter (string) is a prompt to show at the top of the Save As dialog box. 
+'
+' Return value: a string, which is either the table name or 
+'     an empty string  ("") if the user canceled. 
+'
+Function name_new_table(s_default_name As String) As String
+
+  OnError Goto HandleError
+
+  Dim s_new_table  As String  'build the name of the chosen table.
+  Dim s_table      As String  'contains just the table name, e.g. "SITES", not "SITES.TAB"
+
+  s_new_table = s_default_name
+  
+  ' the user specified a table; now see if we can create it.
+  '  At this point, we know the user entered a file name,
+  '  and either the table doesn't yet exist, or the file does exist
+  '  but the user wants to overwrite it.
+  '  Now we can create the table.  Since there are several ways
+  '  that trying to create a table can generate an error (e.g.
+  '  Out of disk space, or lack of network file privileges...)
+  '  we will set up an error handler to trap any errors.
+
+  OnError GoTo handle_error
+
+  ' Now extract a string that represents just the table name,
+  ' i.e.  if user chose "Sites.tab", build a string "Sites"
+  s_table = PathToTableName$(s_new_table)
+
+  ' Now create a table.  If the user specified polylines,
+  ' the table will have one char field to store descriptions
+  ' (e.g. "73° W").  If the user specified regions,
+  ' the column will have three fields (e.g. "A1", "A", and "1").
+  gi_obj_type = ReadControlValue(OBJECT_TYPE_ID)                   'added 6/28/2001 
+  If  gi_obj_type = USE_REGIONS Then
+    Create Table s_table
+      (Description  Char(10),
+       Col_Name     Char(3),
+       Row_Name     Char(3))
+      File  s_new_table
+  Else
+    Create Table s_table
+      (Degrees Char(20),
+       DMS Char(20))
+      File s_new_table
+  End If
+
+  Open Table s_new_table
+  name_new_table = TableInfo(0, TAB_INFO_NAME)
+  Exit Function
+
+after_error_handler:
+
+  Exit Function
+
+handle_error:
+
+  ' If we get here, there must have been an error when we tried to create
+  ' the table.  Tell the user to choose a different table name.
+  ' Also, set the variable  s_new_table  back to "", so that the
+  ' loop will bring up the Save As dialog box again.
+
+  Note GetResString(IDS_COULD_NOT_USE_NAME)
+       + GetResString(IDS_PLEASE_ENTER_DIFFERENT)
+  s_new_table = STR_EMPTY_STR1
+  Resume after_error_handler
+
+  Exit Function
+
+HandleError:
+  Note STR_SUB_NAME_NEW_TABLE + Error$()
+  Resume Next
+End Function
+
+
+'*************************************************************************
+' Make sure the user entered valid data.
+Sub MainDialogHandler
+  OnError Goto HandleError
+
+  Dim f, f2 As Float
+
+  dec_spacing = Val(DeformatNumber$(ReadControlValue(SPACING_VALUE_ID)))
+
+  ' If the user is working with degrees, then we'll only allow 
+  ' relatively small numbers.  If user is working in feet or meters,
+  ' much larger numbers are legitimate.  
+  g_unit = ReadControlValue(SPACING_UNITS_ID) 
+  If g_unit = U_DEGREES Then 
+    ' Let's not allow spacing > 90 degrees.  
+    If dec_spacing > 90 Or dec_spacing <= 0  Then
+      Note GetResString(IDS_DEGREE_SPACING_MUST)
+      Dialog Preserve
+      Alter Control SPACING_VALUE_ID Active
+      Exit Sub
+    End If 
+  Else 
+    ' ... user chose Feet or Meters, in which case spacing 
+    ' can easily be much larger than 90.  
+    If dec_spacing <= 0  Then 
+      Note GetResString(IDS_SPACING_CANNOT_BE_NEGATIVE)
+      Dialog Preserve
+      Alter Control SPACING_VALUE_ID Active
+      Exit Sub
+    End If 
+  End If 
+  
+  f = Val( ReadControlValue(SMOOTHNESS_VALUE_ID))
+  If f  > 99 Or f < 0 Then
+    Note GetResString(IDS_SMOOTHNESS_CANNOT_BE)
+    Dialog Preserve
+    Alter Control SMOOTHNESS_VALUE_ID Active
+    Exit Sub
+  End If
+
+  gf_max_y = Val(DeformatNumber$(ReadControlValue(EXTENT_ID_1)))
+  gf_min_y = Val(DeformatNumber$(ReadControlValue(EXTENT_ID_2)))
+  gf_max_x = Val(DeformatNumber$(ReadControlValue(EXTENT_ID_3)))
+  gf_min_x = Val(DeformatNumber$(ReadControlValue(EXTENT_ID_4)))
+  glRoundExtents = ReadControlValue(EXTENT_ROUND_ID)
+
+  ' Make sure that min_x is less than max_x, etc.  
+  If  gf_min_x > gf_max_x  Then 
+    f = gf_min_x
+    gf_min_x = gf_max_x
+    gf_max_x = f 
+    Alter Control EXTENT_ID_4 Value FormatNumber$(gf_min_x)
+    Alter Control EXTENT_ID_3 Value FormatNumber$(gf_max_x)
+  End If 
+  If  gf_min_y > gf_max_y  Then 
+    f = gf_min_y
+    gf_min_y = gf_max_y
+    gf_max_y = f
+    Alter Control EXTENT_ID_2 Value FormatNumber$(gf_min_y)
+    Alter Control EXTENT_ID_1 Value FormatNumber$(gf_max_y)
+  End If 
+
+  ' Make sure the user didn't enter coordinates that are too huge
+    
+  If gsUnits = STR_DEGREES Then
+    gf_min_x = Maximum(-180, gf_min_x)
+    gf_max_x = Minimum( 180, gf_max_x)
+    gf_min_y = Maximum(-90, gf_min_y)
+    gf_max_y = Minimum( 90, gf_max_y)
+  End If
+
+  Dim grid_min_x, grid_min_y, grid_max_x, grid_max_y As Float
+  Dim current_x, current_y, x_spacing, y_spacing, fcells As Float 
+  Call PrepareCoordinates(grid_min_x, grid_min_y, grid_max_x, grid_max_y,
+                          current_x, current_y, x_spacing, y_spacing)
+
+  f = Int((Abs(grid_max_x-grid_min_x)/x_spacing)+.9999999)
+  f2 = Int((Abs(grid_max_y-grid_min_y)/y_spacing)+.9999999)
+  fcells = f * f2
+
+  If fcells > MAX_CELLS Or fcells < 1 Then
+    Note GetResString(IDS_TOO_MANY_CELLS) + STR_EMPTY_STR2+ STR_OPEN_BRAC + 
+         FormatNumber$(fcells) + STR_CLOSE_BRAC + STR_EMPTY_STR2 +
+         GetResString(IDS_REQUESTED_BECAUSE) + Chr$(13) +
+         GetResString(IDS_MAXIMUM_NUMBER_IS) + STR_EMPTY_STR2 + FormatNumber$(MAX_CELLS) + STR_DOT 
+    Dialog Preserve
+    Exit Sub
+  End If 
+
+  If Not Ask(GetResString(IDS_CONFIRM_CREATING) + STR_EMPTY_STR2 + FormatNumber$(fcells) + STR_EMPTY_STR2 + GetResString(IDS_CELLS), GetResString(IDS_OK), GetResString(IDS_CANCEL)) Then
+    Dialog Preserve
+    Exit Sub
+  End If 
+
+  gsFileSpec = ReadControlValue(GRID_TABLE_ID)
+  gsGridTable = name_new_table(gsFileSpec)
+  If gsGridTable = STR_EMPTY_STR1 Then 
+    Dialog Preserve
+    Exit Sub 
+  End If 
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_MAIN_DIALOG_HANDLER + Error$()
+  Resume Next
+End Sub
+'**************************************************************
+Sub PrepareCoordinates(grid_min_x, grid_min_y, grid_max_x, grid_max_y,
+                       current_x, current_y, x_spacing, y_spacing As Float )
+  OnError Goto HandleError
+
+  Dim middle_y As Float 
+
+  ' Calculate x_spacing (the number of degrees wide each cell should be) 
+  ' and y_spacing (the number of degrees tall each cell should be).  
+  ' If the user is working in degrees, x_spacing will equal y_spacing. 
+  ' If the user is working in feet or meters, x_spacing and y_spacing are
+  ' different, due to the curvature of the earth.   
+  Do Case  g_unit 
+    Case U_DEGREES 
+      ' If the user chose degrees as the unit of measure, 
+      ' we'll make each cell that many degrees tall and 
+      ' the same number of degrees wide. 
+      If gsUnits = STR_DEGREES Then
+        x_spacing = dec_spacing 
+        y_spacing = dec_spacing
+      Else
+        ' Calculate the average y-value for this grid.
+        middle_y = (gf_min_y + gf_max_y) / 2 
+        middle_y = middle_y / (MILES_PER_DEGREE * FEET_PER_MILE)
+        If gsUnits = STR_METERS  Then 
+          middle_y = middle_y / METERS_PER_FOOT '* 3.28084
+        End If 
+        ' calculate y_spacing so it represents each cell's height in feet
+        y_spacing = dec_spacing * (MILES_PER_DEGREE * FEET_PER_MILE) 
+
+        ' Calculate x_spacing so it represents each cell's width in feet; 
+        ' note that this is an approximation, because of the curvature of the
+        ' Earth.  We'll base our calculation on the middle-y point of the grid. 
+        x_spacing = dec_spacing * (MILES_PER_DEGREE * FEET_PER_MILE * Cos(middle_y * DEG_2_RAD) ) 
+        ' The preceding calculations are for feet.  If user asked for meters,
+        ' adjust accordingly.
+        If gsUnits = STR_METERS  Then 
+          x_spacing = x_spacing * METERS_PER_FOOT '/ 3.28084
+          y_spacing = y_spacing * METERS_PER_FOOT '/ 3.28084
+        End If 
+      End If
+
+    Case U_METERS 
+      ' If the user chose meters, then dec_spacing represents # of meters.  
+      ' We need to convert feet to degrees, because 
+      ' the Create Object statement below assumes degrees.  
+      If gsUnits = STR_DEGREES Then
+        ' Calculate the average y-value for this grid.
+        middle_y = (gf_min_y + gf_max_y) / 2 
+ 
+        ' calculate y_spacing so it represents each cell's height in degrees
+        y_spacing = dec_spacing / (MILES_PER_DEGREE * FEET_PER_MILE) 
+
+        ' Calculate x_spacing so it represents each cell's width in degrees; 
+        ' note that this is an approximation, because of the curvature of the
+        ' Earth.  We'll base our calculation on the middle-y point of the grid. 
+        x_spacing = dec_spacing / (MILES_PER_DEGREE * FEET_PER_MILE * Cos(middle_y * DEG_2_RAD) ) 
+
+        ' The preceding calculations are for feet.  If user asked for meters,
+        ' adjust accordingly. 
+        x_spacing = x_spacing / METERS_PER_FOOT '* 3.28084
+        y_spacing = y_spacing / METERS_PER_FOOT '* 3.28084
+      Else
+        x_spacing = dec_spacing 
+        y_spacing = dec_spacing
+        If gsUnits = STR_FEET Then 
+          x_spacing = x_spacing / METERS_PER_FOOT '* 3.28084
+          y_spacing = y_spacing / METERS_PER_FOOT '* 3.28084
+        End If
+        If gsUnits = STR_US_SURVEY_FEET Then 
+          x_spacing = x_spacing / METERS_PER_US_SURVEY_FOOT '* 3.28084
+          y_spacing = y_spacing / METERS_PER_US_SURVEY_FOOT '* 3.28084
+        End If
+      End If
+    Case U_FEET 
+      ' If the user chose Feet, then dec_spacing represents # of feet.  
+      ' We need to convert feet to degrees, because 
+      ' the Create Object statement below assumes degrees.  
+      If gsUnits = STR_DEGREES Then
+        ' Calculate the average y-value for this grid.
+        middle_y = (gf_min_y + gf_max_y) / 2 
+ 
+        ' calculate y_spacing so it represents each cell's height in degrees
+        y_spacing = dec_spacing / (MILES_PER_DEGREE * FEET_PER_MILE) 
+
+        ' Calculate x_spacing so it represents each cell's width in degrees; 
+
+        ' note that this is an approximation, because of the curvature of the
+        ' Earth.  We'll base our calculation on the middle-y point of the grid. 
+        x_spacing = dec_spacing / (MILES_PER_DEGREE * FEET_PER_MILE * Cos(middle_y * DEG_2_RAD) ) 
+
+        ' The preceding calculations are for feet.  If user asked for meters,
+        ' adjust accordingly. 
+      Else
+        x_spacing = dec_spacing 
+        y_spacing = dec_spacing
+        If gsUnits = STR_METERS  Then 
+          x_spacing = x_spacing * METERS_PER_FOOT '/ 3.28084
+          y_spacing = y_spacing * METERS_PER_FOOT '/ 3.28084
+        End If
+      End If
+
+  End Case 
+  If glRoundExtents Then
+    grid_min_x =  Round( (gf_min_x - (0.5 * x_spacing) ),  x_spacing) 
+    grid_min_y =  Round( (gf_min_y - (0.5 * y_spacing) ),  y_spacing) 
+    grid_max_x =  Round( (gf_max_x + (0.49 * x_spacing) ),  x_spacing) 
+    grid_max_y =  Round( (gf_max_y + (0.49 * y_spacing) ),  y_spacing) 
+  Else
+    grid_min_x =  gf_min_x
+    grid_min_y =  gf_min_y
+    grid_max_x =  gf_max_x
+    grid_max_y =  gf_max_y
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_PREPARE_COORDINATES + Error$()
+  Resume Next
+End Sub
+
+'**********************************************************
+' Calculate decimal degrees, given degrees minutes seconds.
+'
+Sub calculate_whole_from_parts(
+        f_decimal_degrees As Float,
+  ByVal f_degrees As Float,
+  ByVal f_minutes As Float,
+  ByVal f_seconds As Float) 
+
+  OnError Goto HandleError
+
+  f_decimal_degrees = f_degrees + (f_minutes/60) + (f_seconds/3600)
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_CAL_WHOLE_FROM_PARTS + Error$()
+  Resume Next
+End Sub
+
+'**********************************************************
+' Calculate degrees/minutes/seconds, given decimal degrees. 
+'
+Sub calculate_parts_from_whole(
+  ByVal f_decimal_degrees As Float,
+        f_degrees As Float,
+        f_minutes As Float,
+        f_seconds As Float)
+
+  OnError Goto HandleError
+  Dim work As Float 
+
+  ' If the number is negative, then we should work from the absolute value, 
+  ' because we want to use the "\" operator to truncate fractional parts,
+  ' But if the number is negative, and we use the "\" operator, it rounds down.
+  work = Abs(f_decimal_degrees) 
+
+  f_degrees = work \ 1            ' round off the remainder
+  work = 60 * (work - f_degrees)  
+  f_minutes = work \ 1
+  f_seconds = 60 * (work - f_minutes)
+  f_seconds = Round(f_seconds, 1)
+' now round off to integers, and clean up weirdnesses like 23° 0' 60"
+  If f_seconds = 60 Then
+    f_seconds = 0
+    f_minutes = f_minutes + 1
+  End If
+  f_minutes = Round(f_minutes, 1)
+  If f_minutes = 60 Then
+    f_minutes = 0
+    f_degrees = f_degrees + 1
+  End If
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_CAL_PARTS_FROM_WHOLE+ Error$()
+  Resume Next
+End Sub 
+
+
+'**********************************************************************************
+' The procedure  create_polyline_grid  creates a graticule from polyline objects. 
+'
+' Input parameters:
+'  1st parameter (string) is the name of the table where polylines will be stored.
+'  (Table must already be open, and it must already be mappable.)
+'  The global variables gf_min_x, gf_max_x, gf_min_y, gf_max_y define the extents.
+'
+Sub create_polyline_grid( ByVal table_name As String ) 
+  OnError Goto HandleError
+
+  Dim obj_section, obj_whole As Object
+  Dim first_pass As Logical 
+  Dim grid_min_x, grid_min_y, grid_max_x, grid_max_y As Float 'the grid extents, rounded
+  Dim current_x, current_y, x_spacing, y_spacing, biggest_x, biggest_y As Float 
+
+  Call PrepareCoordinates(grid_min_x, grid_min_y, grid_max_x, grid_max_y,
+                          current_x, current_y, x_spacing, y_spacing)
+  
+  ' First, do the vertical lines.  
+  current_x = grid_min_x 
+  Do While  current_x <= grid_max_x 
+    current_y = grid_min_y
+    first_pass = TRUE 
+
+    ' at this x value (longitude), draw a succession of vertical polylines
+    Do While  current_y < grid_max_y
+      obj_section = straight_polyline(current_x, current_y, 
+                                      current_x, current_y + y_spacing, 
+                                      gi_smoothness + 1) 
+      biggest_y = current_y + y_spacing
+      biggest_x = current_x
+      If first_pass  Then 
+        first_pass = FALSE
+        obj_whole = obj_section
+      Else 
+        ' append this section to the section we built in the last loop iteration
+        obj_whole = Combine(obj_whole, obj_section) 
+      End If 
+
+      current_y = current_y + y_spacing
+    Loop
+
+    ' Now we've built one long polyline. 
+    ' Apply the user's pen style to the polyline, and write it to the table. 
+    Alter Object obj_whole  Info OBJ_INFO_PEN, g_pen 
+    Insert Into table_name ( Degrees, DMS, obj )
+           Values (build_description$(XCOORD, UNIT_DECIMAL, current_x),
+                   build_description$(XCOORD, UNIT_DMS,    current_x),  obj_whole)
+
+    current_x = current_x + x_spacing 
+  Loop 
+
+  ' Now do the horizontal lines.  
+  current_y = grid_min_y 
+  Do While  current_y <= biggest_y 
+    current_x = grid_min_x
+    first_pass = TRUE 
+
+    ' at this y value (latitude), draw a succession of horizontal polylines
+    Do While  current_x < biggest_x 
+      obj_section = straight_polyline(current_x, current_y, 
+                                      current_x + x_spacing, current_y, 
+                                      gi_smoothness + 1) 
+      If first_pass  Then 
+        first_pass = FALSE
+        obj_whole = obj_section
+      Else 
+        ' append this section to the section we built in the last loop iteration
+        obj_whole = Combine(obj_whole, obj_section) 
+      End If 
+
+      current_x = current_x + x_spacing
+    Loop 
+
+    ' Now we've built one long polyline. 
+    ' Apply the user's pen style to the polyline, and write it to the table. 
+    Alter Object obj_whole  Info OBJ_INFO_PEN, g_pen 
+    Insert Into table_name ( Degrees, DMS, obj )  
+           Values (build_description$(YCOORD, UNIT_DECIMAL, current_y),
+                   build_description$(YCOORD, UNIT_DMS,     current_y), obj_whole) 
+
+    current_y = current_y + y_spacing 
+  Loop 
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_CREATE_POLYLINE_GRID + Error$()
+  Resume Next
+End Sub 
+
+'********************************************************************************
+' The procedure  create_region_grid  creates a graticule from region objects. 
+'
+' Input parameters:  
+'  1st parameter (string) is the name of the table where polylines will be stored.
+'  (Table must already be open, and it must already be mappable.)
+'  The global variables gf_min_x, gf_max_x, gf_min_y, gf_max_y define the extents.
+' 
+Sub create_region_grid( ByVal table_name As String ) 
+  OnError Goto HandleError
+
+  Dim obj_cell As Object
+  Dim grid_min_x, grid_min_y, grid_max_x, grid_max_y As Float  ' the grid's extents
+  Dim current_x, current_y, x_spacing, y_spacing As Float 
+  Dim i_row, i_col As SmallInt 
+  Dim col_string As String 
+
+  Call PrepareCoordinates(grid_min_x, grid_min_y, grid_max_x, grid_max_y,
+                          current_x, current_y, x_spacing, y_spacing)
+
+  'The outer loop goes from minimum X to maximum X  
+  current_x = grid_min_x 
+  i_col = 1
+  Do While  current_x < grid_max_x 
+
+    ' at this longitude, draw a column of "cells" stacked vertically
+    ' (each iteration of this inner loop will draw one cell)
+    current_y = grid_max_y
+    i_row = 1
+    Do While  current_y > grid_min_y
+      obj_cell = rectangular_region(current_x, current_y - y_spacing, 
+                                      current_x + x_spacing, current_y, 
+                                      gi_smoothness + 1) 
+
+      ' Apply the user's styles to the region, and write it to the table. 
+      Alter Object obj_cell  Info OBJ_INFO_PEN, g_pen 
+      Alter Object obj_cell  Info OBJ_INFO_BRUSH, g_brush 
+
+      col_string = build_cellname$(i_col)
+      Insert Into table_name ( Description, col_name, row_name, obj )  
+             Values ( col_string + Str$(i_row),   'e.g. "A1" 
+                      col_string,                 'e.g. "A"
+                      Str$(i_row),                'e.g. "1"
+                      obj_cell )
+
+      current_y = current_y - y_spacing
+      i_row = i_row + 1
+    Loop 
+    current_x = current_x + x_spacing 
+    i_col = i_col + 1
+  Loop 
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_CREATE_REGION_GRID + Error$()
+  Resume Next
+End Sub 
+
+'**************************************************************
+Function rectangular_region(
+
+  ByVal min_x As Float, 
+  ByVal min_y As Float, 
+  ByVal max_x As Float, 
+  ByVal max_y As Float, 
+  ByVal segments_per_edge As Integer) As Object 
+
+  OnError Goto HandleError
+
+  Dim region_object As Object 
+  Dim x_increment, y_increment, current_x, current_y As Float 
+  Dim segment_num As SmallInt 
+  Dim x_center, y_center as Float
+  Dim x_min, y_min, x_max, y_max as Float	
+
+  x_increment = (max_x - min_x) / segments_per_edge
+  y_increment = (max_y - min_y) / segments_per_edge 
+
+  ' First, create an "empty" region (a region with no nodes). 
+  Create Region  Into Variable region_object   0  
+
+  ' Now, "populate" the region object with nodes,
+  ' using Alter Object... Node Add.  Add a starting node:
+  Alter Object region_object  Node Add (min_x, min_y)
+
+  ' Add nodes across the bottom edge...
+  current_y = min_y
+  current_x = min_x + x_increment
+  segment_num = 1
+  Do While segment_num <= segments_per_edge
+    Alter Object region_object  Node Add (current_x, current_y) 
+    current_x = current_x + x_increment
+    segment_num = segment_num + 1
+  Loop  
+
+  ' Add nodes up the right side...   
+  current_x = max_x
+  current_y = min_y + y_increment 
+  segment_num = 1
+  Do While segment_num <= segments_per_edge
+    Alter Object region_object  Node Add (current_x, current_y) 
+    current_y = current_y + y_increment
+    segment_num = segment_num + 1
+  Loop 
+
+  ' Add nodes across the top edge...
+  current_y = max_y
+  current_x = max_x - x_increment
+  segment_num = 1
+  Do While segment_num <= segments_per_edge
+    Alter Object region_object  Node Add (current_x, current_y)
+    current_x = current_x - x_increment
+    segment_num = segment_num + 1
+  Loop
+
+  ' Finally, add nodes down the left side.
+  current_x = min_x
+  current_y = max_y - y_increment
+  segment_num = 1
+  Do While segment_num < segments_per_edge
+    Alter Object region_object  Node Add (current_x, current_y)
+    current_y = current_y - y_increment
+    segment_num = segment_num + 1
+  Loop 
+
+  ' Fix the centroid.  Make it the center of the bounding box.
+  ' Since the object *IS* the box, this point will be in the
+  ' Object.  The Centroid MUST be in the object, otherwise it
+  ' will be rejected.
+  x_min = ObjectGeography(region_object, OBJ_GEO_MINX)
+  x_max = ObjectGeography(region_object, OBJ_GEO_MAXX)
+  y_min = ObjectGeography(region_object, OBJ_GEO_MINY)
+  y_max = ObjectGeography(region_object, OBJ_GEO_MAXY)
+
+  x_center = (x_min + x_max) / 2.0
+  y_center = (y_min + y_max) / 2.0
+
+  alter object region_object Geography OBJ_GEO_CENTROID, CreatePoint(x_center, y_center)
+
+  ' Having built the region, return it to the caller.
+  rectangular_region = region_object 
+
+  Exit Function
+
+HandleError:
+  Note STR_SUB_RECTANGULAR_REGION + Error$()
+  Resume Next
+End Function 
+
+'*****************************************************************
+Function straight_polyline(
+
+  ByVal min_x As Float, 
+  ByVal min_y As Float, 
+  ByVal max_x As Float, 
+  ByVal max_y As Float, 
+  ByVal segments_per_line As Integer) As Object
+
+
+
+
+  OnError Goto HandleError
+
+  Dim polyline_object As Object 
+  Dim x_increment, y_increment, current_x, current_y As Float
+  Dim segment_num As Integer
+
+  x_increment = (max_x - min_x) / segments_per_line
+  y_increment = (max_y - min_y) / segments_per_line 
+
+  ' First, create an empty polyline (a polyline with no nodes). 
+  Create Pline  Into Variable polyline_object  0  
+
+  ' Now, "populate" the object with nodes,
+  ' using Alter Object ... Node Add.
+
+  current_y = min_y
+  current_x = min_x 
+
+  segment_num = 0
+  Do While  segment_num <= segments_per_line
+    Alter Object polyline_object   Node Add (current_x, current_y) 
+    current_x = current_x  +  x_increment 
+    current_y = current_y  +  y_increment 
+    segment_num = segment_num + 1
+  Loop  
+
+  ' Having built the polyline, return it to the caller. 
+  straight_polyline = polyline_object 
+  Exit Function
+
+HandleError:
+  Note STR_SUB_STRAIGHT_POLYLINE + Error$()
+  Resume Next
+End Function 
+
+'*************************************************************************
+' The  build_description$ function returns a text string that represents
+' a longitude or latitude coordinate.
+'
+' Input parameters:
+'  1st parameter (SmallInt) is XCOORD or YCOORD  (defines; see top of this file)
+'  2nd parameter (SmallInt) should be UNIT_DECIMAL or UNIT_DMS; this controls 
+'     whether we return ".5" degrees or "30 minutes" format. 
+'  3rd parameter (Float) is an x-coordinate or y-coordinate
+'
+' Return value: a string, such as  "73°W"
+'
+Function build_description$(
+   ByVal x_or_y As SmallInt,
+   ByVal unit As SmallInt, 
+   ByVal degree_location As Float) As String
+
+  OnError Goto HandleError
+
+  Dim work_string As String
+  Dim  f_deg, f_min, f_sec As Float
+
+  build_description$ = STR_EMPTY_STR1
+  work_string = STR_EMPTY_STR1
+
+  Call calculate_parts_from_whole( degree_location, f_deg, f_min, f_sec )
+  If  unit = UNIT_DMS  Then 
+    ' 
+    '  then build a string such as  "42° 30'" 
+    '
+    work_string = Str$(  Abs(f_deg) ) + STR_DEGREE_SYMBOL + STR_EMPTY_STR2 
+
+    '  If both the minute increment and the second increment are zero, 
+    '  we shouldn't bother including them.  
+    If  m_spacing <> 0  Or  s_spacing <> 0  Then 
+
+      ' Build the Minutes string using Format$() function, so that 
+      ' we can force the string to be exactly two characters long 
+      ' (e.g.  5  yields  "05"). 
+
+      work_string = work_string + Format$( f_min, STR_FORMAT_PATTERN1 ) + STR_QUOTE
+      If  s_spacing <> 0  Then  
+        work_string = work_string + Format$( f_sec, STR_FORMAT_PATTERN1 ) + STR_EMPTY_STR3
+      End If 
+    End If 
+
+  Else 
+    '  build a string such as  "42.5°"
+    work_string = Str$(  Abs( degree_location )  ) + STR_DEGREE_SYMBOL
+  End If 
+
+  If  x_or_y = XCOORD  Then
+    ' ...then this is a Longitude; add E or W to end of string.
+    If degree_location < 0 Then
+      work_string = work_string + GetResString(IDS_W)
+    Else
+      work_string = work_string + GetResString(IDS_E)
+    End If
+  Else
+    ' ...this is a Latitude; add N or S to end of string.
+    If degree_location < 0 Then
+      work_string = work_string + GetResString(IDS_S)
+    Else
+      work_string = work_string + GetResString(IDS_N)
+    End If
+
+  End If
+
+  build_description$ = work_string
+
+  Exit Function
+
+HandleError:
+  Note STR_SUB_BUILD_DESCRIPTION + Error$()
+  Resume Next
+End Function
+
+'*************************************************************************
+' The build_cellname function returns a text string that represents
+' the "column" portion of a cell name (e.g. for call A1, return "A")
+'
+' Input parameters:
+'  i_col is a SmallInt column number (1 is the leftmost column)
+'
+Function build_cellname$(ByVal i_col As SmallInt) As String
+  OnError Goto HandleError
+
+  Dim s As String
+
+  If i_col > 26  Then
+    ' Then there are more than 26 columns.  Starting with the 27th column,
+    ' column labels change from "A 1" format to "AA 1" format.
+    s = s + Chr$( 64 +  ((i_col - 1) \ 26 )  )
+    If  (i_col Mod 26) = 0 Then
+      i_col = 26
+
+    Else
+      i_col = i_col Mod 26
+    End If
+  End If
+
+  s = s + Chr$(64 + i_col)  ' Note: 65 is ansi "A"
+
+  build_cellname$ = s
+
+  Exit Function
+
+HandleError:
+  Note STR_SUB_BUILD_CELLNAME + Error$()
+  Resume Next
+End Function
+
+'*************************************************************************
+Sub SetProjection
+  OnError Goto HandleError
+
+  Dim sLocalCoordSys As String
+  Dim oExtent As Object
+
+  sLocalCoordSys = ChooseProjection$(gsCoordSys, FALSE)
+  If sLocalCoordSys <> STR_EMPTY_STR1 Then
+    If InStr(1, sLocalCoordSys, STR_NON_EARTH) Then
+      Note GetResString(IDS_CANNOT_MAKE_NON_EARTH)
+      Exit Sub
+    End If
+    oExtent = CreateLine(gf_min_x, gf_min_y, gf_max_x, gf_max_y)
+    gsCoordSys = sLocalCoordSys
+    Run Command STR_SET + gsCoordSys
+    gf_min_x = ObjectGeography(oExtent, OBJ_GEO_MINX)
+    gf_min_y = ObjectGeography(oExtent, OBJ_GEO_MINY)
+    gf_max_x = ObjectGeography(oExtent, OBJ_GEO_MAXX)
+    gf_max_y = ObjectGeography(oExtent, OBJ_GEO_MAXY)
+    Alter Control EXTENT_ID_1 Value Str$(gf_max_y)
+    Alter Control EXTENT_ID_2 Value Str$(gf_min_y)
+    Alter Control EXTENT_ID_3 Value Str$(gf_max_x)
+
+    Alter Control EXTENT_ID_4 Value Str$(gf_min_x)
+    Call SetExtentUnits
+  End If
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_SET_PROJECTION + Error$()
+  Resume Next
+End Sub
+
+'*************************************************************************
+Sub SetExtentUnits
+  OnError Goto HandleError
+
+  Dim iPos1, iPos2 As Integer
+  Dim sCommand As String
+
+  iPos1 = InStr(1, gsCoordSys, STR_EMPTY_STR4)
+  If iPos1 Then
+    iPos2 = InStr(iPos1+1, gsCoordSys, STR_EMPTY_STR4)
+    gsUnits = UnitName$(Mid$(gsCoordSys, iPos1+1, iPos2-iPos1-1))
+  Else
+    gsUnits = STR_DEGREES
+  End If
+
+  Alter Control EXTENT_UNIT_ID_1 Title gsUnits
+  Alter Control EXTENT_UNIT_ID_2 Title gsUnits
+  Alter Control EXTENT_UNIT_ID_3 Title gsUnits
+  Alter Control EXTENT_UNIT_ID_4 Title gsUnits
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_SET_EXTENT_UNITS + Error$()
+  Resume Next
+End Sub
+
+'*************************************************************************
+' The About sub displays an About dialog box.
+' Called when the user chooses the About menu command.
+Sub About
+  OnError Goto HandleError
+
+  Dialog
+    Title GetResString(IDS_ABOUT) + STR_EMPTY_STR2 + GetResString(IDS_APP_DESCRIPTION) + 
+          STR_EMPTY_STR2 + STR_OPEN_BRAC + GetResString(IDS_VERSION)+ STR_EMPTY_STR2 + AppVersion + STR_CLOSE_BRAC
+              
+    Control StaticText
+      Title GetResString(IDS_ABOUT_1)+ Chr$(13) + Chr$(13) +
+            GetResString(IDS_ABOUT_2)+ Chr$(13) + Chr$(13) +
+            GetResString(IDS_ABOUT_3)
+      Height 65
+      Width 300
+
+    Control OKButton
+      Title GetResString(IDS_OK) 
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_ABOUT + Error$()
+  Resume Next
+End Sub 
+
+'*************************************************************************
+Sub GoodBye
+  OnError Goto HandleError
+  '  This procedure frees the application from memory,
+  '  and removes its custom menu items and custom button.
+  End Program
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_GOOD_BYE + Error$()
+  Resume Next
+End Sub
+
+'*************************************************************************
+Function GetLongFileName(ByVal FullPath As String) As String
+
+    Dim lLen As Integer
+    Dim sBuffer As String
+    
+    sBuffer = String$(256,STR_EMPTY_STR2)
+    lLen = GetLongPathName (FullPath, sBuffer, Len(sBuffer))
+    If lLen > 0 Then
+        GetLongFileName = Left$(sBuffer, lLen)
+    End If
+End Function

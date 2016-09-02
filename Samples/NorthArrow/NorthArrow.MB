@@ -1,0 +1,1528 @@
+'*****************************************************************************
+'       Copyright (c) 2002, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: NorthArrow.MB $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+'    MapBasic program to create North Arrows.
+'
+' Revision History:
+'
+' $Log: /goose/SAMPLES/MAPBASIC/NorthArrow/NorthArrow.MB $
+' 
+' 9     3/23/05 3:31p Barry
+' Fix for bug T12247 - North Arrow tool leaves northarrow.tab open in the
+' background.
+' 
+' 4     4/04/02 2:55p Aliciast
+' Comment out print/note statement when .PRF file can not be read.
+' 
+' 3     3/22/02 10:14a Ericst
+' Fix for bug 21420.
+' 
+' 2     2/21/02 4:20p Aliciast
+' Bunch of fixes - bug #s: 21001, 20999, 21047, 21006, 21005, 21003,
+' 21053, 21007.
+' 
+' 1     2/14/02 6:03p Aliciast
+' Initial revision.
+'
+'*****************************************************************************
+
+Include "MapBasic.def"
+Include "Icons.def"
+Include "NorthArrow.def"
+Include "..\Inc\auto_lib.def"
+Include "..\Inc\GetPaperSize.Def"
+Include "..\Inc\Menu.Def"
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+Declare Sub Main
+Declare Sub SetupPlaceNorthArrow
+Declare Sub UserPlaceNorthArrow
+Declare Sub AutoPlaceNorthArrow
+Declare Sub SetupNorthArrow
+Declare Sub InitialSetup
+Declare Sub DialogHandler
+Declare Sub MDDialogHandler
+Declare Sub OKButtonHandler
+Declare Sub CancelButtonHandler
+Declare Sub ListBoxHandler
+Declare Sub PreviewNorthArrow
+Declare Sub PreviewMagneticDeclination
+Declare Sub MagneticDeclination
+Declare Sub MDListBoxHandler
+Declare Sub MDOKButtonHandler
+Declare Sub DrawNorthArrow
+Declare Function oBuildObject(o1 As Object, lAspectRatioObject As Logical, ByVal lMag As Logical) As Object
+Declare Sub PrepToBuildObj(o1 As Object, lAspectRatioObject As Logical)
+Declare Function oBuildRegion(o1 As Object, ByVal lMag As Logical) As Object
+Declare Function oBuildPLine(o1 As Object, ByVal lMag As Logical) As Object
+Declare Sub WritePreferences
+Declare Sub ReadPreferences
+Declare Sub EndHandler
+Declare Sub About
+Declare Sub Goodbye
+
+Define AppVersion 1.02
+Define ID_INORTHID 1
+Define ID_BFOREGROUND 2
+Define ID_PFOREGROUND 3
+Define ID_BBACKGROUND 4
+Define ID_PbACKGROUND 5
+Define ID_IASPECTRATIO 6
+Define ID_IROTATION 7
+Define ID_IAUTOPLACE 8
+Define ID_ISIZE_LABEL 9
+Define ID_ISIZE 10
+Define ID_IMAGNETICID 11
+Define ID_FMD 12
+Define ID_LMD 13
+Define ID_NORTHARROWPREVIEW 14
+Define ID_MAGNETICDECLINATIONPREVIEW 15
+
+Define ASPECT_RATIO_USER 1
+Define ASPECT_RATIO_TABLE 2
+Define ROTATION_PROJECTION 1
+Define ROTATION_NONE 2
+
+Define PLACE_SETUP 0
+Define PLACE_AUTO 1
+Define PLACE_USER 2
+
+Define AUTO_PLACE_NW 1
+Define AUTO_PLACE_NE 2
+Define AUTO_PLACE_SE 3
+Define AUTO_PLACE_SW 4
+
+Define NorthArrowPreferenceFile "NorthArrow.PRF"
+Define NorthArrowNorthArrowFile "NorthArrow.TAB"
+
+Global iNorthID, iMagneticID, iAspectRatio, iRotation, iAutoPlace, iMode, iSize As Integer
+Global asNorthIDs(0), asMagneticIDs(0) As String
+Global bForeground, bBackground As Brush
+Global pForeground, pBackground As Pen
+Global lMagneticDeclination As Logical
+Global fMagneticDeclination As Float
+Global fUserX1, fUserY1, fUserX2, fUserY2, fUserDX, fUserDY As Float
+Global fObjX, fObjY, fObjX1, fObjY1, fObjX2, fObjY2, fObjDX, fObjDY As Float
+Global g_FrontWindowID As Integer
+
+'****************************************************************************
+' Sub Main
+'****************************************************************************
+Sub Main
+  OnError Goto HandleError
+
+  If LoadStrings((ApplicationDirectory$() + "NorthArrow.str")) = FALSE Then
+    Note "Unable to access resource string file: " + ApplicationDirectory$() + "NorthArrow.str"
+    Exit Sub
+  End If
+
+  ' Assign some global variables, so that the Auto-Load button
+  ' (in the About dialog) can use the library routines
+  ' stored in AUTO_LIB.MBO.
+  gsAppFilename = "NorthArrow.mbx"
+  gsAppDescription = GetResString(IDS_APP_DESCRIPTION)     ' short description of MB application
+
+  ' Open the northarrow.tab which contains the north arrow objects
+  Open Table ApplicationDirectory$() + NorthArrowNorthArrowFile As NorthArrow Hide
+  Select ID From NorthArrow Group By ID Order By Col1 Into ~work NoSelect
+
+  Dim i, j As Integer
+
+  ' Load the North Arrow objects from the northarrow.tab. These have obj ids > 0
+  Fetch First From ~work
+  j = 0
+  For i = 1 To TableInfo(~work, TAB_INFO_NROWS)
+    iNorthID = ~work.ID
+    If iNorthID > 0 Then
+      j = j + 1
+      ReDim asNorthIDs(j)
+      asNorthIDs(j) = Str$(iNorthID)
+    End If
+    Fetch Next From ~work
+  Next
+
+  ' Load the Magnetic North Arrow objects from the northarrow.tab. These have obj ids < 0
+  j = 0
+  Fetch Last From ~work
+  For i = 1 To TableInfo(~work, TAB_INFO_NROWS)
+    iMagneticID = ~work.ID
+    If iMagneticID < 0 Then
+      j = j + 1
+      ReDim asMagneticIDs(j)
+      asMagneticIDs(j) = Str$(iMagneticID * -1)
+    End If
+    Fetch Prev From ~work
+  Next
+
+  Close Table ~work
+  If Ubound(asNorthIDs) < 1 Then
+    Note GetResString(IDS_NO_NORTH_ARROWS)
+    Exit Sub
+  End If
+
+  iNorthID = asNorthIDs(1)
+  iMagneticID = Val(asMagneticIDs(1)) * -1
+
+  Create Menu GetResString(IDS_MENU_NAME) As
+    GetResString(IDS_DRAW_MENU_ITEM_NAME) Calling AutoPlaceNorthArrow,
+    GetResString(IDS_SETUP_MENU_ITEM_NAME) Calling SetupPlaceNorthArrow,
+    "(-",
+    GetResString(IDS_ABOUT_MENU_ITEM_NAME) Calling About,
+    GetResString(IDS_EXIT_MENU_ITEM_NAME) Calling GoodBye
+
+  Call set_tools_menu(GetResString(IDS_MENU_NAME))
+
+  ' Add a custom button to the Tools pad.  The user can click
+  ' this custom button to create a grid.
+ ' Alter ButtonPad GetResString(IDS_TOOLS)
+  Alter ButtonPad ID 3
+
+    Add ToolButton
+      Icon MI_ICON_MAPSYMB_2
+      HelpMsg GetResString(IDS_TOOL_HELP_MSG)
+      Cursor MI_CURSOR_CROSSHAIR
+      DrawMode DM_CUSTOM_RECT
+      Calling UserPlaceNorthArrow
+  Show
+
+  bForeground = MakeBrush(2, RED, WHITE)
+  bBackground = MakeBrush(2, WHITE, WHITE)
+  pForeground = MakePen(1, 2, BLACK)
+  pBackground = MakePen(1, 2, BLACK)
+  iAspectRatio = ASPECT_RATIO_USER
+  iRotation = ROTATION_PROJECTION
+  iAutoPlace = AUTO_PLACE_SE
+  iSize = 15
+  lMagneticDeclination = FALSE
+  fMagneticDeclination = -14
+
+  Call ReadPreferences
+
+ 'Added in version 1.02 **************************************************************
+  Close table NorthArrow   '***** So that this table is not present in any workspaces.
+
+
+  Exit Sub
+
+HandleError:
+  Note "Main: " + Error$()
+  Resume Next
+End Sub
+
+'****************************************************************************
+' Sub SetupPlaceNorthArrow
+'****************************************************************************
+Sub SetupPlaceNorthArrow
+  OnError Goto HandleError
+
+  iMode = PLACE_SETUP
+  fUserDX = 0
+  fUserDY = 0
+
+  g_FrontWindowID = FrontWindow()
+
+  Call SetupNorthArrow
+
+  Exit Sub
+
+HandleError:
+  Note "SetupPlaceNorthArrow: " + Error$()
+  Resume Next
+End Sub
+
+'****************************************************************************
+' Sub AutoPlaceNorthArrow
+'****************************************************************************
+Sub AutoPlaceNorthArrow
+  OnError Goto HandleError
+
+  If NumWindows() < 1 Then
+    Note GetResString(IDS_NO_OPEN_WINDOW)
+    Exit Sub
+  Else
+    g_FrontWindowID = FrontWindow()
+    If WindowInfo(g_FrontWindowID, WIN_INFO_TYPE) <> WIN_MAPPER And
+       WindowInfo(g_FrontWindowID, WIN_INFO_TYPE) <> WIN_LAYOUT Then
+      Note GetResString(IDS_NEED_MAP_OR_LAYOUT)
+      Exit Sub
+    End If
+  End If
+
+  iMode = PLACE_AUTO
+  fUserDX = 0
+  fUserDY = 0
+
+  Call SetupNorthArrow
+
+  Exit Sub
+
+HandleError:
+  Note "AutoPlaceNorthArrow: " + Error$()
+  Resume Next
+End Sub
+
+'****************************************************************************
+' Sub UserPlaceNorthArrow
+'****************************************************************************
+Sub UserPlaceNorthArrow
+  OnError Goto HandleError
+
+  iMode = PLACE_USER
+
+  g_FrontWindowID = FrontWindow()
+
+  If WindowInfo(g_FrontWindowID, WIN_INFO_TYPE) = WIN_MAPPER Then
+    If iRotation = ROTATION_PROJECTION Then
+      Set CoordSys Earth Projection 1, 0
+    Else
+      Set CoordSys Window g_FrontWindowID
+    End If
+  ElseIf WindowInfo(g_FrontWindowID, WIN_INFO_TYPE) = WIN_LAYOUT Then
+    Set CoordSys Layout Units "in"
+  Else
+    Note GetResString(IDS_CLICK_MAP_OR_LAYOUT)
+    Exit Sub
+  End If
+  fUserX1 = CommandInfo(CMD_INFO_X)
+  fUserY1 = CommandInfo(CMD_INFO_Y)
+  fUserX2 = CommandInfo(CMD_INFO_X2)
+  fUserY2 = CommandInfo(CMD_INFO_Y2)
+  fUserDX = fUserX2 - fUserX1
+  fUserDY = fUserY2 - fUserY1
+
+  Call SetupNorthArrow
+
+  Exit Sub
+
+HandleError:
+  Note "UserPlaceNorthArrow: " + Error$()
+
+End Sub
+
+'****************************************************************************
+' Sub SetupNorthArrow
+'****************************************************************************
+Sub SetupNorthArrow
+  OnError Goto HandleError
+
+  Dim i As Integer
+  Dim sSize As String
+  sSize = Str$(iSize)
+
+  For i = 1 To UBound(asNorthIDs)
+    If Val(asNorthIDs(i)) = iNorthID Then
+      iNorthID = i
+      Exit For
+    End If
+  Next
+  Dialog
+    Title GetResString(IDS_APP_DESCRIPTION) + " (" + GetResString(IDS_VERSION) + " " + Str$(AppVersion) + ")"
+    Calling DialogHandler
+    Control StaticText
+      Title GetResString(IDS_SELECT_ARROW_STYLE)
+      Position 10, 10
+    Control ListBox
+      Title From Variable asNorthIDs
+      Value iNorthID
+      Into iNorthID
+      ID ID_INORTHID
+      Calling ListBoxHandler
+      Position 80, 25
+      Width 30
+    Control DocumentWindow
+	  ID ID_NORTHARROWPREVIEW
+      Position 10, 25
+      Width 60 Height 60
+      Disable
+    Control StaticText
+      Title GetResString(IDS_FOREGROUND_BRUSH)
+      Position 140, 10
+    Control BrushPicker
+      Value bForeground
+      Into bForeground
+      ID ID_BFOREGROUND
+      Position 220, 5
+    Control StaticText
+      Title GetResString(IDS_FOREGROUND_PEN)
+      Position 140, 30
+    Control PenPicker
+      Value pForeground
+      Into pForeground
+      ID ID_PFOREGROUND
+      Position 220, 25
+    Control StaticText
+      Title GetResString(IDS_BACKGROUND_BRUSH)
+      Position 140, 50
+    Control BrushPicker
+      Value bBackground
+      Into bBackground
+      ID ID_BBACKGROUND
+      Position 220, 45
+    Control StaticText
+      Title GetResString(IDS_BACKGROUND_PEN)
+      Position 140, 70
+    Control PenPicker
+      Value pBackground
+      Into pBackground
+      ID ID_PbACKGROUND
+      Position 220, 65
+    Control RadioGroup
+      Title GetResString(IDS_RADIOGROUP_NORTH_ARROW)
+      Value iRotation
+      Into iRotation
+      ID ID_IROTATION
+      Position 10, 100
+    Control RadioGroup
+      Title GetResString(IDS_RADIOGROUP_ASPECT_RATIO)
+      Value iAspectRatio
+      Into iAspectRatio
+      ID ID_IASPECTRATIO
+  '    Position 10, 130
+    Position 10, 127
+
+    Control StaticText
+      Title GetResString(IDS_NORTH_ARROW_SIZE)
+      ID ID_ISIZE_LABEL
+      Position 10, 160
+    Control EditText
+      Value sSize
+      Into sSize
+      ID ID_ISIZE
+ '     Position 250, 160
+ '    Position 260, 170
+      Width 20
+    Control RadioGroup
+      Title GetResString(IDS_AUTO_PLACE_LOCATION)
+      Value iAutoPlace
+      Into iAutoPlace
+      ID ID_IAUTOPLACE
+  '    Position 220, 100
+    Position 260, 100
+    Control Button
+      Title GetResString(IDS_MAGNETIC_DEC_BUTTON)
+      Calling MagneticDeclination
+    Control OKButton
+      Title GetResString(IDS_OK_BUTTON)
+      Calling OKButtonHandler
+    Control CancelButton
+      Title GetResString(IDS_CANCEL_BUTTON)
+      Calling CancelButtonHandler
+  If Not CommandInfo(CMD_INFO_DLG_OK) Then
+    OnError Goto SilentError
+    Close Table ~work
+  End If
+
+'Added in version 1.02 ****************************************************
+Close table NorthArrow 'to ensure this table is not saved in any workspaces.
+
+SilentError:
+  Exit Sub
+
+HandleError:
+  Note "SetupNorthArrow: " + Error$()
+  Resume Next
+
+End Sub
+
+'****************************************************************************
+' Sub DialogHandler
+'****************************************************************************
+Sub DialogHandler
+  OnError Goto HandleError
+
+  Do Case iMode
+    Case PLACE_SETUP
+      Alter Control ID_IROTATION Enable Show
+      Alter Control ID_IASPECTRATIO Enable Show
+      Alter Control ID_IAUTOPLACE Enable Show
+
+      Alter Control ID_ISIZE_LABEL Enable Show
+      Alter Control ID_ISIZE Enable Show
+    Case PLACE_USER
+      If WindowInfo(g_FrontWindowID, WIN_INFO_TYPE) = WIN_MAPPER Then
+        Alter Control ID_IROTATION Enable Show
+      Else
+        Alter Control ID_IROTATION Disable Hide
+      End If
+      Alter Control ID_IAUTOPLACE Disable Hide
+      If fUserDX = 0 Or fUserDY = 0 Then
+        Alter Control ID_IASPECTRATIO Disable Hide
+        Alter Control ID_ISIZE_LABEL Enable Show
+        Alter Control ID_ISIZE Enable Show
+      Else
+        Alter Control ID_IASPECTRATIO Enable Show
+        Alter Control ID_ISIZE_LABEL Disable Hide
+        Alter Control ID_ISIZE Disable Hide
+      End If
+    Case PLACE_AUTO
+      If WindowInfo(g_FrontWindowID, WIN_INFO_TYPE) = WIN_MAPPER Then
+        Alter Control ID_IROTATION Enable Show
+      Else
+        Alter Control ID_IROTATION Disable Hide
+      End If
+      Alter Control ID_IASPECTRATIO Disable Hide
+      Alter Control ID_IAUTOPLACE Enable Show
+      Alter Control ID_ISIZE_LABEL Enable Show
+      Alter Control ID_ISIZE Enable Show
+  End Case
+
+  Call PreviewNorthArrow
+
+  Exit Sub
+
+HandleError:
+  Note "DialogHandler: " + Error$()
+
+End Sub
+
+'****************************************************************************
+' Sub MDDialogHandler
+'****************************************************************************
+Sub MDDialogHandler
+  OnError Goto HandleError
+
+  Call PreviewMagneticDeclination
+
+  Exit Sub
+
+HandleError:
+  Note "MDDialogHandler: " + Error$()
+
+End Sub
+
+'****************************************************************************
+' Sub ListBoxHandler
+'****************************************************************************
+Sub ListBoxHandler
+  OnError Goto HandleError
+
+  Dim sSize As String
+
+  ' draw a sample into the window since the arrow style changed
+  Call PreviewNorthArrow
+
+  If CommandInfo(CMD_INFO_DLG_DBL) = TRUE Then
+    iNorthID = ReadControlValue(ID_INORTHID)
+    iNorthID = Val(asNorthIDs(iNorthID))
+    bForeground = ReadControlValue(ID_BFOREGROUND)
+    pForeground = ReadControlValue(ID_PFOREGROUND)
+    bBackground = ReadControlValue(ID_BBACKGROUND)
+    pBackground = ReadControlValue(ID_PbACKGROUND)
+    iAspectRatio = ReadControlValue(ID_IASPECTRATIO)
+    iRotation = ReadControlValue(ID_IROTATION)
+    iAutoPlace = ReadControlValue(ID_IAUTOPLACE)
+    sSize = ReadControlValue(ID_ISIZE)
+    If Val(sSize ) = 0 And Left$(sSize , 1) <> "0" Then
+      Note GetResString(IDS_SIZE_MUST_BE_NUMERIC)
+      Dialog Preserve
+      Exit Sub
+    End If
+    iSize = Val(sSize)
+    If iSize < 1 Or iSize > 100 Then
+      Note GetResString(IDS_SIZE_1_100)
+      Dialog Preserve
+      Exit Sub
+    End If
+
+    If iMode <> PLACE_SETUP Then
+      Dialog Remove
+      Call DrawNorthArrow
+    End If
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "ListBoxHandler: " + Error$()
+
+End Sub
+
+'****************************************************************************
+' Sub OKButtonHandler
+'****************************************************************************
+Sub OKButtonHandler
+  OnError Goto HandleError
+
+  Dim sSize As String
+
+  iNorthID = ReadControlValue(ID_INORTHID)
+  iNorthID = Val(asNorthIDs(iNorthID))
+  bForeground = ReadControlValue(ID_BFOREGROUND)
+  pForeground = ReadControlValue(ID_PFOREGROUND)
+  bBackground = ReadControlValue(ID_BBACKGROUND)
+  pBackground = ReadControlValue(ID_PbACKGROUND)
+  iAspectRatio = ReadControlValue(ID_IASPECTRATIO)
+  iRotation = ReadControlValue(ID_IROTATION)
+  iAutoPlace = ReadControlValue(ID_IAUTOPLACE)
+  sSize = ReadControlValue(ID_ISIZE)
+  If Val(sSize ) = 0 And Left$(sSize , 1) <> "0" Then
+    Note GetResString(IDS_SIZE_MUST_BE_NUMERIC)
+    Dialog Preserve
+    Exit Sub
+  End If
+  iSize = Val(sSize)
+  If iSize < 1 Or iSize > 100 Then
+    Note GetResString(IDS_SIZE_1_100)
+    Dialog Preserve
+    Exit Sub
+  End If
+
+
+
+  If iMode <> PLACE_SETUP Then
+    Dialog Remove
+    Call DrawNorthArrow
+  Else
+    OnError Goto SilentError
+    Close Table ~work
+  End If
+
+SilentError:
+  Exit Sub
+
+HandleError:
+  Note "OKButtonHandler: " + Error$()
+
+End Sub
+
+'****************************************************************************
+' Sub CancelButtonHandler
+'****************************************************************************
+Sub CancelButtonHandler
+  OnError Goto HandleError
+
+  Dim sSize As String
+
+  sSize = ReadControlValue(ID_ISIZE)
+  If Val(sSize ) = 0 And Left$(sSize , 1) <> "0" Then
+    Note GetResString(IDS_SIZE_MUST_BE_NUMERIC)
+    Dialog Preserve
+    Exit Sub
+  End If
+  iSize = Val(sSize)
+  If iSize < 1 Or iSize > 100 Then
+    Note GetResString(IDS_SIZE_1_100)
+    Dialog Preserve
+    Exit Sub
+  End If
+
+SilentError:
+  Exit Sub
+
+HandleError:
+  Note "CancelButtonHandler: " + Error$()
+
+End Sub
+
+
+'****************************************************************************
+' Sub PreviewNorthArrow
+'****************************************************************************
+Sub PreviewNorthArrow
+  Dim iHwnd As Integer
+
+  OnError Goto HandleError
+
+  ' read the value from this control
+  iNorthID = ReadControlValue(ID_INORTHID)
+  iNorthID = Val(asNorthIDs(iNorthID))
+
+  ' Open the northarrow.tab which contains the north arrow objects
+  Open Table ApplicationDirectory$() + NorthArrowNorthArrowFile As NorthArrow Hide
+
+  Select * From NorthArrow Where ID = iNorthID Into ~work NoSelect
+
+  ' get the HWND of the window to draw the preview in
+  iHwnd = ReadControlValue(ID_NORTHARROWPREVIEW)
+  Set Next Document Parent iHwnd Style WIN_STYLE_CHILD
+
+  Map From ~work
+  Set Map Layer 1 Selectable Off  ' make the layer non-selectable for the preview
+  Set Window WindowID(0) ScrollBars Off ' turn off the scroll bars for the preview win
+
+  Exit Sub
+
+HandleError:
+  Note "PreviewNorthArrow: " + Error$()
+  Resume Next
+
+End Sub
+
+'****************************************************************************
+' Sub PreviewMagneticDeclination
+'****************************************************************************
+Sub PreviewMagneticDeclination
+  Dim iHwnd As Integer
+  Dim iID As Integer
+
+  OnError Goto HandleError
+
+  ' read the value from this control
+  iID = ReadControlValue(ID_IMAGNETICID)
+  iID = Val(asMagneticIDs(iID)) * -1  ' MagneticDec ID values are negative in the table
+
+  ' Open the northarrow.tab which contains the north arrow objects
+  Open Table ApplicationDirectory$() + NorthArrowNorthArrowFile As NorthArrow Hide
+
+  Select * From NorthArrow Where ID = iID Into ~workMD NoSelect
+
+  ' get the HWND of the window to draw the preview in
+  iHwnd = ReadControlValue(ID_MAGNETICDECLINATIONPREVIEW)
+  Set Next Document Parent iHwnd Style WIN_STYLE_CHILD
+
+
+  Map From ~workMD
+  Set Map Layer 1 Selectable Off  ' make the layer non-selectable for the preview
+  Set Window WindowID(0) ScrollBars Off ' turn off the scroll bars for the preview win
+
+  Exit Sub
+
+HandleError:
+  Note "PreviewMagneticDeclination: " + Error$()
+  Resume Next
+
+End Sub
+
+'****************************************************************************
+' Sub MagneticDeclination
+'****************************************************************************
+Sub MagneticDeclination
+  OnError Goto HandleError
+
+  Dim sMagneticDeclination As String
+  Dim i As Integer
+
+  For i = 1 To UBound(asMagneticIDs)
+    If Val(asMagneticIDs(i)) = (iMagneticID * -1) Then
+      iMagneticID = i
+      Exit For
+    End If
+  Next
+
+  sMagneticDeclination = Str$(fMagneticDeclination)
+  Dialog
+    Title GetResString(IDS_MAGNETIC_DECLINATION_TITLE)
+    Calling MDDialogHandler
+    Control CheckBox
+      Title GetResString(IDS_DISPLAY_MAGNETIC_DECLINATION)
+      Value lMagneticDeclination
+      Into lMagneticDeclination
+      ID ID_LMD
+      Position 10, 10
+    Control StaticText
+      Title GetResString(IDS_MAGNETIC_DECLINATION)
+      Position 10, 25
+    Control StaticText
+      Title GetResString(IDS_IN_DEGREES_FROM_NORTH)
+      Position 10, 35
+    Control EditText
+      Value sMagneticDeclination
+      Into sMagneticDeclination
+      ID ID_FMD
+      Width 20
+ '     Position 95, 25
+     Position 95, 22
+
+    Control StaticText
+      Title GetResString(IDS_SELECT_ARROW_STYLE)
+      Position 10, 50
+    Control ListBox
+      Title From Variable asMagneticIDs
+      Value iMagneticID
+      Into iMagneticID
+      ID ID_IMAGNETICID
+      Calling MDListBoxHandler
+      Width 30
+      Height 60
+      Position 75, 60
+    Control DocumentWindow
+      ID ID_MAGNETICDECLINATIONPREVIEW
+      Position 10, 60
+      Width 50 Height 60
+      Disable
+
+    Control OKButton
+      Title GetResString(IDS_OK_BUTTON)
+      Calling MDOKButtonHandler
+    Control CancelButton
+      Title GetResString(IDS_CANCEL_BUTTON)
+  If CommandInfo(CMD_INFO_DLG_OK) Then
+    fMagneticDeclination = Val(sMagneticDeclination)
+    iMagneticID = Val(asMagneticIDs(iMagneticID)) * -1
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "MagneticDeclination: " + Error$()
+  Resume Next
+
+End Sub
+
+
+'****************************************************************************
+' Sub MDListBoxHandler
+'****************************************************************************
+Sub MDListBoxHandler
+  OnError Goto HandleError
+
+  Dim sMagneticDeclination As String
+
+  Call PreviewMagneticDeclination
+
+  If CommandInfo(CMD_INFO_DLG_DBL) = TRUE Then
+    iMagneticID = ReadControlValue(ID_IMAGNETICID)
+    iMagneticID = Val(asMagneticIDs(iMagneticID)) * -1
+    sMagneticDeclination = ReadControlValue(ID_FMD)
+    If Val(sMagneticDeclination) = 0 And Left$(sMagneticDeclination, 1) <> "0" Then
+      Note GetResString(IDS_MAGNETIC_DEC_NUMERIC)
+      Exit Sub
+    End If
+    fMagneticDeclination = Val(sMagneticDeclination)
+    lMagneticDeclination = ReadControlValue(ID_LMD)
+
+    Dialog Remove
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note "MDListBoxHandler: " + Error$()
+
+End Sub
+
+'****************************************************************************
+' Sub MDOKButtonHandler
+'****************************************************************************
+Sub MDOKButtonHandler
+  OnError Goto HandleError
+
+  Dim sMagneticDeclination As String
+
+  iMagneticID = ReadControlValue(ID_IMAGNETICID)
+  iMagneticID = Val(asMagneticIDs(iMagneticID)) * -1
+  sMagneticDeclination = ReadControlValue(ID_FMD)
+  If Val(sMagneticDeclination) = 0 And Left$(sMagneticDeclination, 1) <> "0" Then
+    Note GetResString(IDS_MAGNETIC_DEC_NUMERIC)
+    Dialog Preserve
+    Exit Sub
+  End If
+  fMagneticDeclination = Val(sMagneticDeclination)
+  lMagneticDeclination = ReadControlValue(ID_LMD)
+
+  Close Table ~workMD
+
+  Exit Sub
+
+HandleError:
+  Note "MDOKButtonHandler: " + Error$()
+
+End Sub
+
+'****************************************************************************
+' Sub DrawNorthArrow
+'****************************************************************************
+Sub DrawNorthArrow
+  OnError Goto HandleError
+
+  Dim i, j, k As Integer
+  Dim x, y, fWinX1, fWinY1, fWinX2, fWinY2, fWinDX, fWinDY, fTmpDX, fTmpDY, fObjSize As Float
+  Dim o, o1, o2, o3, o4 As Object
+  Dim pPen As Pen
+  Dim bBrush As Brush
+  Dim lAspectRatioObject As Logical
+
+  ' Compute the size of the window
+  If WindowInfo(g_FrontWindowID, WIN_INFO_TYPE) = WIN_MAPPER Then
+    If iRotation = ROTATION_PROJECTION Then
+      Set CoordSys Earth Projection 1, 0
+    Else
+      Set CoordSys Window g_FrontWindowID
+    End If
+    fWinX1 = MapperInfo(g_FrontWindowID, MAPPER_INFO_MINX)
+    fWinY1 = MapperInfo(g_FrontWindowID, MAPPER_INFO_MINY)
+    fWinX2 = MapperInfo(g_FrontWindowID, MAPPER_INFO_MAXX)
+    fWinY2 = MapperInfo(g_FrontWindowID, MAPPER_INFO_MAXY)
+    fWinDX = fWinX2 - fWinX1
+    fWinDY = fWinY2 - fWinY1
+  ElseIf WindowInfo(g_FrontWindowID, WIN_INFO_TYPE) = WIN_LAYOUT Then
+    Set CoordSys Layout Units "in"
+    Call GetPaperSize(g_FrontWindowID, fWinDY, fWinDX)
+    fWinX1 = 0
+    fWinY1 = 0
+    fWinX2 = fWinDX
+    fWinY2 = fWinDY
+  End If
+
+  ' Auto placing North Arrow - compute bounds of object based on insertion point
+  If iMode = PLACE_AUTO Then
+    If WindowInfo(g_FrontWindowID, WIN_INFO_TYPE) = WIN_MAPPER Then
+      ' Auto placing North Arrow in Mapper
+      If iRotation = ROTATION_PROJECTION Then
+        Set CoordSys Earth Projection 1, 0
+      Else
+        Set CoordSys Window g_FrontWindowID
+      End If
+
+      fTmpDX = (fWinDY + fWinDX)/3 * iSize/100       'average, half, and size
+      fTmpDY = fTmpDX
+      fObjSize = (fWinDX + fWinDY)/4 * iSize/100       'average, half, and size
+      Do Case iAutoPlace
+        Case AUTO_PLACE_NW
+          fUserX1 = fWinX1 + fTmpDX
+          fUserY1 = (fWinY2 - fTmpDY) + fObjSize
+        Case AUTO_PLACE_NE
+          fUserX1 = (fWinX2 - fTmpDX) + fObjSize
+          fUserY1 = (fWinY2 - fTmpDY) + fObjSize
+        Case AUTO_PLACE_SE
+          fUserX1 = (fWinX2 - fTmpDX) + fObjSize
+          fUserY1 = fWinY1 + fTmpDY
+        Case AUTO_PLACE_SW
+          fUserX1 = fWinX1 + fTmpDX
+          fUserY1 = fWinY1 + fTmpDY
+      End Case
+      fUserX2 = fUserX1
+      fUserY2 = fUserY1
+'      If iRotation = ROTATION_PROJECTION Then
+'        Create Point Into Variable o (fUserX1, fUserY1)
+'        Set CoordSys Earth Projection 1, 0
+'        fUserX1 = CentroidX(o)
+'        fUserY1 = Centroidy(o)
+'        fUserX2 = fUserX1
+'        fUserY2 = fUserY1
+'      End If
+    ElseIf WindowInfo(g_FrontWindowID, WIN_INFO_TYPE) = WIN_LAYOUT Then
+      ' Auto placing North Arrow in Layout
+      Set CoordSys Layout Units "in"
+      fTmpDX = (fWinDY + fWinDX)/3 * iSize/100       'average, half, and size
+      fTmpDY = fTmpDX
+      fObjSize = (fWinDX + fWinDY)/4 * iSize/100       'average, half, and size
+      Do Case iAutoPlace
+        Case AUTO_PLACE_NW
+          fUserX1 = fWinX1 + fTmpDX
+          fUserY1 = fWinY1 + fTmpDY
+        Case AUTO_PLACE_NE
+          fUserX1 = (fWinX2 - fTmpDX) + fObjSize
+          fUserY1 = fWinY1 + fTmpDY
+        Case AUTO_PLACE_SE
+          fUserX1 = (fWinX2 - fTmpDX) + fObjSize
+          fUserY1 = (fWinY2 - fTmpDY) + fObjSize
+        Case AUTO_PLACE_SW
+          fUserX1 = fWinX1 + fTmpDX
+          fUserY1 = (fWinY2 - fTmpDY) + fObjSize
+      End Case
+      fUserX2 = fUserX1
+      fUserY2 = fUserY1
+    End If
+  End If
+
+  If fUserX1 > fUserX2 Then
+    x = fUserX1
+    fUserX1 = fUserX2
+    fUserX2 = x
+  End If
+
+  If fUserY1 > fUserY2 Then
+    y = fUserY1
+    fUserY1 = fUserY2
+    fUserY2 = y
+  End If
+
+  fUserDX = fUserX2 - fUserX1
+  fUserDY = fUserY2 - fUserY1
+
+  If fUserDX < fWinDX/50 Then
+    fUserDX = 0
+  End if
+
+  If fUserDY < fWinDY/50 Then
+    fUserDY = 0
+  End If
+
+  If fUserDX = 0 Then
+    fUserDX = fUserDY
+  End If
+  If fUserDY = 0 Then
+    fUserDY = fUserDX
+  End If
+
+  lAspectRatioObject = FALSE
+  If fUserDX = 0 and fUserDY = 0 Then
+    lAspectRatioObject = TRUE
+    If WindowInfo(g_FrontWindowID, WIN_INFO_TYPE) = WIN_MAPPER Then
+      If iRotation = ROTATION_PROJECTION Then
+        Set CoordSys Earth Projection 1, 0
+      Else
+        Set CoordSys Window g_FrontWindowID
+      End If
+      fWinX1 = MapperInfo(g_FrontWindowID, MAPPER_INFO_MINX)
+      fWinY1 = MapperInfo(g_FrontWindowID, MAPPER_INFO_MINY)
+      fWinX2 = MapperInfo(g_FrontWindowID, MAPPER_INFO_MAXX)
+      fWinY2 = MapperInfo(g_FrontWindowID, MAPPER_INFO_MAXY)
+      fWinDX = fWinX2 - fWinX1
+      fWinDY = fWinY2 - fWinY1
+
+      If iRotation = ROTATION_PROJECTION Then
+'        Create Region Into Variable o 1 4 (fUserX1, fUserY1) (fUserX2, fUserY1) (fUserX2, fUserY2) (fUserX1, fUserY2)
+'        Set CoordSys Earth Projection 1, 0
+'        fUserX1 = ObjectGeography(o, OBJ_GEO_MINX)
+'        fUserY1 = ObjectGeography(o, OBJ_GEO_MINY)
+'        fUserX2 = ObjectGeography(o, OBJ_GEO_MAXX)
+'        fUserY2 = ObjectGeography(o, OBJ_GEO_MAXY)
+      End If
+    ElseIf WindowInfo(g_FrontWindowID, WIN_INFO_TYPE) = WIN_LAYOUT Then
+      Set CoordSys Layout Units "in"
+      Call GetPaperSize(g_FrontWindowID, fWinDY, fWinDX)
+    End If
+
+    fObjSize = (fWinDX + fWinDY)/4 * iSize/100       'average, half, and size
+    fUserX1 = fUserX1 - fObjSize
+    fUserY1 = fUserY1 - fObjSize
+    fUserX2 = fUserX1 + fObjSize
+    fUserY2 = fUserY1 + fObjSize
+
+    fUserDX = fUserX2 - fUserX1
+    fUserDY = fUserY2 - fUserY1
+  End If
+
+  fWinDX = fUserDX
+  fWinDY = fUserDY 'save to restore with in case fUserDX and fUserDY modified by first object
+
+  ' Open the northarrow.tab which contains the north arrow objects
+  Open Table ApplicationDirectory$() + NorthArrowNorthArrowFile As NorthArrow Hide
+
+  Select * From NorthArrow Where ID = iNorthID Into ~work NoSelect
+  Fetch First From ~work
+  For k = 1 To TableInfo(~work, TAB_INFO_NROWS)
+
+    o1 = ~work.Obj
+
+    Call PrepToBuildObj(o1, lAspectRatioObject)
+
+    If ObjectInfo(o1, OBJ_INFO_TYPE) = OBJ_TYPE_REGION Then
+      o2 = oBuildRegion(o1, FALSE)
+    ElseIf ObjectInfo(o1, OBJ_INFO_TYPE) = OBJ_TYPE_PLINE Then
+      o2 = oBuildPLine(o1, FALSE)
+    ElseIf ObjectInfo(o1, OBJ_INFO_TYPE) = OBJ_TYPE_COLLECTION Then
+      o2 = ObjectInfo(o1, OBJ_INFO_REGION)
+      bBrush = ObjectInfo(o2, OBJ_INFO_BRUSH)
+      o3 = oBuildRegion(o2, FALSE)
+
+      o2 = ObjectInfo(o1, OBJ_INFO_PLINE)
+      pPen = ObjectInfo(o2, OBJ_INFO_PEN)
+      o4 = oBuildPLine(o2, FALSE)
+
+      Create Collection Into Variable o2
+      o2 = Combine(o3, o4)
+    Else
+      Note GetResString(IDS_UNSUPPORTED_OBJ_TYPE)
+      Exit Sub
+    End If
+    Insert Into WindowInfo(g_FrontWindowID, WIN_INFO_TABLE) (Obj) Values (o2)
+    Fetch Next From ~work
+  Next
+  Close Table ~work
+
+  If lMagneticDeclination Then
+    fUserDX = fWinDX
+    fUserDY = fWinDY 'restore in case fUserDX and fUserDY modified by first object
+
+    ' Open the northarrow.tab which contains the north arrow objects
+    Open Table ApplicationDirectory$() + NorthArrowNorthArrowFile As NorthArrow Hide
+
+    Select * From NorthArrow Where ID = iMagneticID Into ~work NoSelect
+    Fetch First From ~work
+    For k = 1 To TableInfo(~work, TAB_INFO_NROWS)
+
+      o1 = ~work.Obj
+      Call PrepToBuildObj(o1, lAspectRatioObject)
+
+      If ObjectInfo(o1, OBJ_INFO_TYPE) = OBJ_TYPE_REGION Then
+        o2 = oBuildRegion(o1, TRUE)
+      ElseIf ObjectInfo(o1, OBJ_INFO_TYPE) = OBJ_TYPE_PLINE Then
+        o2 = oBuildPLine(o1, TRUE)
+      ElseIf ObjectInfo(o1, OBJ_INFO_TYPE) = OBJ_TYPE_COLLECTION Then
+        o2 = ObjectInfo(o1, OBJ_INFO_REGION)
+        bBrush = ObjectInfo(o2, OBJ_INFO_BRUSH)
+        o3 = oBuildRegion(o2, TRUE)
+
+        o2 = ObjectInfo(o1, OBJ_INFO_PLINE)
+        pPen = ObjectInfo(o2, OBJ_INFO_PEN)
+        o4 = oBuildPLine(o2, TRUE)
+
+        Create Collection Into Variable o2
+        o2 = Combine(o3, o4)
+      Else
+        Note GetResString(IDS_UNSUPPORTED_OBJ_TYPE)
+        Exit Sub
+      End If
+      Insert Into WindowInfo(g_FrontWindowID, WIN_INFO_TABLE) (Obj) Values (o2)
+      Fetch Next From ~work
+    Next
+    Close Table ~work
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note Error$()
+
+End Sub
+
+'****************************************************************************
+' Sub PrepToBuildObj
+'****************************************************************************
+Sub PrepToBuildObj(o1 As Object, lAspectRatioObject As Logical)
+  Set CoordSys Table NorthArrow
+  fObjX1 = ObjectGeography(o1, OBJ_GEO_MINX)
+  fObjX2 = ObjectGeography(o1, OBJ_GEO_MAXX)
+  fObjY1 = ObjectGeography(o1, OBJ_GEO_MINY)
+  fObjY2 = ObjectGeography(o1, OBJ_GEO_MAXY)
+
+  fObjDX = fObjX2 - fObjX1
+  fObjDY = fObjY2 - fObjY1
+
+  If iAspectRatio <> ASPECT_RATIO_USER Or iMode = PLACE_AUTO Or lAspectRatioObject Then
+    If fUserDX / fUserDY <> fObjDX / fObjDY Then
+      If (fUserDY / fObjDY) < (fUserDX / fObjDX) Then
+        ' fit to height
+        fUserDX = fUserDY * fObjDX / fObjDY
+       Else
+        ' fit to width
+        fUserDY = fUserDX * fObjDY / fObjDX
+      End If
+    End If
+  End If
+
+  If WindowInfo(g_FrontWindowID, WIN_INFO_TYPE) = WIN_MAPPER Then
+    If iRotation = ROTATION_PROJECTION Then
+      Set CoordSys Earth Projection 1, 0
+    Else
+      Set CoordSys Window g_FrontWindowID
+    End If
+  Else
+    Set CoordSys Layout Units "in"
+  End If
+
+End Sub
+
+'****************************************************************************
+' Sub oBuildRegion
+'****************************************************************************
+Function oBuildRegion(o1 As Object, ByVal lMag As Logical) As Object
+  Dim i, j As Integer
+  Dim x, y As Float
+  Dim o2, o3 As Object
+  Dim pPen As Pen
+  Dim bBrush As Brush
+  Dim lAspectRatioObject As Logical
+
+  pPen = ObjectInfo(o1, OBJ_INFO_PEN)
+  bBrush = ObjectInfo(o1, OBJ_INFO_BRUSH)
+  Create Region Into Variable o2 0
+  For i = 1 To ObjectInfo(o1, OBJ_INFO_NPOLYGONS)
+    If WindowInfo(g_FrontWindowID, WIN_INFO_TYPE) = WIN_MAPPER Then
+      If iRotation = ROTATION_PROJECTION Then
+        Set CoordSys Earth Projection 1, 0
+      Else
+        Set CoordSys Window g_FrontWindowID
+      End If
+    Else
+      Set CoordSys Layout Units "in"
+    End If
+
+    Create Region Into Variable o3 0
+    For j = 1 To ObjectInfo(o1, OBJ_INFO_NPOLYGONS+i)
+      Set CoordSys Table NorthArrow
+      fObjX = ObjectNodeX(o1, i, j)
+      fObjY = ObjectNodeY(o1, i, j)
+      If lMag Then
+        x = (fObjX1 + fObjX2) / 2 -
+            (fObjY1 - fObjY) * Sin(fMagneticDeclination * DEG_2_RAD) -
+           ((fObjX1 + fObjX2) / 2 - fObjX) * Sin((90 + fMagneticDeclination) * DEG_2_RAD)
+        y = fObjY1 -
+           (fObjY1 - fObjY) * Cos(fMagneticDeclination * DEG_2_RAD) -
+          ((fObjX1+fObjX2)/2 - fObjX) * Cos((90 + fMagneticDeclination) * DEG_2_RAD)
+        fObjX = (x - fObjX1) / fObjDX
+        fObjY = (y - fObjY1) / fObjDY
+      Else
+        fObjX = (fObjX - fObjX1) / fObjDX
+        fObjY = (fObjY - fObjY1) / fObjDY
+      End If
+      If WindowInfo(g_FrontWindowID, WIN_INFO_TYPE) = WIN_MAPPER Then
+        If iRotation = ROTATION_PROJECTION Then
+          Set CoordSys Earth Projection 1, 0
+        Else
+          Set CoordSys Window g_FrontWindowID
+        End If
+        y = fObjY * fUserDY + fUserY1
+      Else
+        Set CoordSys Layout Units "in"
+        y = fUserY2 - fObjY * fUserDY
+      End If
+      x = fObjX * fUserDX + fUserX1
+      Alter Object o3 Node Add (x, y)
+    Next
+    If i = 1 Then
+      o2 = o3
+    Else
+      o2 = Combine(o2, o3)
+    End If
+  Next
+  If StyleAttr(bBrush, BRUSH_FORECOLOR) = WHITE Then
+    Alter Object o2
+      Info OBJ_INFO_BRUSH, bBackGround
+    Alter Object o2
+      Info OBJ_INFO_PEN, pBackGround
+  Else
+    Alter Object o2
+      Info OBJ_INFO_BRUSH, bForeground
+    Alter Object o2
+      Info OBJ_INFO_PEN, pForeGround
+  End If
+
+  oBuildRegion = o2
+
+End Function
+
+'****************************************************************************
+' Sub oBuildPLine
+'****************************************************************************
+Function oBuildPLine(o1 As Object, ByVal lMag As Logical) As Object
+  Dim i, j As Integer
+  Dim x, y As Float
+  Dim o2, o3 As Object
+  Dim pPen As Pen
+  Dim bBrush As Brush
+  Dim lAspectRatioObject As Logical
+
+  pPen = ObjectInfo(o1, OBJ_INFO_PEN)
+  Create Pline Into Variable o2 0
+  For i = 1 To ObjectInfo(o1, OBJ_INFO_NPOLYGONS)
+    If WindowInfo(g_FrontWindowID, WIN_INFO_TYPE) = WIN_MAPPER Then
+      If iRotation = ROTATION_PROJECTION Then
+        Set CoordSys Earth Projection 1, 0
+      Else
+        Set CoordSys Window g_FrontWindowID
+      End If
+    Else
+      Set CoordSys Layout Units "in"
+    End If
+    Create Pline Into Variable o3 0
+    For j = 1 To ObjectInfo(o1, OBJ_INFO_NPOLYGONS+i)
+      Set CoordSys Table NorthArrow
+      fObjX = ObjectNodeX(o1, i, j)
+      fObjY = ObjectNodeY(o1, i, j)
+      If lMag Then
+        x = (fObjX1 + fObjX2) / 2 -
+            (fObjY1 - fObjY) * Sin(fMagneticDeclination * DEG_2_RAD) -
+           ((fObjX1 + fObjX2) / 2 - fObjX) * Sin((90 + fMagneticDeclination) * DEG_2_RAD)
+        y = fObjY1 -
+           (fObjY1 - fObjY) * Cos(fMagneticDeclination * DEG_2_RAD) -
+          ((fObjX1+fObjX2)/2 - fObjX) * Cos((90 + fMagneticDeclination) * DEG_2_RAD)
+        fObjX = (x - fObjX1) / fObjDX
+        fObjY = (y - fObjY1) / fObjDY
+      Else
+        fObjX = (fObjX - fObjX1) / fObjDX
+        fObjY = (fObjY - fObjY1) / fObjDY
+      End If
+      If WindowInfo(g_FrontWindowID, WIN_INFO_TYPE) = WIN_MAPPER Then
+        If iRotation = ROTATION_PROJECTION Then
+          Set CoordSys Earth Projection 1, 0
+        Else
+          Set CoordSys Window g_FrontWindowID
+        End If
+        y = fObjY * fUserDY + fUserY1
+      Else
+        Set CoordSys Layout Units "in"
+        y = fUserY2 - fObjY * fUserDY
+      End If
+      x = fObjX * fUserDX + fUserX1
+      Alter Object o3 Node Add (x, y)
+    Next
+    If i = 1 Then
+      o2 = o3
+    Else
+      o2 = Combine(o2, o3)
+    End If
+  Next
+  If StyleAttr(pPen, PEN_COLOR) = WHITE Then
+    Alter Object o2
+      Info OBJ_INFO_PEN, pBackGround
+  Else
+    Alter Object o2
+      Info OBJ_INFO_PEN, pForeGround
+  End If
+
+  oBuildPline = o2
+
+End Function
+
+'****************************************************************************
+' Sub ReadPreferences
+'****************************************************************************
+Sub ReadPreferences
+  OnError Goto HandleError
+
+  Dim sPrefPath As String
+  Dim fVersion as Float
+  Dim iForeBrushPattern, iForeBrushForeColor, iForeBrushBackColor As Integer
+  Dim iBackBrushPattern, iBackBrushForeColor, iBackBrushBackColor As Integer
+  Dim iForePenWidth, iForePenPattern, iForePenColor As Integer
+  Dim iBackPenWidth, iBackPenPattern, iBackPenColor As Integer
+
+  If FileExists(GetFolderPath$(FOLDER_MI_APPDATA) + NorthArrowPreferenceFile) Then
+    sPrefPath = GetFolderPath$(FOLDER_MI_APPDATA) + NorthArrowPreferenceFile
+  ElseIf FileExists(GetFolderPath$(FOLDER_MI_PREFERENCE) + NorthArrowPreferenceFile) Then
+    sPrefPath = GetFolderPath$(FOLDER_MI_PREFERENCE) + NorthArrowPreferenceFile
+  ElseIf FileExists(ApplicationDirectory$() + NorthArrowPreferenceFile) Then
+    sPrefPath = ApplicationDirectory$() + NorthArrowPreferenceFile
+  Else
+    sPrefPath = NorthArrowPreferenceFile
+    GoTo SkipFile
+  End If
+
+  OnError GoTo SkipFile
+  Open File sPrefPath For Input As #2
+  If Not EOF(2) Then
+    Input #2, fVersion
+    Do Case fVersion
+      Case AppVersion, 1.0
+        Input #2, iNorthID, iAspectRatio, iRotation, iAutoPlace, iSize,
+                  iForeBrushPattern, iForeBrushForeColor, iForeBrushBackColor,
+                  iBackBrushPattern, iBackBrushForeColor, iBackBrushBackColor,
+                  iForePenWidth, iForePenPattern, iForePenColor,
+                  iBackPenWidth, iBackPenPattern, iBackPenColor,
+                  lMagneticDeclination, fMagneticDeclination, iMagneticID
+
+        bForeground = MakeBrush(iForeBrushPattern, iForeBrushForeColor, iForeBrushBackColor)
+        bBackground = MakeBrush(iBackBrushPattern, iBackBrushForeColor, iBackBrushBackColor)
+        pForeground = MakePen(iForePenWidth, iForePenPattern, iForePenColor)
+        pBackground = MakePen(iBackPenWidth, iBackPenPattern, iBackPenColor)
+      Case 0.9
+        Input #2, iNorthID, iAspectRatio, iRotation, iAutoPlace, iSize,
+                  iForeBrushPattern, iForeBrushForeColor, iForeBrushBackColor,
+                  iBackBrushPattern, iBackBrushForeColor, iBackBrushBackColor,
+                  iForePenWidth, iForePenPattern, iForePenColor,
+                  iBackPenWidth, iBackPenPattern, iBackPenColor
+
+        bForeground = MakeBrush(iForeBrushPattern, iForeBrushForeColor, iForeBrushBackColor)
+        bBackground = MakeBrush(iBackBrushPattern, iBackBrushForeColor, iBackBrushBackColor)
+        pForeground = MakePen(iForePenWidth, iForePenPattern, iForePenColor)
+        pBackground = MakePen(iBackPenWidth, iBackPenPattern, iBackPenColor)
+      Case 0.8, 0.7
+        Input #2, iNorthID, iAspectRatio, iRotation, iAutoPlace,
+                  iForeBrushPattern, iForeBrushForeColor, iForeBrushBackColor,
+                  iBackBrushPattern, iBackBrushForeColor, iBackBrushBackColor,
+                  iForePenWidth, iForePenPattern, iForePenColor,
+                  iBackPenWidth, iBackPenPattern, iBackPenColor
+
+        bForeground = MakeBrush(iForeBrushPattern, iForeBrushForeColor, iForeBrushBackColor)
+        bBackground = MakeBrush(iBackBrushPattern, iBackBrushForeColor, iBackBrushBackColor)
+        pForeground = MakePen(iForePenWidth, iForePenPattern, iForePenColor)
+        pBackground = MakePen(iBackPenWidth, iBackPenPattern, iBackPenColor)
+      Case 0.6
+        Input #2, iNorthID, iAspectRatio, iRotation,
+                  iForeBrushPattern, iForeBrushForeColor, iForeBrushBackColor,
+                  iBackBrushPattern, iBackBrushForeColor, iBackBrushBackColor,
+                  iForePenWidth, iForePenPattern, iForePenColor,
+                  iBackPenWidth, iBackPenPattern, iBackPenColor
+
+        bForeground = MakeBrush(iForeBrushPattern, iForeBrushForeColor, iForeBrushBackColor)
+        bBackground = MakeBrush(iBackBrushPattern, iBackBrushForeColor, iBackBrushBackColor)
+        pForeground = MakePen(iForePenWidth, iForePenPattern, iForePenColor)
+        pBackground = MakePen(iBackPenWidth, iBackPenPattern, iBackPenColor)
+
+      Case 0.5
+        Input #2, iNorthID, iAspectRatio, iRotation,
+                  iForeBrushPattern, iForeBrushForeColor, iForeBrushBackColor,
+                  iBackBrushPattern, iBackBrushForeColor, iBackBrushBackColor
+
+        bForeground = MakeBrush(iForeBrushPattern, iForeBrushForeColor, iForeBrushBackColor)
+        bBackground = MakeBrush(iBackBrushPattern, iBackBrushForeColor, iBackBrushBackColor)
+      Case Else
+        Note GetResString(IDS_BAD_PREF_VERSION) + " " + sPrefPath + " " + GetResString(IDS_USING_DEFAULTS)
+    End Case
+  End If
+
+  Close File #2
+
+  Exit Sub
+
+SkipFile:
+  'Print GetResString(IDS_CANT_READ_PREF) + " " + sPrefPath + " " + GetResString(IDS_USING_DEFAULTS)
+'  Close File #2
+  Exit Sub
+
+HandleError:
+  Note "ReadPreferences: " + Error$()
+  Resume Next
+End Sub
+
+'****************************************************************************
+' Sub WritePreferences
+'****************************************************************************
+Sub WritePreferences
+  OnError GoTo SecondTry
+
+  Dim iForeBrushPattern, iForeBrushForeColor, iForeBrushBackColor As Integer
+  Dim iBackBrushPattern, iBackBrushForeColor, iBackBrushBackColor As Integer
+  Dim iForePenPattern, iForePenColor, iForePenWidth As Integer
+  Dim iBackPenPattern, iBackPenColor, iBackPenWidth As Integer
+
+  If FileExists(GetFolderPath$(FOLDER_MI_APPDATA)) then
+    Open File GetFolderPath$(FOLDER_MI_APPDATA) + NorthArrowPreferenceFile For Output As #2
+    Goto OpenOkay
+  End If
+
+SecondTry:
+  If FileExists(GetFolderPath$(FOLDER_MI_PREFERENCE)) then
+    OnError GoTo ThirdTry
+    Open File GetFolderPath$(FOLDER_MI_PREFERENCE) + NorthArrowPreferenceFile For Output As #2
+    Goto OpenOkay
+  End If
+
+ThirdTry:
+  OnError GoTo SkipFile
+  Open File ApplicationDirectory$() + NorthArrowPreferenceFile For Output As #2
+
+OpenOkay:
+      iForeBrushPattern = StyleAttr(bForeground, BRUSH_PATTERN)
+      iForeBrushForeColor = StyleAttr(bForeground, BRUSH_FORECOLOR)
+      iForeBrushBackColor = StyleAttr(bForeground, BRUSH_BACKCOLOR)
+      iBackBrushPattern = StyleAttr(bBackground, BRUSH_PATTERN)
+      iBackBrushForeColor = StyleAttr(bBackground, BRUSH_FORECOLOR)
+      iBackBrushBackColor = StyleAttr(bBackground, BRUSH_BACKCOLOR)
+      iForePenWidth = StyleAttr(pForeground, PEN_WIDTH)
+      iForePenPattern = StyleAttr(pForeground, PEN_PATTERN)
+      iForePenColor = StyleAttr(pForeground, PEN_COLOR)
+      iBackPenWidth = StyleAttr(pBackground, PEN_WIDTH)
+      iBackPenPattern = StyleAttr(pBackground, PEN_PATTERN)
+      iBackPenColor = StyleAttr(pBackground, PEN_COLOR)
+
+      Write #2, AppVersion
+      Write #2, iNorthID, iAspectRatio, iRotation, iAutoPlace, iSize,
+                iForeBrushPattern, iForeBrushForeColor, iForeBrushBackColor,
+                iBackBrushPattern, iBackBrushForeColor, iBackBrushBackColor,
+                iForePenWidth, iForePenPattern, iForePenColor,
+                iBackPenWidth, iBackPenPattern, iBackPenColor,
+                lMagneticDeclination, fMagneticDeclination, iMagneticID
+
+  Close File #2
+
+NoFile:
+  Exit Sub
+
+SkipFile:
+  Note GetResString(IDS_CANT_WRITE_PREF_FILE) + " " + GetFolderPath$(FOLDER_MI_APPDATA) + NorthArrowPreferenceFile + " " + GetResString(IDS_SKIPPING)
+  Close File #2
+  Resume NoFile
+  Exit Sub
+
+
+HandleError:
+  Note "WritePreferences: " + Error$()
+
+  Resume Next
+End Sub
+
+'****************************************************************************
+' Sub EndHandler
+'****************************************************************************
+Sub EndHandler
+  OnError Goto HandleError
+
+  Call WritePreferences
+
+  OnError Goto SilentError
+  Close Table NorthArrow
+
+SilentError:
+  Exit Sub
+
+HandleError:
+  Note "EndHandler: " + Error$()
+  Resume Next
+
+End Sub
+
+'****************************************************************************
+' Sub About
+'****************************************************************************
+
+Sub About
+  OnError Goto HandleError
+
+  Dialog
+    Title GetResString(IDS_APP_DESCRIPTION) + " (" + GetResString(IDS_VERSION) + " " + Str$(AppVersion) + ")"
+    Control StaticText
+      Title GetResString(IDS_ABOUT_1)
+      Position 10, 10
+    Control StaticText
+      Title GetResString(IDS_ABOUT_2)
+      Position 10, 20
+    Control StaticText
+      Title GetResString(IDS_ABOUT_3)
+      Position 10, 30
+    Control StaticText
+      Title GetResString(IDS_ABOUT_4)
+      Position 10, 40
+    Control StaticText
+      Title GetResString(IDS_ABOUT_5)
+      Position 10, 50
+    Control StaticText
+      Title GetResString(IDS_ABOUT_6)
+      Position 10, 60
+    Control StaticText
+      Title GetResString(IDS_ABOUT_7)
+      Position 10, 70
+    Control StaticText
+      Title GetResString(IDS_ABOUT_8)
+      Position 10, 80
+    Control StaticText
+      Title GetResString(IDS_ABOUT_9)
+      Position 10, 90
+    Control StaticText
+      Title GetResString(IDS_ABOUT_10)
+      Position 10, 100
+    Control StaticText
+      Title GetResString(IDS_ABOUT_11)
+      Position 10, 110
+    Control StaticText
+      Title GetResString(IDS_ABOUT_12)
+      Position 10, 120
+    Control OKButton
+      Title GetResString(IDS_OK_BUTTON)
+
+  Exit Sub
+
+HandleError:
+  Note "About: " + Error$()
+  Resume Next
+
+End Sub
+
+'****************************************************************************
+' Sub GoodBye
+'****************************************************************************
+Sub GoodBye
+  OnError Goto HandleError
+
+  End Program
+
+  Exit Sub
+
+HandleError:
+  Note "GoodBye: " + Error$()
+  Resume Next
+
+End Sub

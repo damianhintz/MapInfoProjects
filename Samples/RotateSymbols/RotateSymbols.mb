@@ -1,0 +1,528 @@
+'*****************************************************************************
+'       Copyright (c) 2000, MAPINFO CORPORATION
+'       All rights reserved.
+'
+' $Workfile: RotateSymbols.mb $
+' $Revision: 65021 $
+' $Author: DE004SN $
+' $Date: 2009-01-14 12:50:40 -0500 (Wed, 14 Jan 2009) $
+'
+' Module Description:
+'
+' MapBasic program rotate symbols in a table.
+'
+' Revision History:
+'
+'    Rev 1.0   7 Jul 1999 16:14:56   DRESSEL
+'    Rev 1.1   2 Mar 2000            DRESSEL
+'            - Extract strings for localization
+'            - Test and report if no tables open
+'            - Test and report if no map window
+'            - Explicitely convert string rotation angle to numeric value
+'            - Explain more in about box
+'    Rev 1.2   17 Apr 2000            DRESSEL
+'            - Change rotation from integer to float
+'    Rev 1.3   21 Apr 2000            DRESSEL
+'            - Check for and avoid null objects #13121
+'    Rev 1.4   25 Apr 2000            DRESSEL
+'            - Widen dialog further #12351
+'    Rev 1.5   19 Feb 2008            Rajan Batra
+'            - Internationalization of Tool
+'*****************************************************************************
+Include "..\Inc\MapBasic.def"
+Include "RotateSymbols.def"
+' Include a file that lets us use the "auto-load" library                 
+Include "..\Inc\auto_lib.def"                                             
+' Include a file that provides string resource loading functionality
+Include "..\Inc\ResStrng.def"
+
+Declare Sub Main
+Declare Sub RotateSymbols
+Declare Sub TableNameHandler
+Declare Sub ColumnNameHandler
+Declare Sub OKButtonHandler
+Declare Sub RotationTypeHandler
+Declare Sub SymbolTypeHandler
+Declare Sub DialogHandler
+Declare Sub About
+Declare Sub GoodBye
+
+Define IDTableNames 601
+Define IDRotationType 602
+Define IDColumnNames 603
+Define IDFixedRotation 604
+Define IDSymbolType 605
+Define IDFixedSymbol 607
+Define IDFixedSymbolDesc 608
+
+Define RotationTypeColumn 1
+Define RotationTypeFixed 2
+Define SymbolTypeExisting 1
+Define SymbolTypeEither 2
+Define SymbolTypeFixed 3
+Define TrueTypeSymbol 2
+
+Define AppVersion 1.5
+
+Global iSymbol, iColor, iSize, iStyle As Integer
+Global sFont As String
+Global sSymbol, sFixedSymbol, sBlankSymbol, sTempSymbol As Symbol
+Global iTables, iTable, iColumns, iColumn As Integer
+Global sTable, sTables(), sColumn, sColumns() As String
+Global iDirection, iRotationType, iSymbolType As SmallInt
+Global fFixedRotation As Float
+Global bSymbolDisabled As  Logical
+
+Sub Main
+
+  OnError Goto HandleError
+
+  If LoadStrings((ApplicationDirectory$() + STR_RES_STR_FILE)) = FALSE Then
+    Note STR_FILE_NOT_ACCESSIBLE + ApplicationDirectory$() + STR_RES_STR_FILE
+    Exit Sub
+  End If
+
+  gsAppDescription = GetResString(IDS_APP_DESCRIPTION)
+  gsAppFilename = STR_APP_FILE_NAME                                            
+
+  Create Menu GetResString(IDS_MENU_NAME) As                                                
+    GetResString(IDS_MENU_ITEM_NAME)  Calling RotateSymbols,
+    STR_MENU_ITEM_SEPERATOR,                                      
+    GetResString(IDS_ABOUT_MENU_ITEM_NAME)  Calling About,        
+    GetResString(IDS_EXIT_MENU_ITEM_NAME) Calling Goodbye             
+
+  If SystemInfo(SYS_INFO_MIVERSION) >= 450 Then
+    Call set_tools_menu(GetResString(IDS_MENU_NAME))                                          
+  Else
+    Create Menu GetResString(IDS_TOOLS_MENU) As
+      GetResString(IDS_MENU_NAME) As GetResString(IDS_MENU_NAME)
+    Alter Menu Bar Add GetResString(IDS_TOOLS_MENU)
+  End If
+
+  iSymbol = 233
+  iColor = 16711680
+  iSize = 18
+  sFont = STR_FONT_TYPE
+  iStyle = 0
+  sFixedSymbol = MakeFontSymbol(iSymbol, iColor, iSize, sFont, iStyle, 0)
+  iDirection = 1
+  iRotationType = RotationTypeColumn
+  fFixedRotation = 0
+  iSymbolType = SymbolTypeExisting
+  iTable = 1
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_MAIN + Error$()
+  Resume Next
+
+End Sub                                                                   
+
+Sub RotateSymbols
+
+  OnError Goto HandleError
+
+  Dim o, p As Object
+  Dim i As Integer
+  Dim aColumn, aObj, aRowID As Alias
+  Dim iSkipNTT, iSkipNP As Integer
+  Dim sFixedRotation As String
+
+  iTables = 0
+  ReDim sTables(iTables)
+  If NumTables() > 0 Then
+    For i = 1 To NumTables()
+      If TableInfo(i, TAB_INFO_MAPPABLE) = TRUE And
+         TableInfo(i, TAB_INFO_READONLY) = FALSE And
+         TableInfo(i, TAB_INFO_SEAMLESS) = FALSE And
+         TableInfo(i, TAB_INFO_TYPE) = TAB_TYPE_BASE Then
+        iTables = iTables + 1
+        ReDim sTables(iTables)
+        sTables(iTables) = TableInfo(i, TAB_INFO_NAME)
+      End If
+    Next
+    If iTable > iTables Then
+      iTable = 1
+    End If
+    If iTables > 0 Then
+
+    sFixedRotation = FormatNumber$(fFixedRotation)
+    sBlankSymbol = MakeSymbol(31, 0, 12)
+
+    Dialog  
+      Title GetResString(IDS_APP_DESCRIPTION) + STR_EMPTY_STR2 + STR_OPEN_BRAC
+               + GetResString(IDS_VERSION) + STR_EMPTY_STR2 + Str$(AppVersion) + STR_CLOSE_BRAC
+      Calling DialogHandler
+    Control StaticText 
+      Title GetResString(IDS_TABLE)
+      Position 10,10
+    Control PopupMenu
+      Title From Variable sTables
+      Value iTable
+      Into iTable
+      Position 10,25
+      Calling TableNameHandler
+      ID IDTableNames
+    Control GroupBox
+      Title GetResString(IDS_ROTATION)
+      Position 10, 45
+      Height 85
+      Width 200
+    Control RadioGroup 
+      Title GetResString(IDS_COLUMN) + STR_SEMI_COLON + GetResString(IDS_FIXED)
+      Value iRotationType
+      Into iRotationType
+      Position 15,65
+      ID IDRotationType
+      Calling RotationTypeHandler
+    Control PopupMenu
+      Title From Variable sColumns
+      Value iColumn
+      Into iColumn
+      Position 80,63
+      Width 60
+      ID IDColumnNames
+    Control EditText
+      Value sFixedRotation
+      Into sFixedRotation
+      Width 60
+      Position 80,80
+      ID IDFixedRotation
+    Control StaticText
+      Title GetResString(IDS_DEGREES)  
+    Control RadioGroup
+      Title GetResString(IDS_COUNTER_CLOCKWISE) + STR_SEMI_COLON + GetResString(IDS_CLOCKWISE)
+      Value iDirection
+      Into IDirection
+      Position 15,100
+      
+    Control GroupBox
+      Title GetResString(IDS_SYMBOL)
+      Position 10, 145
+      Height 90
+    Control RadioGroup 
+      Title GetResString(IDS_EXISTING_ONLY) + STR_SEMI_COLON 
+            + GetResString(IDS_EXISTING_OR_FIXED) + STR_SEMI_COLON + GetResString(IDS_FIXED_ONLY)
+      Value iSymbolType
+      Into iSymbolType
+      ID IDSymbolType
+      Position 15, 160
+      Calling SymbolTypeHandler
+    Control SymbolPicker
+      Value sFixedSymbol
+      Into sFixedSymbol
+      Position 15,205
+      ID IDFixedSymbol
+    Control StaticText
+      Title GetResString(IDS_REPLACEMENT_SYMBOL)
+      Position 40,216
+      ID IDFixedSymbolDesc
+    
+    Control OKButton
+      Title GetResString(IDS_OK)
+      Calling OKButtonHandler
+    Control CancelButton
+      Title GetResString(IDS_CANCEL)
+
+    If CommandInfo(CMD_INFO_DLG_OK) Then 
+
+      if(bSymbolDisabled) Then
+        sFixedSymbol = sTempSymbol
+      End if  
+     
+      
+      sTable = sTables(iTable)
+      If iRotationType = RotationTypeColumn Then
+        sColumn = sColumns(iColumn)
+
+        aColumn = sTable + STR_DOT + sColumn
+      End If
+
+      fFixedRotation = Val(sFixedRotation)
+
+      aObj = sTable + STR_OBJ
+      aRowID = sTable + STR_ROWID
+
+      If iDirection = 2 Then
+        iDirection = -1
+      End If
+
+      iSkipNTT = 0
+      iSkipNP = 0
+
+      If iSymbolType = SymbolTypeFixed Then
+        sSymbol = sFixedSymbol
+      End If
+
+      Fetch First From sTable
+      Do While Not EOT(sTable)
+        o = aObj
+        i = aRowID
+        If aObj Then
+          If iSymbolType <> SymbolTypeFixed Then
+            If ObjectInfo(o, OBJ_INFO_TYPE) = OBJ_TYPE_POINT Then
+              sSymbol = ObjectInfo(o, OBJ_INFO_SYMBOL)
+              If StyleAttr(sSymbol, SYMBOL_KIND) <> TrueTypeSymbol Then
+                If iSymbolType = SymbolTypeEither Then
+                  sSymbol = sFixedSymbol
+                Else
+                  iSkipNTT = iSkipNTT + 1
+                End If
+              End If
+            Else
+              If iSymbolType = SymbolTypeEither Then
+                sSymbol = sFixedSymbol
+              Else
+                sSymbol = MakeSymbol(44, RED, 16) 'indicate it is not rotatable
+                iSkipNP = iSkipNP + 1
+              End if
+            End If
+          End If
+          If StyleAttr(sSymbol, SYMBOL_KIND) = 2 Then
+            iSymbol = StyleAttr(sSymbol, SYMBOL_CODE)
+            iColor = StyleAttr(sSymbol, SYMBOL_COLOR)
+            iSize = StyleAttr(sSymbol, SYMBOL_POINTSIZE)
+            sFont = StyleAttr(sSymbol, SYMBOL_FONT_NAME)
+            iStyle = StyleAttr(sSymbol, SYMBOL_FONT_STYLE)
+            If iRotationType = RotationTypeColumn Then
+              Create Point Into Variable p (CentroidX(o), CentroidY(o))
+                Symbol MakeFontSymbol(iSymbol, iColor, iSize, sFont, iStyle, aColumn*iDirection)
+            Else
+              Create Point Into Variable p (CentroidX(o), CentroidY(o))
+                Symbol MakeFontSymbol(iSymbol, iColor, iSize, sFont, iStyle, fFixedRotation*iDirection)
+            End If
+            Update sTable Set obj = p Where RowID = i
+          End if
+        Else
+          iSkipNP = iSkipNP + 1
+        End if
+        Fetch Next From sTable
+      Loop
+
+      If iDirection = -1 Then
+        iDirection = 2
+      End If
+      If iSkipNTT > 0 Or iSkipNP > 0 Then
+        Note GetResString(IDS_SKIPPED) + STR_EMPTY_STR2 + iSkipNTT + STR_EMPTY_STR2 + 
+             GetResString(IDS_NON_TRUETYPE) + STR_EMPTY_STR2 + iSkipNP + STR_EMPTY_STR2 + 
+             GetResString(IDS_NON_POINT)
+      End If
+    End If 
+  Else
+    Note GetResString(IDS_VALID_TABLE)
+  End If 
+  Else
+    Note GetResString(IDS_OPEN_TABLE)
+  End If 
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_ROTATE_SYMBOLS + Error$()
+  Resume Next
+
+End Sub
+
+Sub TableNameHandler
+
+  OnError Goto HandleError
+
+  Dim i As Integer
+
+  iTable = ReadControlValue(IDTableNames)
+
+  Call ColumnNameHandler
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_TABLE_NAME_HANDLER + Error$()
+  Resume Next
+
+End Sub
+
+Sub ColumnNameHandler
+
+  OnError Goto HandleError
+
+  Dim i As Integer
+
+  iColumns = TableInfo(sTables(iTable), TAB_INFO_NCOLS)
+  iColumn = 0
+  ReDim sColumns(iColumn)
+  For i = 1 To iColumns
+    Do Case ColumnInfo(sTables(iTable), STR_COL+Str$(i), COL_INFO_TYPE)
+      Case COL_TYPE_DECIMAL, COL_TYPE_FLOAT, COL_TYPE_INTEGER, COL_TYPE_SMALLINT
+        iColumn = iColumn + 1
+        ReDim sColumns(iColumn)
+        sColumns(iColumn) = ColumnInfo(sTables(iTable), STR_COL+Str$(i), COL_INFO_NAME)
+    End Case
+  Next
+  iColumns = iColumn
+
+  Alter Control IDColumnNames
+    Title From Variable sColumns
+
+  If iColumn > 0 Then
+    iColumn = 1
+    Alter Control IDColumnNames
+      Value iColumn
+    Alter Control IDRotationType Enable
+  Else
+    Alter Control IDRotationType Value RotationTypeFixed
+    Call RotationTypeHandler
+    Alter Control IDRotationType Disable
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_COLUMN_NAME_HANDLER + Error$()
+  Resume Next
+
+End Sub
+
+Sub OKButtonHandler
+
+  OnError Goto HandleError
+
+  Dim i As Integer
+  if(bSymbolDisabled) Then
+    sSymbol = sTempSymbol 
+  Else   
+    sSymbol = ReadControlValue(IDFixedSymbol)
+  End if
+  i = StyleAttr(sSymbol, SYMBOL_KIND)
+  If i <> 2 Then
+    Note GetResString(IDS_ONLY_TRUETYPE)
+    Dialog Preserve
+  End If
+
+  iRotationType = ReadControlValue(IDRotationType)
+  If iRotationType = RotationTypeColumn Then
+    If iColumns < 1 Then
+      Note GetResString(IDS_NEED_NUMERIC)
+      Dialog Preserve
+    End If
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_OK_BUTTON_HANDLER + Error$()
+  Resume Next
+
+End Sub
+
+Sub RotationTypeHandler
+
+  OnError Goto HandleError
+
+  iRotationType = ReadControlValue(IDRotationType)
+  If iRotationType = RotationTypeColumn Then
+    Alter Control IDColumnNames Enable
+    Alter Control IDFixedRotation Disable
+  Else
+    Alter Control IDColumnNames Disable
+    Alter Control IDFixedRotation Enable
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_ROTATION_TYPE_HANDLER + Error$()
+  Resume Next
+
+End Sub
+
+Sub SymbolTypeHandler
+
+  OnError Goto HandleError
+
+  iSymbolType = ReadControlValue(IDSymbolType)
+  If iSymbolType = 1 Then
+    sTempSymbol =  ReadControlValue(IDFixedSymbol)
+    bSymbolDisabled = TRUE
+    Alter Control IDFixedSymbol Disable Value sBlankSymbol
+    Alter Control IDFixedSymbolDesc Disable
+  Else
+    if(bSymbolDisabled) Then
+      bSymbolDisabled = FALSE
+      Alter Control IDFixedSymbol Enable Value sTempSymbol 
+    Else
+      Alter Control IDFixedSymbol Enable
+    End if
+    
+    Alter Control IDFixedSymbolDesc Enable 
+  End If
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_SYMBOL_TYPE_HANDLER + Error$()
+  Resume Next
+
+End Sub
+
+Sub DialogHandler
+
+  OnError Goto HandleError
+
+  Call ColumnNameHandler
+  Call RotationTypeHandler
+  Call SymbolTypeHandler
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_DIALOG_HANDLER + Error$()
+  Resume Next
+
+
+
+End Sub
+
+Sub About                                                                  
+
+  OnError Goto HandleError
+
+  Dialog                                                                   
+     Title  GetResString(IDS_ABOUT) + STR_EMPTY_STR2+ STR_OPEN_BRAC + GetResString(IDS_VERSION) + 
+            STR_EMPTY_STR2 + Str$(AppVersion) + STR_CLOSE_BRAC
+    Control StaticText 
+            Title GetResString(IDS_ABOUT_1) + Chr$(13)+ Chr$(13)+
+                  GetResString(IDS_ABOUT_2)
+            Height 30
+    Control Button 
+            Title GetResString(IDS_AUTO_LOAD) 
+            Calling HandleInstallation 
+    Control OKButton 
+            Title  GetResString(IDS_OK) 
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_ABOUT + Error$()
+  Resume Next
+
+End Sub                                                                    
+
+Sub GoodBye                                                                
+
+  OnError Goto HandleError
+
+  End Program                                                              
+
+  Exit Sub
+
+HandleError:
+  Note STR_SUB_GOOD_BYE + Error$()
+  Resume Next
+
+End Sub                                                                    
+
+' End of File
+
+
+

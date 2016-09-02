@@ -1,0 +1,497 @@
+
+'****************************************************************************
+' Program:  OVERVIEW
+'
+' Version 2, for MapInfo 3.0 
+'
+' If you already have a Mapper Window open, the OverView application  
+' opens another map Window which acts as a map "overview."    
+' The special-purpose overview map shows a hollow red rectangle
+' indicating the extents currently displayed by your original mapper.  
+' As you scroll, pan, zoom, or reshape your original mapper, the OverView 
+' mapper Window is automatically updated, so that the red rectangle
+' always reflects the current extents of the original map.
+'
+' MapBasic commands, procedures and statements featured:
+'    Create Menu
+'    Alter Menu Item
+'    WinChangedHandler
+'    WinClosedHandler
+'    MapperInfo()
+'    Dialog
+'  
+'****************************************************************************
+
+'****************************************************************************
+'
+' Include files and Define statements
+'
+'****************************************************************************
+Include "mapbasic.def" 
+Include "..\Inc\auto_lib.def" 
+
+'This file defines the GetTableName Function used below.
+Include "get_tab.mb" 
+
+
+'****************************************************************************
+'
+' Declare sub procedures
+'
+'****************************************************************************
+
+Declare Sub Main
+Declare Sub About
+Declare Sub OverView
+Declare Sub WinClosedHandler 
+Declare Sub WinChangedHandler 
+Declare Sub NewFrame(ByVal x1, ByVal y1, ByVal x2, ByVal y2 As Float)  
+Declare Sub MenuToggler
+Declare Sub PickFrame
+Declare Sub Bye 
+
+'****************************************************************************
+'
+' Declare Global Variables
+'
+'****************************************************************************
+Global pstyle As Pen 
+Global cosmeticname As String 
+Global initialized, always_update As Logical 
+Global mapper_id, overview_id As Integer
+Global latest_x1, latest_y1, latest_x2, latest_y2 As Float 
+
+'****************************************************************************
+'
+' Sub procedure: Main
+'
+' Main adds our custom menu items, displays an "About..." blurb,  
+' and goes to sleep until the user picks one of our menu items. 
+' 
+'****************************************************************************
+Sub Main 
+  
+  ' Assign some global variables, so that the Auto-Load button 
+  ' (in the About dialog) can use the library routines 
+  ' stored in AUTO_LIB.MBO.  
+  gsAppFilename =  "overview.mbx"   ' name of MapBasic app file  
+  gsAppDescription = "OverView"     ' short description of MB application 
+
+  Create Menu "Ove&rView" As
+    "&Setup OverView..."   Calling OverView ,
+    "(Suspend &Tracking"    Calling MenuToggler, 
+    "(&Pick Frame Style"    Calling PickFrame, 
+    "(-", 
+    "&About OverView..."    Calling About,
+    "E&xit OverView"       Calling Bye
+    
+  Call set_tools_menu("Ove&rview")
+
+  ' Initialize our global variables.                  
+  mapper_id = 0                    
+  initialized = FALSE
+  always_update = TRUE 
+  pstyle = MakePen(2, 2, RED)
+
+End Sub 
+
+
+'****************************************************************************
+'
+' Sub procedure: About
+'
+' Displays a little blurb explaining the purpose of this application.
+'  
+'****************************************************************************
+Sub About
+
+  Dialog 
+    Title "About OverView..."
+    Control StaticText  Title  "This application opens a new Map window to "  Position 10, 10
+    Control StaticText  Title  "provide an overview of another Map window."  Position 10, 18
+
+    Control StaticText  Title  "To use OverView, make a Map window the     "  Position 10, 40
+    Control StaticText  Title  "active window, then pick Setup OverView"  Position 10, 48
+    Control StaticText  Title  "from the Tools > OverView menu."                 Position 10, 56
+
+    Control StaticText  Title  "Note: OverView does not support "         Position 10, 80
+    Control StaticText  Title  "non-Earth maps (e.g. floorplans)."        Position 10, 88
+
+    Control OKButton    Title  "OK"   Position 63, 110
+
+End Sub
+
+
+'****************************************************************************
+'
+
+' Sub procedure: OverView
+'
+' This is where the real setup work takes place.  Ask the user which 
+' table should be displayed in the OverView map, then create that mapper.
+' After we create the OverView mapper, we set various global variables, 
+' so that other procedures will know the OverView mapper's 
+' window ID, etc. 
+'
+'****************************************************************************
+Sub OverView 
+  Dim backdroptable As String
+  Dim  ov_zoom, cx, cy  As Float 
+  
+  ' Make sure some windows are open.
+  If NumWindows() < 1 Then
+    Note "You must open a map window before you choose Setup OverView."
+    Exit Sub
+  End If
+
+  ' We want to make the overview mapper track the current mapper. 
+  ' If the current "front" window isn't a mapper, advise the user.
+  If WindowInfo(FrontWindow(), WIN_INFO_TYPE) <> WIN_MAPPER  Then 
+    Note "You must make a Map window the active window" 
+         + " before you choose Setup OverView." 
+    Exit Sub 
+  End If 
+
+  ' Deal with the possibility that maybe the user has already Set up
+  ' an overview map.  Make sure they want to de-activate the old one
+  ' before setting up the new one.   If the global variable: initialized
+  ' is true, Then there's already an overview map set up. 
+  If initialized Then 
+    If Ask("An overview already exists; OK to de-activate it?","OK","Cancel") Then 
+      initialized = FALSE
+      Alter Menu Item MenuToggler Disable
+      Alter Menu Item PickFrame Disable 
+    Else
+      ' Quit if user wants to retain the old OverView. 
+      Exit Sub    
+    End If  
+  End If 
+
+  'Save the Window ID of the current Mapper window in a global variable.
+  mapper_id = FrontWindow()
+
+  'For simplicity's sake, we want to open the OverView mapper with
+  'exactly one map Layer.  Prompt the user to choose which table
+  'we should display in the OverView mapper.  
+  'Note that the function, GetTableName, is a CUSTOM function, 
+  'which is defined in the Include file  "GET_TAB.MB".  Thus, the 
+  'MapBasic documentation does not document GetTableName.
+  'For more information on this function, read the file "GET_TAB.MB". 
+
+  backdroptable = GetTableName("Pick a table to use as the overview",
+                                TRUE, TRUE)
+
+  'If the Function GetTableName returned a non-null string,
+  'it means the user chose a table to map... and we can proceed. 
+  'But we should only try to "Map From..." the table if it is mappable.  
+  If backdroptable <> "" Then 
+    If Not TableInfo(backdroptable, TAB_INFO_MAPPABLE) Then
+      Note "The table you chose (" + backdroptable + ") is not mappable." + 
+        Chr$(13) + "OverView stopping." 
+      Exit Sub 
+    Else 
+      Set Event Processing Off 
+      Map From backdroptable  Position (0,0)  Width 1.5 Units "in"  Height 1.2 Units "in" 
+
+      'Now that we've opened a new mapper, Note its ID in a global variable. 
+      'Then, for the sake of making it act as an "overview", we'll
+      'set its Zoom to four times the Zoom of the original mapper, 
+      'and we'll center it at the same spot as the original mapper. 
+  
+      overview_id = FrontWindow()
+      ov_Zoom = 4 * MapperInfo(mapper_id, MAPPER_INFO_ZOOM)  
+      cx = MapperInfo(mapper_id, MAPPER_INFO_CENTERX)
+      cy = MapperInfo(mapper_id, MAPPER_INFO_CENTERY)
+      Set Map Window overview_id   Zoom  ov_Zoom   Center (cx, cy) 
+
+      Set Window overview_id Title "Area of Detail" 
+  
+      'Now that an overview mapper is set up, set some global variables
+      'to let other procedures keep track of what's going on. 
+      'The variable: initialized  is TRUE when an overview map is in use.
+      'The variable: cosmeticname  contains a special table name,
+      'such as "Cosmetic1" or "Cosmetic2", etc, which corresponds to 
+
+      'the cosmetic layer in our OverView mapper.  This is the layer
+      'where we'll be drawing the red "area of detail" frame. 
+  
+      initialized = TRUE 
+      Alter Menu Item MenuToggler Enable
+      Alter Menu Item PickFrame Enable 
+      cosmeticname = WindowInfo(overview_id, WIN_INFO_TABLE) 
+      
+      'Now draw a rectangle on the OverView mapper showing the extents of  
+      'the original mapper.  We'll use the MapperInfo function  
+      'to determine the extents of the mapper.  Then we'll call 
+      'the procedure NewFrame to actually draw the red rectangle.
+  
+      latest_x1 = MapperInfo(mapper_id, MAPPER_INFO_MINX)
+      latest_y1 = MapperInfo(mapper_id, MAPPER_INFO_MINY)
+      latest_x2 = MapperInfo(mapper_id, MAPPER_INFO_MAXX)
+      latest_y2 = MapperInfo(mapper_id, MAPPER_INFO_MAXY)  
+      Call NewFrame(latest_x1, latest_y1, latest_x2, latest_y2) 
+    
+      'Since the user just set up an overview, we'll assume that they want 
+      'the overview to be "active".  So we'll "Suspend / Resume" menu  
+      'item to read "Suspend" (meaning, "the overview is active, but if  
+      'you pick this item, we'll suspend tracking").       
+      'Also set the global flag which says "always update." 
+
+      Set Event Processing On
+      Alter Menu Item MenuToggler Text "Suspend Tracking" 
+      always_update = TRUE
+    End If 
+  End If 
+End Sub 
+
+
+'****************************************************************************
+'
+' Sub procedure: WinChangedHandler
+' 
+' "WinChangedHandler" is a special MapBasic procedure name.  If a sleeping 
+' application (i.e. any application that has created its own menu items) 
+' contains a procedure named WinChangedHandler, MapBasic automatically  
+' calls that procedure every time the user pans, scrolls, zooms, 
+' reshapes, or resizes a Mapper Window. 
+'  
+' This procedure updates the OverView mapper so that it reflects the
+' new size, shape, and position of the mapper which we're monitoring.
+'   
+' Of course, multiple mappers might be open at any time...this procedure 
+' should quit immediately if the mapper which was affected isn't 
+' the mapper we're tracking.  Also, If the user picked the  
+' "Suspend Tracking" menu item, this procedure should do nothing  
+' (until the user re-enables tracking by picking "Resume Tracking"). 
+' And, of course, if the user never actually sets up an overview mapper, 
+' then this procedure should do nothing.  Additionally, if the mapper  
+' we're monitoring has been maximized, do nothing (because we can't 
+' SEE the other, "overview" mapper Window). 
+' 
+'****************************************************************************
+Sub WinChangedHandler 
+  If  initialized  And  always_update  Then 
+    If WindowInfo(mapper_id, WIN_INFO_STATE) <> WIN_STATE_MAXIMIZED  Then 
+      If CommandInfo(CMD_INFO_WIN) = mapper_id Then 
+        latest_x1 = MapperInfo(mapper_id, MAPPER_INFO_MINX)
+        latest_y1 = MapperInfo(mapper_id, MAPPER_INFO_MINY)
+        latest_x2 = MapperInfo(mapper_id, MAPPER_INFO_MAXX)
+        latest_y2 = MapperInfo(mapper_id, MAPPER_INFO_MAXY)  
+        Call NewFrame( latest_x1, latest_y1, latest_x2, latest_y2 ) 
+      End If 
+    End If 
+  End If 
+End Sub
+
+
+'****************************************************************************
+'
+' Sub procedure: WinClosedHandler
+' 
+' "WinClosedHandler" is a special MapBasic procedure name.  If a sleeping  
+' application (i.e. any application that has created its own menu items) 
+' contains a procedure named WinClosedHandler, MapBasic automatically 
+' calls that procedure every time the user closes a document window.
+'  
+' If the window closed was either our OverView mapper or the mapper which  
+' we're overseeing, Then this procedure should set global variables to let
+' other procedures know they can stop processing. Also grey out some of 
+' the menu items, to let the user know that OverView is no longer active.
+' 
+'****************************************************************************
+Sub WinClosedHandler 
+  Dim closed_id As Integer 
+
+  closed_id = CommandInfo(CMD_INFO_WIN)
+  If closed_id = mapper_id Or closed_id = overview_id Then 
+    initialized = FALSE
+    Alter Menu Item MenuToggler Disable
+    Alter Menu Item PickFrame Disable 
+  End If 
+End Sub 
+
+
+'****************************************************************************
+'
+' Sub procedure: NewFrame
+'
+' This procedure draws a hollow rectangle to the OverView mapper.
+' The rectangle indicates the current position and extents
+' of the other mapper window which we're overseeing. 
+'
+' But we need to do more than just create the rectangle object.
+' If the "current extents" rectangle doesn't fit within our 
+' OverView mapper, we'll recenter the overview mapper. 
+'
+'****************************************************************************
+Sub NewFrame(ByVal x1, ByVal y1, ByVal x2, ByVal y2 As Float) 
+  Dim o_var As Object 
+  Dim old_minx, old_miny, old_maxx, old_maxy,  
+    map_zoom, ov_zoom As Float, L_shrink As Logical 
+
+  OnError Goto ignore
+  
+  'Create new extents rectangle; store it in a variable for now.
+
+  Create Region Into Variable  o_var
+    1   5   (x1, y1) (x1, y2) (x2, y2) (x2, y1) (x1, y1) 
+    Pen pstyle                  ' use the Pen style the user chose
+    Brush MakeBrush(1, 0, 0)    ' but always use a hollow Brush. 
+
+  'Now decide whether the new extents rectangle will fit within the current 
+  'overview mapper.  If not, we'll recenter and possibly re-zoom the  
+  'overview mapper. 
+
+  map_zoom = MapperInfo(mapper_id,   MAPPER_INFO_ZOOM)   
+  ov_zoom  = MapperInfo(overview_id, MAPPER_INFO_ZOOM)   
+
+  If map_zoom >= (ov_zoom / 2) Then  
+    ov_zoom = 5 * map_zoom       ' Zoom overview out, if necessary
+    L_shrink = TRUE
+  End If 
+
+  If (map_zoom * 30 ) <  ov_zoom  Then 
+    ov_zoom = 10 * map_zoom        ' Zoom overview in, if necessary
+    L_shrink = TRUE 
+  End If 
+
+  old_minx = MapperInfo(overview_id, MAPPER_INFO_MINX)
+  old_miny = MapperInfo(overview_id, MAPPER_INFO_MINY)
+  old_maxx = MapperInfo(overview_id, MAPPER_INFO_MAXX)
+  old_maxy = MapperInfo(overview_id, MAPPER_INFO_MAXY)  
+  If x1 < old_minx Or x1 > old_maxx Or 
+    y1 < old_miny Or y1 > old_maxy Or      
+    x2 < old_minx Or x2 > old_maxx Or 
+    y2 < old_miny Or y2 > old_maxy  Or L_shrink Then 
+    Set Map Window overview_id 
+      Center ( (x1 + x2) / 2,  (y1 + y2) / 2 )   
+      Zoom ov_zoom 
+  End If 
+
+  'Insert the newly created extents rectangle. If the cosmetic layer
+  'contains one object, that object must be the old extents rectangle; 
+  'in this case, we can replace the old rectangle with the new rectangle  
+  'through the Update statement.  (This is nice, because there's only one
+  'screen redraw when you do a simple "UpDate").  
+
+  'BUT, if the cosmetic layer has multiple objects, the user must have 
+  'drawn a label or something, and we won't know which object is the 
+  'old extents rectangle. In that case, we'll have to just erase the 
+  'entire cosmetic layer, and then add the new extents rectangle through 
+  'the Insert statement.  (This is not quite as nice, because there 
+  'are 2 screen redraws when you do a "Delete" followed by an "Insert".)
+
+  If TableInfo(cosmeticname, TAB_INFO_NROWS) = 1 Then 
+    Update cosmeticname  Set obj = o_var
+  Else 
+    Delete From cosmeticname  
+    Insert Into cosmeticname (obj) Values (o_var) 
+  End If 
+  Exit Sub 
+ 
+  ignore: 
+    Resume Next 
+
+End Sub 
+
+
+'****************************************************************************
+'
+' Sub procedure: MenuToggler
+' 
+' While tracking is active, the menu has an item which reads  
+' "Suspend tracking".  If the user picks the item, tracking is suspended, 
+' and the menu item changes to read "Resume tracking".  Picking this 
+' menu item repeatedly will "toggle" tracking on and off.
+'                                   
+' This procedure is called when the user picks either the 
+' "Suspend Tracking" menu item or its alter ego, "Resume Tracking".
+'  
+' We should set a global variable to reflect the current status of menu 
+' item; when the tracking is enabled, we want to set the   
+' variable:  always_update    to TRUE, so that the various procedures
+' above know that they do need to act when appropriate 
+' (when mappers change).  
+'
+' If the user had suspended tracking, and the user now picks  
+' "Resume tracking", we should redraw the current extents rectangle to  
+' bring it up to date. 
+'
+'****************************************************************************
+Sub MenuToggler
+  If always_update Then      ' If user picked "Suspend"... 
+    always_update = FALSE
+    Alter Menu Item MenuToggler Text "Resume Tracking" 
+  Else                    
+    always_update = TRUE     
+    Alter Menu Item MenuToggler Text "Suspend Tracking" 
+
+    'If the variable:  initialized   is FALSE, Then the user never actually
+    'set up an overview mapper... in which case, we do nothing
+    'and we don't care whether menu items are Checked or Unchecked. 
+    'But if  initialized  is TRUE, then there is an overview mapper,
+    'which we should update. 
+
+    If initialized Then 
+      latest_x1 = MapperInfo(mapper_id, MAPPER_INFO_MINX)
+      latest_y1 = MapperInfo(mapper_id, MAPPER_INFO_MINY)
+      latest_x2 = MapperInfo(mapper_id, MAPPER_INFO_MAXX)
+      latest_y2 = MapperInfo(mapper_id, MAPPER_INFO_MAXY)  
+      Call NewFrame(latest_x1, latest_y1, latest_x2, latest_y2) 
+    End If 
+  End If 
+End Sub 
+
+
+'****************************************************************************
+'
+' Sub procedure: PickFrame
+' 
+' This displays a dialog to let the user choose which style Line to use as 
+' the current extents indicator.  If the user actually does change the  
+' Line style, and if the user actually did set up an overview, and if the  
+' user hasn't suspended that overview, we should redraw the current 
+' extents indicator in the new style. 
+'
+'****************************************************************************
+Sub PickFrame
+
+  Dim i_shift_ok As SmallInt 
+
+  i_shift_ok = 0 
+  If SystemInfo(SYS_INFO_PLATFORM) = PLATFORM_MAC Then 
+    ' ... then we're running on a Mac, so we should 
+    ' shift the OK button to the right of the cancel button
+    i_shift_ok = 70
+  End If 
+
+  Dialog 
+    Title "Pick OverView Line Style" 
+    Control StaticText 
+      Title "Select a Line style for the overview frame"
+    Control PenPicker 
+      Position 60,25    Width 40    Height 25
+      Value pstyle 
+      Into pstyle 
+    Control OKButton
+      Title "OK"
+      Position 30 + i_shift_ok, 60
+    Control CancelButton
+      Title "Cancel"
+      Position 30 + 70 - i_shift_ok, 60
+
+  If CommandInfo(CMD_INFO_DLG_OK) And initialized And always_update Then
+    Call NewFrame( latest_x1, latest_y1, latest_x2, latest_y2 ) 
+  End If 
+End Sub 
+
+
+'***************************************************************************
+' Sub procedure: Bye
+'
+' The Bye procedure terminates the program.
+'***************************************************************************
+Sub Bye
+  End Program
+End Sub
+

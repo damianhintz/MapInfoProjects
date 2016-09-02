@@ -1,0 +1,4 @@
+[Link] 
+Application=overview.mbx 
+Module=overview.mbo
+Module=..\Lib\auto_lib.mbo

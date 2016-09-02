@@ -1,0 +1,642 @@
+'
+' AUTO_LIB.MB :  Include-able library of functions and subroutines 
+'                that manage installation of a program into STARTUP.WOR. 
+'
+'  To incorporate autoload capabilities into your application, 
+'  do the following: 
+'
+'  1.  In your application, INCLUDE "AUTO_LIB.DEF" 
+'
+'  2.  In your application, assign a BRIEF description to the 
+'      global string variable, gsAppDescription 
+'      (e.g.   gsAppDescription = "ScaleBar" ) 
+'
+'  3.  Assign a filename to the global variable, gsAppFilename
+'      (e.g.   gsAppFilename = "scalebar.mbx") 
+'
+'  4.  Add a menu item or a dialog button that calls HandleInstallation() 
+'      as its handler. 
+'  
+'  5.  Add AUTO_LIB.MBO to your project file. 
+'
+' Version 1.1
+
+Include "..\Inc\auto_lib.def" 
+Include "mapbasic.def" 
+
+Sub HandleInstallation() 
+  Dim i_status As SmallInt, 
+      s_errormsg As String 
+
+  i_status = InstalledAlready(gsAppFilename) 
+
+  If i_status = 1 Then 
+    '
+    ' ...then the app is already installed, but in a 
+    ' STARTUP workspace in the Program directory, which 
+    ' we don't want to corrupt.  We don't want to let this 
+    ' single user affect the configuration for ALL MapInfo users. 
+    '
+    ' Explain to user that we don't want to modify Program directory 
+    '
+    Call CannotUnInstall(gsAppDescription) ' Put up explanatory dialog
+
+  ElseIf i_status = 2 Then 
+    '
+    ' It is installed, in this user's home directory. 
+    ' Give the user the option of un-installing. 
+    '     
+    If ConfirmUnInstall(gsAppDescription) Then 
+      ' 
+      ' the user wants to uninstall; now we'll try to do so...
+      ' 
+      If PruneStartup(2, gsAppFilename) Then 
+        '
+        ' Success!  We're de-installed.  
+        ' 
+        Note "Auto-load is now turned off for " + gsAppDescription + ";"  + 
+          " the next time you run MapInfo, " + gsAppDescription +  
+          " will not load automatically."    
+         
+      Else 
+        Note "Problem: unable to modify the file: " + Chr$(13) + 
+          "      " + StartupWorName() + Chr$(13) + 
+          "in the directory:" + Chr$(13) + 
+          "      " + HomeDirectory$() + Chr$(13) + 
+          gsAppDescription + " is still set to load automatically."  
+      End If 
+    End If 
+  Else    
+    ' ... otherwise, the app is not yet installed at all; 
+    ' give the user the option of installing. 
+    '
+    If ConfirmInstall(gsAppDescription) Then 
+
+      ' The user wants to install; now let's try to install. 
+
+      i_status = GrowStartup(2, gsAppFilename) 
+      If i_status = 0 Then   
+        ' Everything went OK; the app is now installed.  Notify the user. 
+        Note "The " + gsAppDescription + " application will now" + 
+          " load automatically, each time you run MapInfo." 
+      Else 
+        ' Display an error message
+        If i_status = 1 Then 
+          s_errormsg = "Unable to modify " 
+        ElseIf i_status = 2 Then 
+          s_errormsg = "Unable to create " 
+        End If 
+        Note s_errormsg + StartupWorName() + ".  "  
+          + gsAppDescription + " is not set to load automatically." 
+      End If 
+    End If
+  End If 
+End Sub    ' End of the HandleInstallation sub. 
+
+
+'*************************************************************************
+' Function:  ConfirmInstall
+'
+' Show a dialog explaining what it means to install an app, and ask 
+' user to click OK to verify the install. But this function does NOT 
+' do the actual installation. 
+'
+' "descr" parameter is the name of an application 
+'     (e.g. "TextBox"), which, preferably, should be the 
+'     name of the application's menu.  
+'
+' Result: return TRUE if user clicked OK; FALSE otherwise. 
+'*************************************************************************
+Function ConfirmInstall( ByVal descr As String ) As Logical 
+
+  Dim shift_ok, shift_cancel As SmallInt
+
+
+  If SystemInfo(SYS_INFO_PLATFORM) = PLATFORM_MAC Then 
+    shift_ok = 45
+    shift_cancel = 0
+  Else 
+    shift_ok = 0
+    shift_cancel = 45
+  End If
+
+  Dialog 
+    Title "Enable Automatic Loading" 
+
+    Control StaticText  
+      Title  "If you turn on the auto-load feature, "      
+      Position 10, 10
+    Control StaticText  
+      Title  "the " + descr + " application will load" 
+      Position 10, 19 
+    Control StaticText
+      Title  "automatically, every time you run MapInfo." 
+      Position 10, 28  
+
+    Control StaticText
+      Title "Do you want to turn on the auto-load feature?" 
+      Position 10, 46 
+
+    Control OKButton   
+      Title  "OK"   
+      Position shift_ok + 75, 70 
+    Control CancelButton
+      Title "Cancel" 
+      Position shift_cancel + 75, 70 
+   
+   If CommandInfo(CMD_INFO_DLG_OK) Then 
+     ConfirmInstall = TRUE
+   Else 
+     ConfirmInstall = FALSE
+   End If 
+
+End Function 
+
+
+'*************************************************************************
+' Function:  ConfirmUnInstall
+'
+' Show a dialog explaining what it means to uninstall an app, and ask 
+' user to click OK to verify the uninstall. But this function does NOT 
+' do the actual installation. 
+'
+' "descr" parameter is a SHORT description of the application 
+'     (e.g. "TextBox") to be un-installed.  
+'
+' Result: return TRUE if user clicked OK; FALSE otherwise. 
+'*************************************************************************
+Function ConfirmUnInstall( ByVal descr As String ) As Logical 
+
+  Dim shift_ok, shift_cancel As SmallInt
+
+  If SystemInfo(SYS_INFO_PLATFORM) = PLATFORM_MAC Then 
+    shift_ok = 45
+    shift_cancel = 0
+  Else 
+    shift_ok = 0
+    shift_cancel = 45
+  End If
+
+  Dialog 
+    Title "Disable Automatic Loading" 
+
+    Control StaticText 
+      Title "The " + descr + " application is currently set up"  
+      Position 10, 10 
+    Control StaticText  
+      Title  "to load automatically, every time you run MapInfo."     
+      Position 10, 19 
+
+    Control StaticText  
+      Title  "If you turn off auto-load, the " + descr + " application" 
+      Position 10, 37 
+    Control StaticText
+      Title  "will not load automatically.  You will still be able"
+      Position 10, 46 
+    Control StaticText 
+      Title "to load " + descr + " manually, by choosing File > Run." 
+      Position 10, 55 
+
+    Control StaticText
+      Title "Do you want to turn off the auto-load feature?" 
+      Position 10, 73 
+
+    Control CancelButton
+      Title "Cancel" 
+      Position shift_cancel + 90, 95 
+
+    Control OKButton   
+      Title  "OK"   
+      Position shift_ok + 90, 95 
+   
+   If CommandInfo(CMD_INFO_DLG_OK) Then 
+     ConfirmUnInstall = TRUE
+   Else 
+     ConfirmUnInstall = FALSE
+   End If 
+
+End Function 
+
+
+'*************************************************************************
+' Function:  GrowStartup
+'
+' This procedure modifies a STARTUP workspace file (or creates one
+' from scratch if it doesn't exist already). 
+'
+' ***NOTE: This function uses file #10 for Sequential file i/o.
+'
+' "which" parameter: specify 1 if you want to create/modify the
+'     workspace that's in the Program directory (where MapInfo is),
+'     or specify 2 to create/modify the workspace in the user's
+'     private Home directory (e.g. private Windows directory or
+'     Macintosh system folder). 
+'
+'     NOTE: It's generally safer to have an application 
+'     install itself by specifying 2 (for Home directory), 
+'     because putting a STARTUP workspace in the Program directory
+'     affects ALL users on the network, which may not be what you want.
+'
+' "app" parameter: specify the name of a MapBasic application FILE 
+'     (e.g. "textbox.mbx") to run from the STARTUP workspace.       
+'
+' Result: return  0 if things went OK, 
+'                 1 if unable to modify existing STARTUP, 
+'                 2 if unable to create STARTUP from scratch. 
+'************************************************************************
+Function GrowStartup (ByVal which As SmallInt, 
+                      ByVal filename As String) As SmallInt 
+  Dim file2make, runcommand As String
+
+  OnError GoTo bad_result 
+
+  ' Set an error code (1) till we KNOW we succeeded
+  GrowStartup = 1  
+
+  If which = 2 Then 
+    file2make = HomeDirectory$()
+    If SystemInfo(SYS_INFO_PLATFORM) = PLATFORM_MAC Then  
+      file2make = file2make + "Preferences:" 
+    End If 
+    file2make = file2make + StartupWorName() 
+  Else 
+    file2make = ProgramDirectory$() + StartupWorName()
+  End If  
+
+  If FileExists( file2make )  Then  
+    Open File file2make For Append As #10 Filetype "MIwo" 'Open old file
+    OnError GoTo close_before_leaving 
+  Else 
+    ' Set an error code which will be appropriate if file create fails. 
+    GrowStartup = 2 
+    Open File file2make For Output As #10 Filetype "MIwo" 'Create new file
+    OnError GoTo close_before_leaving 
+    Print #10, "!Workspace" 
+    Print #10, "!Version 200" 
+  End If 
+
+  ' Now construct a string which looks like this (on Windows):  
+  '    Run Application "C:\MAPBASIC\TEXTBOX.MBX" 
+  '
+  runcommand = ApplicationDirectory$() + filename
+  Print #10, "Run Application " + Chr$(34) + runcommand + Chr$(34)  
+  Close File #10 
+  GrowStartup = 0 
+get_out:
+  Exit Function
+  
+bad_result: 
+  Resume get_out 
+
+close_before_leaving: 
+  Close File #10
+  Resume get_out
+
+End Function  ' End of GrowStartup 
+
+
+'*************************************************************************
+' Function:  PruneStartup
+'
+' This function deletes a Run Application statement from a STARTUP 
+' workspace -- effectively un-installing the named application. 
+'
+' ***NOTE: This function uses file #s 10 and 11 for Sequential file i/o.
+'
+' "which" parameter: specify 1 to prune the STARTUP workspace 
+'     that's in the Programdirectory; 
+'     specify 2 to prune the STARTUP that's in user's Home directory. 
+'     Specifying: which = 2 is recommended. 
+'     Note that it may not be a good idea to let any user 
+'     perform an operation which may modify the STARTUP that's in the 
+'     MapInfo Program directory (which == 1), because ALL MapInfo users 
+'     on a network are affected by what's in the Program directory. 
+'
+' "filename"  parameter is the name of the application which is 
+'     currently run in STARTUP workspace (e.g. "textbox.mbx"). 
+'
+' Returns: TRUE if operation went OK; return FALSE otherwise. 
+'*************************************************************************
+Function PruneStartup (ByVal which As SmallInt, 
+                       ByVal filename As String) As Logical 
+  Dim file2prune, scratchfile, nextline, unextline As String
+ 
+  PruneStartup = FALSE 
+  OnError GoTo bad_result 
+
+  If which = 2 Then 
+    file2prune = HomeDirectory$()
+    If SystemInfo(SYS_INFO_PLATFORM) = PLATFORM_MAC Then  
+      file2prune = file2prune + "Preferences:" 
+    End If 
+    file2prune = file2prune + StartupWorName() 
+  Else 
+    '
+    ' Else, "which" should be 1.  Use carefully; 
+    ' affects all users on network.
+    ' 
+    file2prune = ProgramDirectory$() + StartupWorName() 
+  End If 
+
+
+  ' Get a unique (non-existent) file name, so we know 
+  ' that we can create that file, without fear of overwriting
+  ' an existing file. 
+  scratchfile = TempFileName$("") 
+
+  Open File scratchfile  For Output As #11  Filetype "MIwo" 
+
+  ' Now that we've opened a new  scratchfile  for output, 
+  ' set up an error handler to clean it up if anything goes wrong. 
+  OnError GoTo close11_killscratch
+
+  Open File file2prune   For Input  As #10  Filetype "MIwo" 
+
+  OnError GoTo close10_close11_killscratch
+
+  Do While Not EOF(10) 
+    Line Input #10, nextline
+    If Not EOF(10)  Then        ' if we managed to read a line... 
+      unextline = UCase$(nextline) 
+
+      ' If this line does NOT contain the objectionable Run Application 
+      ' statement we're trying to prune, then echo line to other file.       
+
+      If InStr(1, unextline, "RUN") = 0  Or  
+         InStr(5, unextline, "APPLICATION") = 0 Or  
+         InStr(17, unextline, UCase$(filename) ) = 0 Then
+        Print #11, nextline
+      End If 
+    End If 
+  Loop
+  Close File #10 
+  Close File #11 
+    
+  OnError GoTo  killscratch 
+
+  Open File file2prune   For Output As #11 Filetype "MIwo" 
+
+  OnError Goto  close11_killscratch
+
+  Open File scratchfile  For Input  As #10 Filetype "MIwo" 
+
+  OnError GoTo close10_close11_killscratch
+
+  Do While Not EOF(10) 
+    Line Input #10, nextline
+    If Not EOF(10) Then 
+      Print #11, nextline
+    End If 
+  Loop
+  Close File #10 
+  Close File #11 
+
+  ' At this point, we've successfully modified STARTUP workspace. 
+  ' If we get an error after this (while deleting scratchfile?) 
+  ' we don't really care -- we still got the job done. 
+  OnError GoTo ignoreit
+
+  ' Operation successful -- new version of STARTUP.WOR has been written.
+  PruneStartup = TRUE 
+
+  Kill scratchfile 
+      
+get_out:
+  Exit Function
+
+'
+' Error handlers... 
+'
+' At various points in PruneStartup, we have 0, 1, or 2 files open.
+' Thus, if an error occurs, we may have to close one or two files 
+' and possibly delete a work file before we go. 
+'
+
+' Generic error handler..................................
+bad_result: 
+  PruneStartup = FALSE 
+  Resume get_out 
+
+ignoreit: 
+  Resume get_out
+
+' Error handler that deletes workfile before we go........
+killscratch:  
+  Kill scratchfile
+  PruneStartup = FALSE
+  Resume get_out     
+
+' Error handler that closes file 11 before we go..........
+close11:  
+  Close File #11 
+  PruneStartup = FALSE
+  Resume get_out
+
+close10_close11_killscratch: 
+  Close File #10
+close11_killscratch:
+  Close File #11
+  Kill scratchfile
+  PruneStartup = FALSE
+  Resume get_out
+
+End Function   ' End of PruneStartup 
+
+
+
+'****************************************************************************
+' Function: InstalledAlready 
+'
+' Determines whether a named MapBasic application is already "installed"
+' (i.e. whether it's being run automatically through STARTUP workspace). 
+'
+' ***NOTE: This function uses file #10 for Sequential file i/o.
+'
+' "filename" parameter:  specify the exact name of the application FILE 
+'         (e.g. "textbox.mbx") in question.  
+'
+' Returns:0 if application is not installed, 
+'         1 if application is installed in STARTUP.WOR in Program directory,
+'         2 if application is installed in STARTUP.WOR in Home directory.
+'
+'****************************************************************************
+Function InstalledAlready ( ByVal filename As String ) As SmallInt 
+  Dim file2check As String
+  Dim there_already As SmallInt 
+
+  there_already = 0 
+  OnError GoTo bad_result 
+
+  file2check = HomeDirectory$()
+  If SystemInfo(SYS_INFO_PLATFORM) = PLATFORM_MAC Then  
+    file2check = file2check + "Preferences:" 
+  End If 
+  file2check = file2check + StartupWorName()  
+  If FileExists(file2check) Then 
+    Open File file2check For Input As #10 
+    If LookInFileFor(filename) Then 
+      there_already = 2 
+    End If 
+    Close File #10 
+  End If 
+ 
+  If Not there_already Then 
+    file2check = ProgramDirectory$() + StartupWorName() 
+    If FileExists(file2check) Then 
+      Open File file2check For Input As #10  
+      If LookInFileFor(filename) Then 
+        there_already = 1
+      End If 
+      Close File #10 
+    End If 
+  End If
+    
+  InstalledAlready = there_already   
+get_out: 
+  Exit Function 
+
+bad_result: 
+  Resume get_out 
+
+End Function 
+
+
+'****************************************************************************
+' Function: LookInFileFor 
+'
+' This function does low-level work to support the other functions
+' in this library.  MapBasic developers should not need to call
+' this function from their applications. 
+'
+'****************************************************************************
+Function LookInFileFor ( ByVal filename As String ) As Logical 
+  Dim oneline As String 
+  Dim found_it As Logical
+
+  found_it = FALSE 
+  OnError GoTo bad_result
+  Seek #10, 1 
+  Do While (Not found_it) And (Not EOF(10) ) 
+    Input #10, oneline 
+    If Not EOF(10)  Then        ' if we managed to read a line... 
+      oneline = UCase$(oneline) 
+      If InStr(1, oneline, "RUN") = 1 And 
+         InStr(5, oneline, "APPLICATION") > 0 And 
+         InStr(17, oneline, UCase$(filename) ) > 0 Then
+        found_it = TRUE 
+      End If 
+    End If 
+  Loop
+
+
+  LookInFileFor = found_it
+get_out: 
+  Exit Function 
+
+bad_result: 
+  Resume get_out
+
+End Function  
+
+
+'****************************************************************************
+' Function: StartupWorName() 
+'
+' Returns the name of the startup workspace which is appropriate 
+' for whichever hardware platform user is running on 
+' (e.g. STARTUP.WOR if on Windows; Startup Workspace if on Mac, etc.) 
+'
+' Returns: a string value representing a file name.  
+'****************************************************************************
+Function StartupWorName() As String 
+
+  Dim fname As String 
+  
+  Do Case SystemInfo(SYS_INFO_PLATFORM) 
+    Case  PLATFORM_WIN 
+      fname = "Startup.Wor" 
+    Case  PLATFORM_MAC 
+      fname = "Startup Workspace"   
+    Case  ELSE
+      fname = "Startup.workspace"  
+  End Case 
+
+  StartupWorName = fname 
+
+End Function 
+
+
+'*********************************************************************
+' CannotUnInstall() 
+'
+' Display a dialog explaining to the user why we DON'T WANT TO modify 
+' the STARTUP workspace that's in the Program directory. 
+' 
+' "descr" parameter: a SHORT description of the application 
+'       (e.g. "TextBox") the user tried to un-install. 
+'********************************************************************* 
+Sub  CannotUnInstall(ByVal descr As String) 
+  Dim sDirOrFolder As String 
+
+  If SystemInfo(SYS_INFO_PLATFORM) = PLATFORM_MAC Then 
+    sDirOrFolder = "folder" 
+  Else 
+    sDirOrFolder = "directory"
+  End If 
+
+ Dialog 
+    Width 205 
+    Control StaticText 
+      Title "The " + descr + " application is currently set up"  
+      Position 10, 10 
+    Control StaticText  
+      Title  "to load automatically, every time you run MapInfo."     
+      Position 10, 19 
+    Control StaticText  
+      Title  descr + " is loaded by a special workspace: " 
+      Position 10, 28 
+
+    Control StaticText  
+      Title  StartupWorName() 
+      Position 40, 42
+
+    Control StaticText 
+      Title  "stored in the MapInfo program " + sDirOrFolder + ":" 
+      Position 10, 56
+
+    Control StaticText
+      Title   ProgramDirectory$() 
+      Position 40, 70
+
+    Control StaticText
+      Title  "If you want to disable the " + descr + " application, have"
+      Position 10, 84
+    Control StaticText
+      Title  "your System Administrator modify the Startup workspace." 
+      Position 10, 93
+    Control StaticText 
+      Title  "(Only your System Administrator should make changes" 
+      Position 10, 102 
+    Control StaticText
+      Title  "to the MapInfo " + sDirOrFolder + ".)" 
+      Position 10, 111
+
+    Control OKButton   
+      Title  "OK"   
+      Position 125, 139
+
+End Sub 
+
+'********************************************************************* 
+' Add a tools menu sub menu in the correct way
+'********************************************************************* 
+Sub set_tools_menu(ByVal menuName as String)
+
+  Alter Menu ID 4 Add 
+     menuName As MenuName 
+
+
+End Sub
+
+
+'/////////////// End of AUTO_LIB.MB  function library ////////////////

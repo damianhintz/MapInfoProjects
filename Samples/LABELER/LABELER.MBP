@@ -1,0 +1,5 @@
+[Link] 
+Application=LABELER.MBX 
+Module=labeler.mbo
+Module=../LIB/auto_lib.mbo
+
