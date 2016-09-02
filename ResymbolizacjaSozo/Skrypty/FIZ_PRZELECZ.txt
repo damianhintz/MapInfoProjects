@@ -1,0 +1,4 @@
+#Prze³êcz (punktowe)
+Table FIZ_PRZELECZ
+Style Symbol MakeCustomSymbol ("rf_06.bmp", RGB (137, 55, 131), 11, 0)
+Apply PointStyle

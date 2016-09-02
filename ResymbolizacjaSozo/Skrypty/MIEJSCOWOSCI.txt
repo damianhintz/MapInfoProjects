@@ -1,0 +1,5 @@
+#Miejscowoœci (powierzchniowe)
+Table MIEJSCOWOSCI
+Style Brush MakeBrush (15, RGB (114, 112, 112), -1)
+Style Pen MakePen (1, 2, RGB (0, 0, 0))
+Apply AreaStyle

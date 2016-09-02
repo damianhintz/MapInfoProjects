@@ -1,0 +1,4 @@
+#Szczelina (liniowe)
+Table FIZ_SZCZELINA_PEKN
+Style Pen MakePen (1, 123, RGB (137, 55, 131))
+Apply LineStyle

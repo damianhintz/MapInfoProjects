@@ -1,0 +1,51 @@
+#Rekultywacja rolna (powierzchniowe)
+Table REKULTYWACJE
+Where FORMA_ID="R"
+Style Brush MakeBrush (109, RGB (218, 37, 29), RGB (243, 174, 51))
+Style Pen MakePen (1, 2, RGB (0, 0, 0))
+Apply AreaStyle
+#
+#Rekultywacja rolna (punktowe)
+Table REKULTYWACJE
+Where FORMA_ID="R"
+Style Symbol MakeCustomSymbol ("ms_6712.bmp", RGB (199, 163, 58), 13, 0)
+Apply PointStyle
+#
+#Rekultywacja leœna (powierzchniowe)
+Table REKULTYWACJE
+Where FORMA_ID="L"
+Style Brush MakeBrush (109, RGB (218, 37, 29), RGB (140, 202, 144))
+Style Pen MakePen (1, 2, RGB (0, 0, 0))
+Apply AreaStyle
+#
+#Rekultywacja leœna (punktowe)
+Table REKULTYWACJE
+Where FORMA_ID="L"
+Style Symbol MakeCustomSymbol ("ms_6722.bmp", RGB (140, 202, 144), 13, 0)
+Apply PointStyle
+#
+#Rekultywacja wodna (powierzchniowe)
+Table REKULTYWACJE
+Where FORMA_ID="W"
+Style Brush MakeBrush (109, RGB (218, 37, 29), RGB (181, 222, 248))
+Style Pen MakePen (1, 2, RGB (0, 0, 0))
+Apply AreaStyle
+#
+#Rekultywacja wodna (punktowe)
+Table REKULTYWACJE
+Where FORMA_ID="W"
+Style Symbol MakeCustomSymbol ("ms_6732.bmp", RGB (181, 222, 248), 13, 0)
+Apply PointStyle
+#
+#Rekultywacja na inne cele (powierzchniowe)
+Table REKULTYWACJE
+Where FORMA_ID="I"
+Style Brush MakeBrush (109, RGB (218, 37, 29), RGB (241, 174, 153))
+Style Pen MakePen (1, 2, RGB (0, 0, 0))
+Apply AreaStyle
+#
+#Rekultywacja na inne cele (punktowe)
+Table REKULTYWACJE
+Where FORMA_ID="I"
+Style Symbol MakeCustomSymbol ("ms_6742.bmp", RGB (241, 174, 153), 13, 0)
+Apply PointStyle

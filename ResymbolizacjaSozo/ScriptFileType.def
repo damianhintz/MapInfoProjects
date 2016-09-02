@@ -1,0 +1,22 @@
+Include "ScriptItem.def"
+
+Define MAX_ITEMS 512
+
+Define TOKEN_FILE "File "
+Define TOKEN_TABLE "Table "
+Define TOKEN_FILTER "Where "
+Define TOKEN_STYLE "Style "
+Define TOKEN_UPDATE "Apply "
+Define TOKEN_COMMENT "#"
+
+Type ScriptFileType
+	FileName As String
+	Items (MAX_ITEMS) As ScriptItemType
+	ItemsCount As Integer
+End Type
+
+Declare Sub ScriptFileInit (scriptFile As ScriptFileType, scriptName As String)
+Declare Sub ScriptFileAddItem (scriptFile As ScriptFileType, scriptItem As ScriptItemType)
+Declare Function ScriptFileLoad (scriptFile As ScriptFileType) As Logical
+Declare Sub ScriptFileRedim (scriptFile As ScriptFileType)
+Declare Sub ScriptFileProcess (scriptFile As ScriptFileType)

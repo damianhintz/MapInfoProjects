@@ -1,0 +1,12 @@
+Define MAX_BUFFER_SIZE 512
+
+Type LoggerType
+	FileName As String
+	Buffer (MAX_BUFFER_SIZE) As String
+	BufferCount As Integer
+End Type
+
+Declare Sub LoggerOpen (logger As LoggerType, fileName As String)
+Declare Sub LoggerWriteLine (logger As LoggerType, ByVal msg As String)
+Declare Sub LoggerFlush (logger As LoggerType)
+Declare Sub LoggerClose (logger As LoggerType)

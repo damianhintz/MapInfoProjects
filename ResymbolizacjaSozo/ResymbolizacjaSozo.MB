@@ -1,0 +1,41 @@
+Include "MAPBASIC.DEF"
+Include "Common.def"
+Include "ConfigFileType.def"
+Include "ResymbolizacjaSozo.def"
+
+Sub Main
+
+	OnError Goto HandleError
+
+	Dim loggerName As String
+	loggerName = ApplicationDirectory$() + APP_LOGGER
+	Call LoggerOpen (g_logger, loggerName)
+
+	Call WriteEvent ("Start " + APP_VERSION)
+
+	Print "Start " + APP_VERSION + " " + CurDate()
+
+	Dim configFile As ConfigFileType
+	Call ConfigFileInit (configFile)
+	
+	If ConfigFileLoad (configFile) Then
+
+		Dim symbolsLocation As String
+		symbolsLocation = LocateFile$ (LOCATE_CUSTSYMB_DIR)
+		Print symbolsLocation
+
+		Print "Trwa przetwarzanie pliku..."
+		Call ConfigFileProcess (configFile)
+
+	End If
+
+	Call LoggerClose (g_logger)
+
+	Exit Sub
+
+HandleError:
+	Call LoggerClose (g_logger)
+	Note Error$()
+	Resume Next
+
+End Sub

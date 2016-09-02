@@ -1,0 +1,12 @@
+#G³ówne zbiorniki wód podziemnych ONO (powierzchniowe)
+Table GLOWNE_ZB_WOD_PODZIEM
+Where POZIOM_OCHRONY_ID="ONO"
+Style Brush MakeBrush (1, RGB (0, 70, 142), -1)
+Style Pen MakePen (1, 91, RGB (0, 70, 142))
+Apply AreaStyle
+#G³ówne zbiorniki wód podziemnych OWO (powierzchniowe)
+Table GLOWNE_ZB_WOD_PODZIEM
+Where POZIOM_OCHRONY_ID="OWO"
+Style Brush MakeBrush (1, RGB (0, 70, 142), -1)
+Style Pen MakePen (1, 92, RGB (0, 70, 142))
+Apply AreaStyle

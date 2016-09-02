@@ -1,0 +1,4 @@
+#Wykop (liniowe)
+Table FIZ_WYKOP_WRAB
+Style Pen MakePen (1, 121, RGB (137, 55, 131))
+Apply LineStyle

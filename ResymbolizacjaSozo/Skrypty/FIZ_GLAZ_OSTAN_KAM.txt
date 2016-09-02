@@ -1,0 +1,4 @@
+#G³azy, ostañce (punktowe)
+Table FIZ_GLAZ_OSTAN_KAM
+Style Symbol MakeCustomSymbol ("rf_03.bmp", RGB (137, 55, 131), 11, 0)
+Apply PointStyle

@@ -1,0 +1,4 @@
+#Suchy rów (liniowe)
+Table FIZ_SUCHY_ROW
+Style Pen MakePen (1, 58, RGB (137, 55, 131))
+Apply LineStyle

@@ -1,0 +1,5 @@
+#Granice Parkow Krajobrazowych (powierzchniowe)
+Table PARKI_KRAJOBRAZOWE
+Style Brush MakeBrush (1, RGB (0, 129, 69), -1)
+Style Pen MakePen (1, 81, RGB (0, 129, 69))
+Apply AreaStyle

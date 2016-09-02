@@ -1,0 +1,22 @@
+#Strefy ochronne zrode³ i ujêæ wód powierzchniowych (powierzchniowe)
+Table STREFY_OCH_ZRODEL_UJEC
+Where WODY_ID="W"
+Style Brush MakeBrush (1, RGB (0, 129, 69), -1)
+Style Pen MakePen (1, 87, RGB (0, 129, 69))
+Apply AreaStyle
+#Strefy ochronne zrode³ i ujêæ wód powierzchniowych (punktowe)
+Table STREFY_OCH_ZRODEL_UJEC
+Where WODY_ID="W"
+Style Symbol MakeCustomSymbol ("ms_1512.bmp", RGB (0, 129, 69), 9, 0)
+Apply PointStyle
+#Strefy ochronne zrode³ i ujêæ wód podziemnych (powierzchniowe)
+Table STREFY_OCH_ZRODEL_UJEC
+Where WODY_ID="D"
+Style Brush MakeBrush (1, RGB (0, 129, 69), -1)
+Style Pen MakePen (1, 88, RGB (0, 129, 69))
+Apply AreaStyle
+#Strefy ochronne zrode³ i ujêæ wód powierzchniowych (punktowe)
+Table STREFY_OCH_ZRODEL_UJEC
+Where WODY_ID="D"
+Style Symbol MakeCustomSymbol ("ms_1522.bmp", RGB (0, 129, 69), 9, 0)
+Apply PointStyle

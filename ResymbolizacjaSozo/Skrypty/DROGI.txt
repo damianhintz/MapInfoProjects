@@ -1,0 +1,22 @@
+#Obiekty mogace znacz¹co oddzia³ywac na œrodowisko (liniowe)
+Table DROGI
+Where P_NAT_RUCH AND MOZE_ZNACZACO_ODDZIAL_NA_SROD AND EMISJA_HALASU_WIBRACJI
+Style Pen MakePen (1, 110, RGB (222, 65, 46))
+Apply LineStyle
+#
+#Emitory liniowe ha³asu i wibracji (liniowe)
+Table DROGI
+Where NOT P_NAT_RUCH AND NOT MOZE_ZNACZACO_ODDZIAL_NA_SROD AND EMISJA_HALASU_WIBRACJI
+Style Pen MakePen (1, 115, RGB (137, 55, 131))
+Apply LineStyle
+#
+Table DROGI
+Where P_NAT_RUCH AND NOT MOZE_ZNACZACO_ODDZIAL_NA_SROD AND EMISJA_HALASU_WIBRACJI
+Style Pen MakePen (1, 115, RGB (137, 55, 131))
+Apply LineStyle
+#
+#Drogi pozosta³e (liniowe)
+Table DROGI
+Where NOT P_NAT_RUCH AND NOT MOZE_ZNACZACO_ODDZIAL_NA_SROD AND NOT EMISJA_HALASU_WIBRACJI
+Style Pen MakePen (1, 2, RGB (218, 37, 29))
+Apply LineStyle

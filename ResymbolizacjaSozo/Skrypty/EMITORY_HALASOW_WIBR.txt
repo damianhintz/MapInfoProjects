@@ -1,0 +1,10 @@
+#Emitory ha³asu i wibracji (punktowe)
+Table EMITORY_HALASOW_WIBR
+Style Symbol MakeCustomSymbol ("ms_5510.bmp", RGB (137, 55, 131), 21, 0)
+Apply PointStyle
+#
+#Emitory ha³asu i wibracji (powierzchniowe)
+Table EMITORY_HALASOW_WIBR
+Style Pen MakePen (1, 106, RGB (137, 55, 131))
+Style Brush MakeBrush (35, RGB (137, 55, 131), -1)
+Apply AreaStyle

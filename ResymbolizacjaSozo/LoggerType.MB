@@ -1,0 +1,34 @@
+Include "LoggerType.DEF"
+
+Sub LoggerOpen (logger As LoggerType, fileName As String)
+	logger.FileName = fileName
+	logger.BufferCount = 0
+	ReDim logger.Buffer (MAX_BUFFER_SIZE)
+	Open File fileName For Append As #9
+End Sub
+
+Sub LoggerWriteLine (logger As LoggerType, ByVal msg As String)
+	Dim i As Integer
+
+	If logger.BufferCount >= MAX_BUFFER_SIZE Then
+		Call LoggerFlush (logger)
+	End If
+
+	i = logger.BufferCount + 1
+	
+	logger.Buffer(i) = msg
+	logger.BufferCount = i
+End Sub
+
+Sub LoggerFlush (logger As LoggerType)
+	Dim i As Integer
+	For i = 1 To logger.BufferCount
+		Print #9, logger.Buffer(i)
+	Next
+	logger.BufferCount = 0
+End Sub
+
+Sub LoggerClose (logger As LoggerType)
+	Call LoggerFlush (logger)
+	Close File #9
+End Sub

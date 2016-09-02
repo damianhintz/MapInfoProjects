@@ -1,0 +1,16 @@
+Define MAX_STYLES 8
+
+Type ScriptItemType
+	TableName As String
+	FilterValue As String
+	Styles (MAX_STYLES) As String
+	StylesCount As Integer
+	UpdateType As String
+End Type
+
+Declare Sub ScriptItemInit (scriptItem As ScriptItemType, tableName As String)
+Declare Sub ScriptItemCopy (srcItem As ScriptItemType, dstItem As ScriptItemType)
+Declare Sub ScriptItemRedim (scriptItem As ScriptItemType)
+Declare Sub ScriptItemAddStyle (scriptItem As ScriptItemType, styleValue As String)
+Declare Sub ScriptItemUpdateStyles (scriptItem As ScriptItemType)
+Declare Sub ScriptItemUpdateTable (scriptItem As ScriptItemType)

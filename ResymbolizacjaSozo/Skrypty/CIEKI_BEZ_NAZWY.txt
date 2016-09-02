@@ -1,0 +1,4 @@
+#Cieki bez nazwy (liniowe)
+Table CIEKI_BEZ_NAZWY
+Style Pen MakePen (1, 48, RGB (0, 70, 142))
+Apply LineStyle

@@ -1,0 +1,4 @@
+#Piarg, odsypisko (punktowe)
+Table FIZ_PIARG_OSYPISKO_G
+Style Symbol MakeCustomSymbol ("rf_07.bmp", RGB (137, 55, 131), 13, 0)
+Apply PointStyle

@@ -1,0 +1,12 @@
+#Zabudowa zwarta (powierzchniowe)
+Table GRUNTY_ANTROPOGENICZNE
+Where ZABUDOWA_ID="Z"
+Style Brush MakeBrush (2, RGB (213, 150, 189), -1)
+Style Pen MakePen (1, 1, RGB (213, 150, 189))
+Apply AreaStyle
+#Zabudowa luüna (powierzchniowe)
+Table GRUNTY_ANTROPOGENICZNE
+Where ZABUDOWA_ID="L"
+Style Brush MakeBrush (2, RGB (217, 189, 217), -1)
+Style Pen MakePen (1, 1, RGB (217, 189, 217))
+Apply AreaStyle

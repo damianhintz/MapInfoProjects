@@ -1,0 +1,4 @@
+#Rzeüba warstwice (liniowe)
+Table RZEZBA_WARSTWICE
+Style Pen MakePen (1, 120, RGB (137, 55, 131))
+Apply LineStyle

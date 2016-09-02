@@ -1,0 +1,81 @@
+Include "Common.def"
+Include "ScriptFileType.def"
+Include "ConfigFileType.def"
+
+Sub ConfigFileInit (configFile As ConfigFileType)
+	configFile.FileName = ApplicationDirectory$() + APP_CONFIG
+	ReDim configFile.ScriptFiles (MAX_SCRIPTS)
+	configFile.ScriptCount = 0
+End Sub
+
+Sub ConfigFileRedim (configFile As ConfigFileType)
+	ReDim configFile.ScriptFiles (configFile.ScriptCount)
+End Sub
+
+Function ConfigFileLoad (configFile As ConfigFileType) As Logical
+
+	Dim str As String, scriptFile As String, invalidFiles As Integer
+	
+	invalidFiles = 0
+
+	If Not FileExists (configFile.FileName) Then
+		Print "Brak pliku konfiguracyjnego: " + configFile.FileName
+		ConfigFileLoad = False
+		Exit Function
+	End If
+
+	Open File configFile.FileName For Input As #1
+
+	Do While Not EOF(1)
+		Line Input #1, str
+
+		If EOF(1) Then
+			Exit Do
+		End If
+
+		Dim strType As String
+		strType = Left$(str, 1)
+
+		Do Case strType
+			Case "F", "f"
+				scriptFile = ApplicationDirectory$() + GetTokenValue(str, TOKEN_FILE)
+				If FileExists (scriptFile) Then
+					configFile.ScriptCount = configFile.ScriptCount + 1
+					configFile.ScriptFiles (configFile.ScriptCount) = scriptFile
+				Else
+					Print "Brak skryptu resymbolizacji: " + scriptFile
+					invalidFiles = invalidFiles + 1
+				End If
+			Case "#"
+				'Print "Comment"
+			Case Else
+				Print "Invalid config token found: " + strType
+				invalidFiles = invalidFiles + 1
+		End Case
+	Loop
+
+	Close File #1
+
+	Call ConfigFileRedim (configFile)
+	ConfigFileLoad = (invalidFiles = 0)
+
+End Function
+
+Sub ConfigFileProcess (configFile As ConfigFileType)
+
+	Dim index As Integer, scriptName As String, scriptFile As ScriptFileType
+
+	For index = 1 To UBound (configFile.ScriptFiles)
+
+		scriptName = configFile.ScriptFiles (index)
+		Print "Loading script: " + scriptName
+		Call ScriptFileInit (scriptFile, scriptName)
+		If ScriptFileLoad (scriptFile) Then
+			Call ScriptFileProcess (scriptFile)
+		Else
+			Print "Warning: invalid script file"
+		End If
+
+	Next
+
+End Sub

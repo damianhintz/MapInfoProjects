@@ -1,0 +1,4 @@
+#Punkt wysokoœciowy, kota (punktowe)
+Table RZEZBA_PKT_WYS_KOTA
+Style Symbol MakeCustomSymbol ("rf_02.bmp", RGB (137, 55, 131), 6, 0)
+Apply PointStyle

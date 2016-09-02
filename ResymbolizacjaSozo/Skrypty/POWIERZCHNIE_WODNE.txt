@@ -1,0 +1,5 @@
+#Powierzchnie wodne (powierzchniowe)
+Table POWIERZCHNIE_WODNE
+Style Brush MakeBrush (2, RGB (164, 215, 246), -1)
+Style Pen MakePen (1, 48, RGB (0, 70, 142))
+Apply AreaStyle

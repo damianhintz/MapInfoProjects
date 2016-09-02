@@ -1,0 +1,5 @@
+#Granice pañstw (powierzchniowe)
+Table GRANICE_PANSTW
+Style Brush MakeBrush (1, RGB (0, 0, 0), -1)
+Style Pen MakePen (1, 42, RGB (0, 0, 0))
+Apply AreaStyle

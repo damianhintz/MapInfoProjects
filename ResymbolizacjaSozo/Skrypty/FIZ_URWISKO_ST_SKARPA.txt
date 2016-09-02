@@ -1,0 +1,4 @@
+#Urwisko, skarpa (liniowe)
+Table FIZ_URWISKO_ST_SKARPA
+Style Pen MakePen (1, 121, RGB (137, 55, 131))
+Apply LineStyle

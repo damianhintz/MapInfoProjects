@@ -1,0 +1,4 @@
+#Jaskinie, groty (punktowe)
+Table FIZ_JASKINA_GROTA
+Style Symbol MakeCustomSymbol ("rf_04.bmp", RGB (137, 55, 131), 13, 0)
+Apply PointStyle

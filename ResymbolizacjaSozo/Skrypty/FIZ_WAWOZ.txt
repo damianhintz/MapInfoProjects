@@ -1,0 +1,4 @@
+#W¹wóz (liniowe)
+Table FIZ_WAWOZ
+Style Pen MakePen (1, 122, RGB (137, 55, 131))
+Apply LineStyle

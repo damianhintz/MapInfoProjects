@@ -1,0 +1,9 @@
+#Cmentarze (punktowe)
+Table CMENTARZE
+Style Symbol MakeCustomSymbol ("ms_2402.bmp", RGB (137, 55, 131), 11, 0)
+Apply PointStyle
+#Cmentarze (powierzchniowe)
+Table CMENTARZE
+Style Brush MakeBrush (73, RGB (137, 55, 131), -1)
+Style Pen MakePen (1, 102, RGB (137, 55, 131))
+Apply AreaStyle

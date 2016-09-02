@@ -1,0 +1,20 @@
+Include "MAPBASIC.def"
+Include "Common.def"
+
+Function GetTokenValue(wiersz As String, ByVal token As String) As String
+	GetTokenValue = Right$(wiersz, Len(wiersz) - Len(token))
+End Function
+
+Sub WriteEvent (ByVal msg As String)
+	Call LoggerWriteLine (g_logger, msg)
+End Sub
+
+Function TableExists (tableName As String) As Logical
+	OnError GoTo TableNotExists
+	Dim rowsCount As Integer
+	rowsCount = TableInfo (tableName, TAB_INFO_NROWS)
+	TableExists = True
+	Exit Function
+TableNotExists:
+	TableExists = False
+End Function

@@ -1,0 +1,11 @@
+Include "LoggerType.def"
+
+Define APP_VERSION "ResymbolizacjaSozo v1.0"
+Define APP_CONFIG "ResymbolizacjaSozo.config"
+Define APP_LOGGER "ResymbolizacjaSozo.log"
+
+Declare Function GetTokenValue(wiersz As String, ByVal token As String) As String
+Declare Sub WriteEvent (ByVal msg As String)
+Declare Function TableExists (tableName As String) As Logical
+
+Global g_logger As LoggerType

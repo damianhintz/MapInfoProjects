@@ -1,0 +1,21 @@
+#Jakoœc wód powierzchniowych (punktowe)
+Table JAKOSC_WOD_POW
+Where KLASA_ID="1"
+Style Symbol MakeCustomSymbol ("m_9001.bmp", RGB (0, 129, 69), 18, 0)
+Apply PointStyle
+Table JAKOSC_WOD_POW
+Where KLASA_ID="2"
+Style Symbol MakeCustomSymbol ("m_9002.bmp", RGB (0, 129, 69), 18, 0)
+Apply PointStyle
+Table JAKOSC_WOD_POW
+Where KLASA_ID="3"
+Style Symbol MakeCustomSymbol ("m_9003.bmp", RGB (0, 129, 69), 18, 0)
+Apply PointStyle
+Table JAKOSC_WOD_POW
+Where KLASA_ID="P"
+Style Symbol MakeCustomSymbol ("m_9004.bmp", RGB (0, 129, 69), 18, 0)
+Apply PointStyle
+Table JAKOSC_WOD_POW
+Where KLASA_ID="N"
+Style Symbol MakeCustomSymbol ("m_9005.bmp", RGB (0, 129, 69), 18, 0)
+Apply PointStyle

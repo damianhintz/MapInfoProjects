@@ -1,0 +1,145 @@
+Include "MAPBASIC.def"
+Include "Common.def"
+Include "ScriptItem.def"
+
+Sub ScriptItemInit (scriptItem As ScriptItemType, tableName As String)
+	scriptItem.TableName = tableName
+	scriptItem.FilterValue = ""
+	scriptItem.UpdateType = ""
+
+	ReDim scriptItem.Styles (MAX_STYLES)
+	scriptItem.StylesCount = 0	
+End Sub
+
+Sub ScriptItemCopy (srcItem As ScriptItemType, dstItem As ScriptItemType)
+	
+	Dim i As Integer, styleValue As String
+	
+	Call ScriptItemInit (dstItem, srcItem.TableName)
+	dstItem.FilterValue = srcItem.FilterValue
+	dstItem.UpdateType = srcItem.UpdateType
+
+	For i = 1 To UBound (srcItem.Styles)
+		styleValue = srcItem.Styles(i)
+		Call ScriptItemAddStyle (dstItem, styleValue)
+	Next
+
+	Call ScriptItemRedim (dstItem)
+
+End Sub
+
+Sub ScriptItemRedim (scriptItem As ScriptItemType)
+	ReDim scriptItem.Styles (scriptItem.StylesCount)
+End Sub
+
+Sub ScriptItemAddStyle (scriptItem As ScriptItemType, styleValue As String)
+	scriptItem.StylesCount = scriptItem.StylesCount + 1
+	scriptItem.Styles (scriptItem.StylesCount) = styleValue
+End Sub
+
+Sub ScriptItemUpdateStyles (scriptItem As ScriptItemType)
+	Dim i As Integer, styleValue As String
+	
+	For i = 1 To UBound (scriptItem.Styles)
+		styleValue = scriptItem.Styles(i)
+		Print "Set Style " + styleValue
+		Run Command "Set Style " + styleValue
+	Next
+
+	'Print "Update " + scriptItem.TableName + " Where " + scriptItem.FilterValue + " Type " + scriptItem.UpdateType
+	Call ScriptItemUpdateTable (scriptItem)
+
+End Sub
+
+Sub ScriptItemUpdateTable (scriptItem As ScriptItemType)
+
+	Dim updateCount As Integer, otherCount As Integer
+	updateCount = 0
+	otherCount = 0
+	Dim strCommand As String
+
+	If Len (scriptItem.FilterValue) > 0 Then
+		strCommand = "Select * From " + scriptItem.TableName + " Where " + scriptItem.FilterValue		
+		'Select * From scriptItem.TableName Where scriptItem.FilterValue
+	Else
+		strCommand = "Select * From " + scriptItem.TableName
+	End If
+
+	Print strCommand
+	Run Command strCommand
+
+	Dim curobj As Object
+	Dim objType As Integer, rowsCount As Integer
+
+	rowsCount = SelectionInfo (SEL_INFO_NROWS)
+
+	if rowsCount = 0 Then
+		Close Table Selection
+		'Commit Table scriptItem.TableName
+		Print "Updated objects: " + updateCount
+		Exit Sub
+	End If
+
+	Fetch First From Selection
+
+	Do While Not EOT(Selection)
+		curobj = Selection.obj
+
+		objType = ObjectInfo(curobj, OBJ_INFO_TYPE)
+
+		Do Case scriptItem.UpdateType
+
+			Case "PointStyle"
+				If objType = OBJ_TYPE_POINT Then
+					Alter Object curobj Info OBJ_INFO_SYMBOL, CurrentSymbol()
+					Update Selection Set obj=curobj Where RowID = Selection.RowId
+					updateCount = updateCount + 1
+				Else
+					'Print "Invalid object type: " + scriptItem.UpdateType
+					otherCount = otherCount + 1
+				End If
+
+			Case "LineStyle"
+				If objType = OBJ_TYPE_LINE Or objType = OBJ_TYPE_PLINE Then
+					Alter Object curobj Info OBJ_INFO_PEN, CurrentPen()
+					Update Selection Set obj=curobj Where RowID = Selection.RowId
+					updateCount = updateCount + 1
+				Else
+					'Print "Invalid object type: " + scriptItem.UpdateType
+					otherCount = otherCount + 1
+				End If
+
+			Case "AreaStyle"
+				If objType = OBJ_TYPE_REGION Or objType = OBJ_TYPE_RECT Or objtType = OBJ_TYPE_ROUNDRECT Or objType = OBJ_TYPE_ELLIPSE Then
+					Alter Object curobj Info OBJ_INFO_PEN, CurrentPen()
+					Alter Object curobj Info OBJ_INFO_BRUSH, CurrentBrush()
+					Update Selection Set obj=curobj Where RowID = Selection.RowId
+					updateCount = updateCount + 1
+				Else
+					'Print "Invalid object type: " + scriptItem.UpdateType
+					otherCount = otherCount + 1
+				End If
+
+			Case "TextStyle"
+				If objType = OBJ_TYPE_TEXT Then
+					Alter Object curobj Info OBJ_INFO_TEXTFONT, CurrentFont()
+					Update Selection Set obj=curobj Where RowID = Selection.RowId
+					updateCount = updateCount + 1
+				End If
+
+			Case "Else"
+				Print "Invalid table update type: " + scriptItem.UpdateType
+		End Case
+
+		Fetch Next From Selection
+	Loop
+
+	Close Table Selection
+	Commit Table scriptItem.TableName
+
+	Print "Updated objects " + updateCount + ", other type objects " + otherCount
+End Sub
+
+
+
+

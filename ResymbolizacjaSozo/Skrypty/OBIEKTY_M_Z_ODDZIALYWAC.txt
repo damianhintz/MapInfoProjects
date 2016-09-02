@@ -1,0 +1,10 @@
+#Obiekty mogace znacz¹co oddzia³ywac na œrodowisko (powierzchniowe)
+Table OBIEKTY_M_Z_ODDZIALYWAC
+Style Brush MakeBrush (1, RGB (222, 65, 46), -1)
+Style Pen MakePen (1, 109, RGB (137, 55, 131))
+Apply AreaStyle
+#
+#Obiekty mogace znacz¹co oddzia³ywac na œrodowisko (powierzchniowe)
+Table OBIEKTY_M_Z_ODDZIALYWAC
+Style Symbol MakeCustomSymbol ("ms_5812.bmp", RGB (137, 55, 131), 11, 0)
+Apply PointStyle

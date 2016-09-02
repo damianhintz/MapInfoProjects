@@ -1,0 +1,5 @@
+#Obiekty mogace znacz¹co oddzia³ywac na œrodowisko (liniowe)
+Table LINIE_ENERGETYCZNE
+Where MOZE_ZNACZACO_ODDZIAL_NA_SROD
+Style Pen MakePen (1, 112, RGB (222, 65, 46))
+Apply LineStyle

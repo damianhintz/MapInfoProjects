@@ -1,0 +1,20 @@
+#Sk³adowiska paliw p³ynnych magzaynowe czynne (punktowe)
+Table SKL_PALIW_PLYNNYCH
+Where RODZAJ_ID="M" AND CZYNNE
+Style Symbol MakeCustomSymbol ("ms_2921c.bmp", RGB (224, 181, 210), 14, 0)
+Apply PointStyle
+#Sk³adowiska paliw p³ynnych magzaynowe nieczynne (punktowe)
+Table SKL_PALIW_PLYNNYCH
+Where RODZAJ_ID="M" AND not CZYNNE
+Style Symbol MakeCustomSymbol ("ms_2921n.bmp", RGB (224, 181, 210), 14, 0)
+Apply PointStyle
+#Stacje paliw czynne (punktowe)
+Table SKL_PALIW_PLYNNYCH
+Where RODZAJ_ID="S" AND CZYNNE
+Style Symbol MakeCustomSymbol ("ms_2922c.bmp", RGB (224, 181, 210), 14, 0)
+Apply PointStyle
+#Stacje paliw nieczynne (punktowe)
+Table SKL_PALIW_PLYNNYCH
+Where RODZAJ_ID="S" AND not CZYNNE
+Style Symbol MakeCustomSymbol ("ms_2922n.bmp", RGB (224, 181, 210), 14, 0)
+Apply PointStyle

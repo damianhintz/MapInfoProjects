@@ -1,0 +1,8 @@
+[Link] 
+Application=ResymbolizacjaSozo.mbx 
+Module=ResymbolizacjaSozo.mbo
+Module=Common.mbo
+Module=LoggerType.mbo
+Module=ConfigFileType.mbo
+Module=ScriptItem.mbo
+Module=ScriptFileType.mbo

@@ -1,0 +1,4 @@
+#Zbiorcze emitory przemys³owe
+Table EMITORY_PRZEM_ZBIORCZE
+Style Symbol MakeCustomSymbol ("ms_5300.bmp", RGB (137, 55, 131), 29, 0)
+Apply PointStyle

@@ -1,0 +1,21 @@
+#Utylizacja odpadów (punktowe)
+#
+Table UTYLIZACJA_ODPADOW
+Where RODZAJ_ID="B"
+Style Symbol MakeCustomSymbol ("ms_6400B.bmp", RGB (199, 163, 58), 13, 0)
+Apply PointStyle
+#
+Table UTYLIZACJA_ODPADOW
+Where RODZAJ_ID="K"
+Style Symbol MakeCustomSymbol ("ms_6400K.bmp", RGB (199, 163, 58), 13, 0)
+Apply PointStyle
+#
+Table UTYLIZACJA_ODPADOW
+Where RODZAJ_ID="S"
+Style Symbol MakeCustomSymbol ("ms_6400S.bmp", RGB (199, 163, 58), 13, 0)
+Apply PointStyle
+#
+Table UTYLIZACJA_ODPADOW
+Where RODZAJ_ID="R"
+Style Symbol MakeCustomSymbol ("ms_6400R.bmp", RGB (199, 163, 58), 13, 0)
+Apply PointStyle

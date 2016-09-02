@@ -1,0 +1,105 @@
+Include "MAPBASIC.def"
+Include "Common.def"
+Include "ScriptFileType.def"
+
+Sub ScriptFileInit (scriptFile As ScriptFileType, scriptName As String)
+	scriptFile.FileName = scriptName
+	ReDim scriptFile.Items (MAX_ITEMS)
+	scriptFile.ItemsCount = 0
+End Sub
+
+Sub ScriptFileAddItem (scriptFile As ScriptFileType, scriptItem As ScriptItemType)
+	Dim itemIndex As Integer
+	itemIndex = scriptFile.ItemsCount + 1
+	scriptFile.ItemsCount = itemIndex
+	Call ScriptItemCopy (scriptItem, scriptFile.Items (itemIndex))
+End Sub
+
+Sub ScriptFileRedim (scriptFile As ScriptFileType)
+	Redim scriptFile.Items (scriptFile.ItemsCount)
+End Sub
+
+Sub ScriptFileProcess (scriptFile As ScriptFileType)
+	Dim index As Integer
+	
+	For index = 1 To scriptFile.ItemsCount
+		Call ScriptItemUpdateStyles (scriptFile.Items (index))
+	Next
+
+End Sub
+
+Function ScriptFileLoad (scriptFile As ScriptFileType) As Logical
+
+	Dim str As String, tableName As String, filterValue As String, styleValue As String, updateType As String
+	Dim invalidLines As Integer
+	Dim scriptItem As ScriptItemType
+
+	invalidLines = 0
+
+	Open File scriptFile.FileName For Input As #1
+
+	Do While Not EOF(1)
+
+		Line Input #1, str
+
+		If EOF(1) Then
+			Exit Do
+		End If
+
+		Dim strType As String
+		strType = Left$(str, 1)
+
+		Do Case strType
+			Case "T", "t"
+				tableName = GetTokenValue (str, TOKEN_TABLE)
+				Call ScriptItemInit (scriptItem, tableName)
+
+				If Not TableExists (tableName) Then
+					Print "Invalid table name: " + tableName
+					invalidLines = invalidLines + 1
+				End If
+
+			Case "W", "w"
+				If Len (tableName) = 0 Then
+					invalidLines = invalidLines + 1
+				End If
+
+				filterValue = GetTokenValue (str, TOKEN_FILTER)
+				scriptItem.FilterValue = filterValue
+
+			Case "S", "s"
+				If Len (tableName) = 0 Then
+					invalidLines = invalidLines + 1
+				End If
+
+				styleValue = GetTokenValue (str, TOKEN_STYLE)
+				Call ScriptItemAddStyle (scriptItem, styleValue)
+
+			Case "A", "a"
+				If Len (tableName) = 0 Then
+					invalidLines = invalidLines + 1
+				End If
+
+				updateType = GetTokenValue (str, TOKEN_UPDATE)
+				scriptItem.UpdateType = updateType
+				
+				Call ScriptItemRedim (scriptItem)
+				Call ScriptFileAddItem (scriptFile, scriptItem)
+				'ScriptItemUpdateStyles (scriptItem)
+				
+			Case "#"
+				'Print "Comment"
+
+			Case Else
+				Print "Invalid script token found: " + strType
+				invalidLines = invalidLines + 1
+
+		End Case
+	Loop
+
+	Close File #1
+	
+	Call ScriptFileRedim (scriptFile)
+
+	ScriptFileLoad = (invalidLines = 0)
+End Function

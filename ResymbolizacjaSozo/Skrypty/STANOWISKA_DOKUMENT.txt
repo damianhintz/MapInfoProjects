@@ -1,0 +1,4 @@
+#Stanowiska domumentacyjne (punktowe)
+Table STANOWISKA_DOKUMENT
+Style Symbol MakeCustomSymbol ("ms_1200.bmp", RGB (0, 129, 69), 5, 0)
+Apply PointStyle

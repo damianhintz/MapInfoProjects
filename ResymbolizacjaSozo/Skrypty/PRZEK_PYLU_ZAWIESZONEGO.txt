@@ -1,0 +1,5 @@
+#Przekroczenia dopuszczalnej zawartoœci py³u zawieszonego (powierzchniowe)
+Table PRZEK_PYLU_ZAWIESZONEGO
+Style Brush MakeBrush (1, RGB (137, 55, 131), -1)
+Style Pen MakePen (1, 108, RGB (137, 55, 131))
+Apply AreaStyle

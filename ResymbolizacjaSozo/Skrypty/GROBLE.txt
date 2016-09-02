@@ -1,0 +1,4 @@
+#Groble (liniowe)
+Table GROBLE
+Style Pen MakePen (1, 101, RGB (0, 0, 0))
+Apply LineStyle

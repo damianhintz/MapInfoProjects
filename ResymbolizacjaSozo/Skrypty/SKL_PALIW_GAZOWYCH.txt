@@ -1,0 +1,10 @@
+#Sk³adowiska paliw gazowych magazynowe (punktowe)
+Table SKL_PALIW_GAZOWYCH
+Where RODZAJ_ID="M"
+Style Symbol MakeCustomSymbol ("ms_2931.bmp", RGB (224, 181, 210), 14, 0)
+Apply PointStyle
+#Stacje paliw gazowe (punktowe)
+Table SKL_PALIW_GAZOWYCH
+Where RODZAJ_ID="S"
+Style Symbol MakeCustomSymbol ("ms_2932.bmp", RGB (224, 181, 210), 14, 0)
+Apply PointStyle

@@ -1,0 +1,4 @@
+#Wa³ nasyp (liniowe)
+Table FIZ_WAL_NASYP
+Style Pen MakePen (1, 64, RGB (137, 55, 131))
+Apply LineStyle

@@ -1,0 +1,4 @@
+#Wa³y ochronne (liniowe)
+Table WALY_OCHRONNE
+Style Pen MakePen (1, 100, RGB (0, 0, 0))
+Apply LineStyle

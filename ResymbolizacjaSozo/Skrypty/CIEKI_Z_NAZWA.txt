@@ -1,0 +1,23 @@
+#Cieki z nazw¹ o szerokoœc > 3m (liniowe)
+Table CIEKI_Z_NAZWA
+Where SZEROKOSC_ID=1
+Style Pen MakePen (1, 48, RGB (0, 70, 142))
+Apply LineStyle
+#
+#Cieki z nazw¹ o szerokoœc 3m - 5m (liniowe)
+Table CIEKI_Z_NAZWA
+Where SZEROKOSC_ID=2
+Style Pen MakePen (1, 49, RGB (0, 70, 142))
+Apply LineStyle
+#
+#Cieki z nazw¹ o szerokoœc 5m - 30m (liniowe)
+Table CIEKI_Z_NAZWA
+Where SZEROKOSC_ID=3
+Style Pen MakePen (1, 50, RGB (0, 70, 142))
+Apply LineStyle
+#
+#Cieki z nazw¹, tylko na mapie numerycznej (liniowe)
+Table CIEKI_Z_NAZWA
+Where TYLKO_NA_MAPIE_NUMERYCZNEJ
+Style Pen MakePen (1, 48, RGB (0, 70, 142))
+Apply LineStyle

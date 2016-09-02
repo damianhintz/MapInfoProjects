@@ -1,0 +1,9 @@
+#Obnizenie, dó³ (punktowe)
+Table FIZ_OBNIZENIE_DOL
+Style Symbol MakeCustomSymbol ("rf_01.bmp", RGB (137, 55, 131), 13, 0)
+Apply PointStyle
+#
+#Obnizenie, dó³ (liniowe)
+Table FIZ_OBNIZENIE_DOL
+Style Pen MakePen (1, 121, RGB (137, 55, 131))
+Apply LineStyle

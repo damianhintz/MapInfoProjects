@@ -1,0 +1,50 @@
+#Sk³adowiska odpadów przemys³u wydobywczego kontrolowane (punktowe)
+Table SKL_ODPAD_PRZEM
+Where PRZEMYSLU_ID="W" AND KONTROLOWANE
+Style Symbol MakeCustomSymbol ("ms_3111W.bmp", RGB (224, 181, 210), 18, 0)
+Apply PointStyle
+#Sk³adowiska odpadów przemys³u wydobywczego niekontrolowane (punktowe)
+Table SKL_ODPAD_PRZEM
+Where PRZEMYSLU_ID="W" AND NOT KONTROLOWANE
+Style Symbol MakeCustomSymbol ("ms_3121W.bmp", RGB (224, 181, 210), 18, 0)
+Apply PointStyle
+#Sk³adowiska odpadów przemys³u chemicznego kontrolowane (punktowe)
+Table SKL_ODPAD_PRZEM
+Where PRZEMYSLU_ID="C" AND KONTROLOWANE
+Style Symbol MakeCustomSymbol ("ms_3111C.bmp", RGB (224, 181, 210), 18, 0)
+Apply PointStyle
+#Sk³adowiska odpadów przemys³u chemicznego niekontrolowane (punktowe)
+Table SKL_ODPAD_PRZEM
+Where PRZEMYSLU_ID="C" AND NOT KONTROLOWANE
+Style Symbol MakeCustomSymbol ("ms_3121C.bmp", RGB (224, 181, 210), 18, 0)
+Apply PointStyle
+#Sk³adowiska odpadów przemys³u energetycznego kontrolowane (punktowe)
+Table SKL_ODPAD_PRZEM
+Where PRZEMYSLU_ID="E" AND KONTROLOWANE
+Style Symbol MakeCustomSymbol ("ms_3111E.bmp", RGB (224, 181, 210), 18, 0)
+Apply PointStyle
+#Sk³adowiska odpadów przemys³u energetycznego niekontrolowane (punktowe)
+Table SKL_ODPAD_PRZEM
+Where PRZEMYSLU_ID="E" AND NOT KONTROLOWANE
+Style Symbol MakeCustomSymbol ("ms_3121E.bmp", RGB (224, 181, 210), 18, 0)
+Apply PointStyle
+#Sk³adowiska odpadów przemys³u hutniczego kontrolowane (punktowe)
+Table SKL_ODPAD_PRZEM
+Where PRZEMYSLU_ID="H" AND KONTROLOWANE
+Style Symbol MakeCustomSymbol ("ms_3111H.bmp", RGB (224, 181, 210), 18, 0)
+Apply PointStyle
+#Sk³adowiska odpadów przemys³u hutniczego niekontrolowane (punktowe)
+Table SKL_ODPAD_PRZEM
+Where PRZEMYSLU_ID="H" AND NOT KONTROLOWANE
+Style Symbol MakeCustomSymbol ("ms_3121H.bmp", RGB (224, 181, 210), 18, 0)
+Apply PointStyle
+#Sk³adowiska odpadów przemys³u innego kontrolowane (punktowe)
+Table SKL_ODPAD_PRZEM
+Where PRZEMYSLU_ID="I" AND KONTROLOWANE
+Style Symbol MakeCustomSymbol ("ms_3111I.bmp", RGB (224, 181, 210), 18, 0)
+Apply PointStyle
+#Sk³adowiska odpadów przemys³u innego niekontrolowane (punktowe)
+Table SKL_ODPAD_PRZEM
+Where PRZEMYSLU_ID="I" AND NOT KONTROLOWANE
+Style Symbol MakeCustomSymbol ("ms_3121I.bmp", RGB (224, 181, 210), 18, 0)
+Apply PointStyle

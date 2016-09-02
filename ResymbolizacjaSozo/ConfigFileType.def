@@ -1,0 +1,12 @@
+Define MAX_SCRIPTS 1024
+
+Type ConfigFileType
+	FileName As String
+	ScriptFiles (MAX_SCRIPTS) As String
+	ScriptCount As Integer
+End Type
+
+Declare Sub ConfigFileInit (configFile As ConfigFileType)
+Declare Sub ConfigFileRedim (configFile As ConfigFileType)
+Declare Function ConfigFileLoad (configFile As ConfigFileType) As Logical
+Declare Sub ConfigFileProcess (configFile As ConfigFileType)

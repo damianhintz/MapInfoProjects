@@ -1,0 +1,10 @@
+#Ujêcia wód powierzchniowych (punktowe)
+Table UJECIA_WOD
+Where WODY_ID="W"
+Style Symbol MakeCustomSymbol ("ms_1512.bmp", RGB (0, 129, 69), 9, 0)
+Apply PointStyle
+#Ujêcia wód podziemnych (punktowe)
+Table UJECIA_WOD
+Where WODY_ID="D"
+Style Symbol MakeCustomSymbol ("ms_1522.bmp", RGB (0, 129, 69), 9, 0)
+Apply PointStyle

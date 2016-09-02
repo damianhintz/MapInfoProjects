@@ -1,0 +1,53 @@
+# RGB (red, green, blue)
+#  czerwony
+#  zielony
+#  niebieski
+#
+# MakePen (width, pattern, color)
+#  width specifies a pen width, Integer value, usually from 1 to 7, representing the thickness of the line (in pixels). 
+#   To create an invisible line style, specify a width of zero, and use a pattern value of 1 (one)
+#  pattern specifies a line pattern, Integer value from 1 to 118; see table below. Pattern 1 is invisible
+#  color is the RGB color value
+#
+# MakeBrush (pattern, fgcolor, bgcolor)
+#  pattern is an integer value from 1 to 8 or from 12 to 71 (Pattern 2 produces a solid fill; pattern 1 produces no fill)
+#  forecolor is the integer RGB color value of the foreground of the pattern
+#  backcolor is the integer RGB color value of the background of the pattern. To make the background transparent, specify -1 as the background color
+#
+# MakeSymbol (shape, color, size)
+#  shape The standard set of symbols includes symbols 31 through 67, but the user can customize the symbol set by using the Symbol application.
+
+# MakeCustomSymbol (filename, color, size, customstyle)
+#  filename is a string up to 31 characters long, representing the name of a bitmap file. 
+#   The file must be in the CustSymb directory inside the user's MapInfo directory
+#  color is an integer RGB color value
+#  size is an integer point size, from 1 to 48.
+#  customstyle is an integer code controlling color and background attributes
+
+0 
+ The Show Background, the Apply Color, and the Display at Actual Size settings are off; 
+ the symbol appears in its default state at the point size specified by the size parameter. 
+ White pixels in the bitmap are displayed as transparent, allowing whatever is behind the symbol to show through. 
+1 
+ The Show Background setting is on; white pixels in the bitmap are opaque. 
+2 
+ The Apply Color setting is on; non-white pixels in the bitmap are replaced with the symbol's color setting. 
+3 
+ Both Show Background and Apply Color are on. 
+4 
+ The Display at Actual Size setting is on; the bitmap image is rendered at its native width and height in pixels. 
+5 
+ The Show Background and Display at Actual Size settings are on. 
+7 
+ The Show Background, the Apply Color, and the Display at Actual Size settings are on. 
+
+MakeFont (fontname, style, size, forecolor, backcolor)
+
+ fontname is a text string specifying a font (for example, "Arial"). This argument is case sensitive.  
+ style is a positive integer expression; 0 = plain text, 1 = bold text, etc. See Font clause for details.
+ size is an integer point size, one or greater.
+ forecolor is the RGB color value for the text. See RGB( ) function.
+ backcolor is the RGB color value for the background (or the halo color, if the style setting specifies a halo). 
+  To make the background transparent, specify -1 as the background color.
+
+Set Style Font ?

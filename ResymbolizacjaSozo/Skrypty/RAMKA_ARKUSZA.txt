@@ -1,0 +1,5 @@
+#Ramka arkusz (powierzchniowe)
+Table RAMKA_ARKUSZA
+Style Brush MakeBrush (1, RGB (255, 255, 255), -1)
+Style Pen MakePen (1, 2, RGB (0, 0, 0))
+Apply AreaStyle

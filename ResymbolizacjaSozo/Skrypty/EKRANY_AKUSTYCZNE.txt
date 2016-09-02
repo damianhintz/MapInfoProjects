@@ -1,0 +1,4 @@
+#Ekrany akustyczne (liniowe)
+Table EKRANY_AKUSTYCZNE
+Style Pen MakePen (1, 113, RGB (199, 163, 58))
+Apply LineStyle

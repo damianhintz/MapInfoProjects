@@ -1,0 +1,4 @@
+#Siatka kilometrowa (liniowe)
+Table SIATKA_KILOMETROWA
+Style Pen MakePen (1, 2, RGB (150, 149, 149))
+Apply LineStyle

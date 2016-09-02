@@ -1,0 +1,29 @@
+#Granice administracyjne - miasto (liniowe)
+Table GRANICE_ADMINISTRACYJNE
+Where GRANICA_ID="M"
+Style Pen MakePen (1, 46, RGB (0, 0, 0))
+Apply LineStyle
+#
+#Granice administracyjne - gmina (liniowe)
+Table GRANICE_ADMINISTRACYJNE
+Where GRANICA_ID="G"
+Style Pen MakePen (1, 45, RGB (0, 0, 0))
+Apply LineStyle
+#
+#Granice administracyjne - powiat (liniowe)
+Table GRANICE_ADMINISTRACYJNE
+Where GRANICA_ID="PO"
+Style Pen MakePen (1, 44, RGB (0, 0, 0))
+Apply LineStyle
+#
+#Granice administracyjne - województwo (liniowe)
+Table GRANICE_ADMINISTRACYJNE
+Where GRANICA_ID="W"
+Style Pen MakePen (1, 43, RGB (0, 0, 0))
+Apply LineStyle
+#
+#Granice administracyjne - pañstwo (liniowe)
+Table GRANICE_ADMINISTRACYJNE
+Where GRANICA_ID="PA"
+Style Pen MakePen (1, 42, RGB (0, 0, 0))
+Apply LineStyle

@@ -1,0 +1,16 @@
+#Punkty monitoringu (punktowe)
+#
+Table PUNKTY_MONITORINGU
+Where SIECI_ID="K"
+Style Symbol MakeCustomSymbol ("ms_6610.bmp", RGB (199, 163, 58), 13, 0)
+Apply PointStyle
+#
+Table PUNKTY_MONITORINGU
+Where SIECI_ID="R"
+Style Symbol MakeCustomSymbol ("ms_6620.bmp", RGB (199, 163, 58), 13, 0)
+Apply PointStyle
+#
+Table PUNKTY_MONITORINGU
+Where SIECI_ID="L"
+Style Symbol MakeCustomSymbol ("ms_6630.bmp", RGB (199, 163, 58), 13, 0)
+Apply PointStyle

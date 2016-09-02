@@ -1,0 +1,5 @@
+#Granice Parkow narodowych (powierzchniowe)
+Table PARKI_NARODOWE
+Style Brush MakeBrush (1, RGB (0, 129, 69), -1)
+Style Pen MakePen (1, 80, RGB (0, 129, 69))
+Apply AreaStyle

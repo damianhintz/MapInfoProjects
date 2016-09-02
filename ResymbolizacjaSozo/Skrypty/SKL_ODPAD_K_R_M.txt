@@ -1,0 +1,40 @@
+#Sk³adowiska odpadów komunalnych kontrolowane (punktowe)
+Table SKL_ODPAD_K_R_M
+Where ODPADY_ID="K" AND KONTROLOWANE
+Style Symbol MakeCustomSymbol ("ms_3112.bmp", RGB (224, 181, 210), 18, 0)
+Apply PointStyle
+#Sk³adowiska odpadów komunalnych niekontrolowane (punktowe)
+Table SKL_ODPAD_K_R_M
+Where ODPADY_ID="K" AND NOT KONTROLOWANE
+Style Symbol MakeCustomSymbol ("ms_3122.bmp", RGB (224, 181, 210), 18, 0)
+Apply PointStyle
+#Sk³adowiska odpadów rolniczych kontrolowane (punktowe)
+Table SKL_ODPAD_K_R_M
+Where ODPADY_ID="R" AND KONTROLOWANE
+Style Symbol MakeCustomSymbol ("ms_3113.bmp", RGB (224, 181, 210), 18, 0)
+Apply PointStyle
+#Sk³adowiska odpadów  niekontrolowane (punktowe)
+Table SKL_ODPAD_K_R_M
+Where ODPADY_ID="R" AND NOT KONTROLOWANE
+Style Symbol MakeCustomSymbol ("ms_3123.bmp", RGB (224, 181, 210), 18, 0)
+Apply PointStyle
+#Sk³adowiska odpadów innych kontrolowane (punktowe)
+Table SKL_ODPAD_K_R_M
+Where ODPADY_ID="I" AND KONTROLOWANE
+Style Symbol MakeCustomSymbol ("ms_3114.bmp", RGB (224, 181, 210), 18, 0)
+Apply PointStyle
+#Sk³adowiska odpadów innych niekontrolowane (punktowe)
+Table SKL_ODPAD_K_R_M
+Where ODPADY_ID="I" AND NOT KONTROLOWANE
+Style Symbol MakeCustomSymbol ("ms_3124.bmp", RGB (224, 181, 210), 18, 0)
+Apply PointStyle
+#Sk³adowiska odpadów mieszanych kontrolowane (punktowe)
+Table SKL_ODPAD_K_R_M
+Where ODPADY_ID="M" AND KONTROLOWANE
+Style Symbol MakeCustomSymbol ("ms_3115.bmp", RGB (224, 181, 210), 18, 0)
+Apply PointStyle
+#Sk³adowiska odpadów mieszanych niekontrolowane (punktowe)
+Table SKL_ODPAD_K_R_M
+Where ODPADY_ID="M" AND NOT KONTROLOWANE
+Style Symbol MakeCustomSymbol ("ms_3125.bmp", RGB (224, 181, 210), 18, 0)
+Apply PointStyle

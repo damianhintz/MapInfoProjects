@@ -1,0 +1,4 @@
+#Kopiec, kurhan (punktowe)
+Table FIZ_KOPIEC_KURHAN
+Style Symbol MakeCustomSymbol ("rf_05.bmp", RGB (137, 55, 131), 14, 0)
+Apply PointStyle
